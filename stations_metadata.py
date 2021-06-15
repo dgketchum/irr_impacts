@@ -31,32 +31,36 @@ def add_metadata_to_shapefile(basin_gages, series, out):
     with fiona.open(basin_gages, 'r') as src:
         meta = src.meta
         for f in src:
-            s_path = os.path.join(series, '{}_annual.csv'.format(f['properties']['STAID']))
+            sid = f['properties']['STAID']
+            s_path = os.path.join(series, '{}_annual.csv'.format(sid))
             s = read_csv(s_path, parse_dates=True, index_col=0)
             try:
-                c, t = sm.tsa.filters.hpfilter(s.values)
+                c, t = sm.tsa.filters.hpfilter(s.values, lamb=6.25)
             except:
                 continue
-            dt = (t[0] - t[-1]) / np.mean(t)
+            t[t < 0] = 0
+            dt = (t[-1] - t[0]) / np.mean(t)
             f['properties']['change'] = dt
             trend = Series(t, index=s.index)
             features.append(f)
 
     meta['schema'] = {'properties': OrderedDict([('STAID', 'str:40'),
                                                  ('STANAME', 'str:254'),
+                                                 ('SQMI', 'float:19.11'),
                                                  ('change', 'float:19.11'),
                                                  ('start', 'str:254'),
                                                  ('end', 'str:254')]),
-                      'geometry': 'Point'}
+                      'geometry': 'Polygon'}
 
     ct = 0
     with fiona.open(out, 'w', **meta) as dst:
         for f in features:
             feature = {'geometry': {'coordinates': f['geometry']['coordinates'],
-                                    'type': 'Point'},
+                                    'type': 'Polygon'},
                        'id': ct,
                        'properties': OrderedDict([('STAID', f['properties']['STAID']),
                                                   ('STANAME', f['properties']['STANAME']),
+                                                  ('SQMI', f['properties']['SQMI']),
                                                   ('change', f['properties']['change']),
                                                   ('start', f['properties']['start']),
                                                   ('end', f['properties']['end'])]),

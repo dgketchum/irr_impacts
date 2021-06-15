@@ -17,7 +17,7 @@ def plot_station_hydrographs(csv, fig_dir=None):
     for i, r in df.iteritems():
         fig, ax = plt.subplots()
         r.index = linear
-        cycle, trend = sm.tsa.filters.hpfilter(r.values)
+        cycle, trend = sm.tsa.filters.hpfilter(r.values, lamb=6.25)
         ax = r.plot(ax=ax, kind='line', x=linear, y=r.values, alpha=0.6)
         ax = plt.plot(linear, trend)
         plt.savefig(os.path.join(fig_dir, '{}.png'.format(r.name[5:13])))
