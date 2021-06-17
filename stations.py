@@ -1,7 +1,8 @@
 import os
 import fiona
 import hydrofunctions as hf
-from pandas import concat
+import pandas as pd
+from pandas import concat, read_csv, date_range, DatetimeIndex
 from copy import deepcopy
 from collections import OrderedDict
 from datetime import datetime as dt
@@ -144,50 +145,49 @@ def get_station_watersheds(stations_source, watersheds_source, out_stations, out
             dst.write(f)
 
 
-def get_station_record(stations_shapefile, out_dir, start, end):
+def get_station_daily_q(stations_shapefile, out_dir):
     with fiona.open(stations_shapefile, 'r') as src:
         station_ids = [f['properties']['STAID'] for f in src]
 
-    range = (dt.strptime(end, '%Y-%m-%d') - dt.strptime(start, '%Y-%m-%d')).days + 1
-    first = True
-    short_records = []
     for sid in station_ids:
         nwis = hf.NWIS(sid, 'dv', start_date=s, end_date=e)
         df = nwis.df('discharge')
         out_file = os.path.join(out_dir, 'daily_stations', '{}_daily.csv'.format(sid))
+        df.to_csv(out_file)
+
+
+def get_station_annual_q(start, end, annual_q_dir, daily_q_dir):
+
+    range = (dt.strptime(end, '%Y-%m-%d') - dt.strptime(start, '%Y-%m-%d')).days + 1
+    idx = DatetimeIndex(date_range(start, end, freq='D'))
+    out_records, short_records = [], []
+    l = [os.path.join(daily_q_dir, x) for x in os.listdir(daily_q_dir)]
+    for c in l:
+        sid = os.path.basename(c).split('_')[0]
+        df = read_csv(c)
+        df['datetimeUTC'] = pd.to_datetime(df['datetimeUTC'])
+        df = df.set_index('datetimeUTC')
 
         if range - 1000 <= df.shape[0] < range:
             df = df.reindex(idx)
         elif df.shape[0] < int(range * 0.7):
             short_records.append(sid)
+            print(sid, ' skipped')
             continue
 
-        df.to_csv(out_file)
+        df = df * 2446.58
         df_annual = df.resample('A').sum()
-        out_file = os.path.join(out_dir, 'annual_stations', '{}_annual.csv'.format(sid))
+        out_file = os.path.join(annual_q_dir, '{}_annual.csv'.format(sid))
         df_annual.to_csv(out_file)
-        if first:
-            idx = df.index
-            gdf = deepcopy(df_annual)
-            first = False
-        else:
-            gdf = concat([gdf, df_annual], axis=1, )
-    gdf.to_csv(os.path.join(out_dir, 'group_stations', 'stations_annual.csv'))
-    print(short_records)
+        out_records.append(sid)
+        print(sid)
+
+    print('{} processed, {} short'.format(len(out_records), len(short_records)))
 
 
 if __name__ == '__main__':
-    # get_station_ids('/media/research/IrrigationGIS/gages/gagesii_CO_CMB_UMRB_basins.shp')
-    # por_stations = '/media/research/IrrigationGIS/gages/gage_loc_usgs/por_gages_nhd.shp'
-    # watershed_source = '/media/research/IrrigationGIS/gages/watersheds/combined_station_watersheds.shp'
-    selected_stations = '/media/research/IrrigationGIS/gages/gage_loc_usgs/selected_gages.shp'
-    selected_watersheds = '/media/research/IrrigationGIS/gages/watersheds/selected_watersheds.shp'
-    # get_station_watersheds(por_stations, watershed_source, selected_stations, selected_watersheds)
-    d = '/media/research/IrrigationGIS/gages/hydrographs'
     s, e = '1984-01-01', '2020-12-31'
-    get_station_record(selected_stations, d, s, e)
-    # gagesii_30yr = '/media/research/IrrigationGIS/gages/gagesii/gagesii_30yr.shp'
-    # basin_gages_30yr = '/media/research/IrrigationGIS/gages/gage_loc_usgs/basin_gages_wgs_por.shp'
-    # out_points = '/media/research/IrrigationGIS/gages/selected_gages_nhd.shp'
-    # select_stations(basin_gages_30yr, out_points)
+    annual = '/media/research/IrrigationGIS/gages/hydrographs/annual_q'
+    daily = '/media/research/IrrigationGIS/gages/hydrographs/daily_q'
+    get_station_annual_q(s, e, annual, daily)
 # ========================= EOF ====================================================================
