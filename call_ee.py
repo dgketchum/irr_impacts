@@ -11,7 +11,9 @@ sys.setrecursionlimit(2000)
 from assets import is_authorized
 
 RF_ASSET = 'projects/ee-dgketchum/assets/IrrMapper/IrrMapper_RF'
+# BASINS = 'users/dgketchum/gages/gage_basins'
 BASINS = 'users/dgketchum/gages/gage_basins'
+
 ET_ASSET = 'users/dgketchum/ssebop/columbia'
 
 
@@ -51,9 +53,9 @@ def reduce_classification(tables, years=None, description=None, min_years=0):
             reduce(gridmet_red).multiply(0.001).rename(['pr', 'etr']).reproject(crs='EPSG:5070', scale=30)
 
         area = ee.Image.pixelArea()
-        ppt = gridmet_sums.select('pr').multiply(area)
-        pet = gridmet_sums.select('etr').multiply(area)
-        crop_cons = et.subtract(gridmet_sums.select('pr')).rename('cc').multiply(area)
+        ppt = gridmet_sums.select('pr').multiply(area).rename('ppt_{}'.format(yr))
+        pet = gridmet_sums.select('etr').multiply(area).rename('etr_{}'.format(yr))
+        crop_cons = et.subtract(gridmet_sums.select('pr')).rename('cc_{}'.format(yr)).multiply(area)
 
         irr = irr.reproject(crs='EPSG:5070', scale=30)
         irr = irr.multiply(area).rename('irr_{}'.format(yr))
