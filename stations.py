@@ -1,31 +1,11 @@
 import os
 import fiona
 import hydrofunctions as hf
-import pandas as pd
-from pandas import concat, read_csv, date_range, DatetimeIndex
-from copy import deepcopy
+from pandas import date_range, DatetimeIndex
 from collections import OrderedDict
-from datetime import datetime as dt
+from gage_analysis import hydrograph, EXCLUDE_STATIONS
 
-SHORT_RECORDS = ['06017000', '06024580', '06040000', '06074000', '06077500',
-                 '06079000', '06080900', '06082200', '06090500', '06102050',
-                 '06130000', '06167500', '06307830', '06327500', '09015000',
-                 '09021000', '09072550', '09073005', '09076000', '09113500',
-                 '09127000', '09129600', '09222400', '09246500', '09357000',
-                 '09359500', '09361000', '09383400', '09385700', '09396100',
-                 '09397000', '09398300', '09399400', '09408195', '09417500',
-                 '09419700', '09419800', '09424447', '09486055', '09502800',
-                 '09508500', '12392300', '12422000', '12426000', '12445900',
-                 '12464800', '12506000', '13014500', '13025500', '13057000',
-                 '13057500', '13063000', '13090500', '13119000', '13135500',
-                 '13137000', '13137500', '13265500', '13296000', '13307000',
-                 '13337500', '13348000', '14101500', '14113200', '14144900',
-                 '14150800', '14152500', '14159110', '14159200', '14163000',
-                 '14165500', '14171000', '14184100', '14185800', '14188800',
-                 '14200000', '14200300', '14201500', '14216000', '14219000'
-                 ]
-
-DISCONTINUITIES = []
+# exclude resevoir/lake stations that somehow have 00060 q data
 
 
 def get_station_ids(shp):
@@ -145,49 +125,61 @@ def get_station_watersheds(stations_source, watersheds_source, out_stations, out
             dst.write(f)
 
 
-def get_station_daily_q(stations_shapefile, out_dir):
+def get_station_daily_q(start, end, stations_shapefile, out_dir):
     with fiona.open(stations_shapefile, 'r') as src:
         station_ids = [f['properties']['STAID'] for f in src]
 
     for sid in station_ids:
-        nwis = hf.NWIS(sid, 'dv', start_date=s, end_date=e)
+        if sid in EXCLUDE_STATIONS:
+            continue
+        nwis = hf.NWIS(sid, 'dv', start_date=start, end_date=end)
         df = nwis.df('discharge')
-        out_file = os.path.join(out_dir, 'daily_stations', '{}_daily.csv'.format(sid))
+        out_file = os.path.join(out_dir, '{}.csv'.format(sid))
         df.to_csv(out_file)
+        print(out_file)
 
 
-def get_station_annual_q(start, end, annual_q_dir, daily_q_dir):
+def get_station_daterange_q(year_start, aggregate_q_dir, daily_q_dir, start_month=None, end_month=None):
+    s, e = '{}-01-01'.format(year_start), '2020-12-31'
+    idx = DatetimeIndex(date_range(s, e, freq='D'))
 
-    range = (dt.strptime(end, '%Y-%m-%d') - dt.strptime(start, '%Y-%m-%d')).days + 1
-    idx = DatetimeIndex(date_range(start, end, freq='D'))
     out_records, short_records = [], []
     l = [os.path.join(daily_q_dir, x) for x in os.listdir(daily_q_dir)]
     for c in l:
-        sid = os.path.basename(c).split('_')[0]
-        df = read_csv(c)
-        df['datetimeUTC'] = pd.to_datetime(df['datetimeUTC'])
-        df = df.set_index('datetimeUTC')
+        sid = os.path.basename(c).split('.')[0]
+        df = hydrograph(c)
 
-        if range - 1000 <= df.shape[0] < range:
-            df = df.reindex(idx)
-        elif df.shape[0] < int(range * 0.7):
+        if start_month or end_month:
+            idx = idx[idx.month.isin([x for x in range(start_month, end_month)])]
+            df = df[df.index.month.isin([x for x in range(start_month, end_month)])]
+
+        if idx.shape[0] == df.shape[0]:
+            pass
+        elif df.shape[0] < int(idx.shape[0] * 0.7):
             short_records.append(sid)
             print(sid, ' skipped')
             continue
+        else:
+            print('df {} idx {}'.format(df.shape[0], idx.shape[0]))
 
+        # cfs to m ^3 d ^-1
         df = df * 2446.58
+
+        # TODO: interpolate missing values
         df_annual = df.resample('A').sum()
-        out_file = os.path.join(annual_q_dir, '{}_annual.csv'.format(sid))
+        out_file = os.path.join(aggregate_q_dir, '{}.csv'.format(sid))
         df_annual.to_csv(out_file)
         out_records.append(sid)
         print(sid)
 
-    print('{} processed, {} short'.format(len(out_records), len(short_records)))
+    print('{} processed'.format(len(out_records)))
 
 
 if __name__ == '__main__':
     s, e = '1984-01-01', '2020-12-31'
-    annual = '/media/research/IrrigationGIS/gages/hydrographs/annual_q'
-    daily = '/media/research/IrrigationGIS/gages/hydrographs/daily_q'
-    get_station_annual_q(s, e, annual, daily)
+    src = '/media/research/IrrigationGIS/gages/hydrographs/daily_q_bf'
+    dst = '/media/research/IrrigationGIS/gages/hydrographs/july_october_q_bf'
+    shp = '/media/research/IrrigationGIS/gages/gage_loc_usgs/selected_gages.shp'
+    # get_station_daily_q(s, e, shp, src)
+    get_station_daterange_q(1991, dst, src, 7, 10)
 # ========================= EOF ====================================================================
