@@ -1,11 +1,11 @@
 import os
+import json
+import numpy as np
 import fiona
 import hydrofunctions as hf
-from pandas import date_range, DatetimeIndex
+from pandas import date_range, DatetimeIndex, Series
 from collections import OrderedDict
 from gage_analysis import hydrograph, EXCLUDE_STATIONS
-
-# exclude resevoir/lake stations that somehow have 00060 q data
 
 
 def get_station_ids(shp):
@@ -125,7 +125,9 @@ def get_station_watersheds(stations_source, watersheds_source, out_stations, out
             dst.write(f)
 
 
-def get_station_daily_q(start, end, stations_shapefile, out_dir):
+def get_station_daily_data(param, start, end, stations_shapefile, out_dir):
+    if param not in ['00010', 'discharge']:
+        raise ValueError('Use param = 00010 or discharge.')
     with fiona.open(stations_shapefile, 'r') as src:
         station_ids = [f['properties']['STAID'] for f in src]
 
@@ -133,53 +135,126 @@ def get_station_daily_q(start, end, stations_shapefile, out_dir):
         if sid in EXCLUDE_STATIONS:
             continue
         nwis = hf.NWIS(sid, 'dv', start_date=start, end_date=end)
-        df = nwis.df('discharge')
-        out_file = os.path.join(out_dir, '{}.csv'.format(sid))
-        df.to_csv(out_file)
-        print(out_file)
+        try:
+            df = nwis.df(param)
+            out_file = os.path.join(out_dir, '{}.csv'.format(sid))
+            df.to_csv(out_file)
+            print(out_file)
+        except ValueError:
+            pass
 
 
-def get_station_daterange_q(year_start, aggregate_q_dir, daily_q_dir, start_month=None, end_month=None):
+def get_station_daterange_data(year_start, aggregate_q_dir, daily_q_dir, start_month=None, end_month=None,
+                               temp_dir=None):
+    q_files = [os.path.join(daily_q_dir, x) for x in os.listdir(daily_q_dir)]
+
+    if temp_dir:
+        temp_files = [os.path.join(temp_dir, x) for x in os.listdir(temp_dir)]
+        temp_stations = [os.path.basename(x).split('.')[0] for x in temp_files]
+        q_files = [x for x in q_files if os.path.basename(x).split('.')[0] in temp_stations]
+
     s, e = '{}-01-01'.format(year_start), '2020-12-31'
     idx = DatetimeIndex(date_range(s, e, freq='D'))
 
     out_records, short_records = [], []
-    l = [os.path.join(daily_q_dir, x) for x in os.listdir(daily_q_dir)]
-    for c in l:
+    full_ct, partial_ct = 0, 0
+    for c in q_files:
         sid = os.path.basename(c).split('.')[0]
         df = hydrograph(c)
 
-        if start_month or end_month:
-            idx = idx[idx.month.isin([x for x in range(start_month, end_month)])]
-            df = df[df.index.month.isin([x for x in range(start_month, end_month)])]
+        if temp_files:
+            t_file = os.path.join(temp_dir, '{}.csv'.format(sid))
+            dft = hydrograph(t_file)
+            try:
+                col = [x for x in list(dft.columns) if '00002' in x][0]
+            except IndexError:
+                continue
+            dft = Series(dft[col]).asfreq('d')
+            counts = dft.value_counts()
+            count_pct = counts / df.shape[0]
+            if np.count_nonzero(count_pct > 0.1) > 0:
+                continue
+            dft = dft.reindex_like(df)
+            count_nan = np.count_nonzero(np.isnan(dft.values))
+            if count_nan > 0:
+                partial_ct += 1
+            else:
+                full_ct +=1
+            print('{}: {} nan of {}'.format(sid, count_nan, dft.shape[0]))
+            year_counts = []
+            for yr in range(1991, 2021):
+                try:
+                    dfy = dft.loc['{}-01-01'.format(yr): '{}-12-31'.format(yr)]
+                    year_counts.append((yr, np.count_nonzero(~np.isnan(dfy))))
+                except IndexError:
+                    pass
+            [print(x[0], x[1]) for x in year_counts]
 
-        if idx.shape[0] == df.shape[0]:
-            pass
-        elif df.shape[0] < int(idx.shape[0] * 0.7):
-            short_records.append(sid)
-            print(sid, ' skipped')
-            continue
-        else:
-            print('df {} idx {}'.format(df.shape[0], idx.shape[0]))
+        continue
+    print('{} partial, {} full'.format(partial_ct, full_ct))
+    #     if start_month or end_month:
+    #         idx = idx[idx.month.isin([x for x in range(start_month, end_month)])]
+    #         df = df[df.index.month.isin([x for x in range(start_month, end_month)])]
+    #
+    #     if idx.shape[0] == df.shape[0]:
+    #         pass
+    #     elif df.shape[0] < int(idx.shape[0] * 0.7):
+    #         short_records.append(sid)
+    #         print(sid, ' q skipped')
+    #         continue
+    #     else:
+    #         print('df {} idx {}'.format(df.shape[0], idx.shape[0]))
+    #
+    #     # cfs to m ^3 d ^-1
+    #     df = df * 2446.58
+    #
+    #     # TODO: interpolate missing values
+    #     df_annual = df.resample('A').sum()
+    #     out_file = os.path.join(aggregate_q_dir, '{}.csv'.format(sid))
+    #     df_annual.to_csv(out_file)
+    #     out_records.append(sid)
+    #     print(sid)
+    #
+    # print('{} processed'.format(len(out_records)))
 
-        # cfs to m ^3 d ^-1
-        df = df * 2446.58
 
-        # TODO: interpolate missing values
-        df_annual = df.resample('A').sum()
-        out_file = os.path.join(aggregate_q_dir, '{}.csv'.format(sid))
-        df_annual.to_csv(out_file)
-        out_records.append(sid)
-        print(sid)
+def write_impacted_stations(in_shp, out_shp, json_):
+    with open(json_, 'r') as f:
+        station_data = json.load(f)
+    keys = station_data.keys()
+    features = []
+    with fiona.open(in_shp, 'r') as src:
+        meta = src.meta
+        for f in src:
+            sid = str(f['properties']['SITE_NO']).rjust(8, '0')
+            if sid in keys:
+                f['properties']['STANAME'] = station_data[sid]['STANAME']
+                f['properties']['SIG'] = station_data[sid]['SIG']
+                f['properties']['IRR_AREA'] = station_data[sid]['IRR_AREA']
+                f['properties']['SLOPE'] = station_data[sid]['SLOPE']
+                features.append(f)
 
-    print('{} processed'.format(len(out_records)))
+    meta['schema']['properties']['STANAME'] = 'str:254'
+    meta['schema']['properties']['SIG'] = 'float:19.11'
+    meta['schema']['properties']['IRR_AREA'] = 'float:19.11'
+    meta['schema']['properties']['SLOPE'] = 'float:19.11'
+
+    with fiona.open(out_shp, 'w', **meta) as dst:
+        for f in features:
+            dst.write(f)
 
 
 if __name__ == '__main__':
     s, e = '1984-01-01', '2020-12-31'
     src = '/media/research/IrrigationGIS/gages/hydrographs/daily_q_bf'
-    dst = '/media/research/IrrigationGIS/gages/hydrographs/july_october_q_bf'
-    shp = '/media/research/IrrigationGIS/gages/gage_loc_usgs/selected_gages.shp'
+    temp_src = '/media/research/IrrigationGIS/gages/hydrographs/daily_temp'
+    dst = '/media/research/IrrigationGIS/gages/hydrographs/temp_q_bf_JAS'
+    # shp = '/media/research/IrrigationGIS/gages/gage_loc_usgs/selected_gages.shp'
+    # ishp = '/media/research/IrrigationGIS/gages/watersheds/combined_station_watersheds.shp'
+    # oshp = '/media/research/IrrigationGIS/gages/watersheds/impacted_watersheds.shp'
+    # jsn = '/media/research/IrrigationGIS/gages/station_metadata/impacted_julOct_bf.json'
+
     # get_station_daily_q(s, e, shp, src)
-    get_station_daterange_q(1991, dst, src, 7, 10)
+    get_station_daterange_data(1991, dst, src, 7, 9, temp_src)
+    # write_impacted_stations(ishp, oshp, jsn)
 # ========================= EOF ====================================================================
