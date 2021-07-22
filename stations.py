@@ -1,5 +1,6 @@
 import os
 import json
+from pprint import pprint
 import numpy as np
 import fiona
 import hydrofunctions as hf
@@ -158,6 +159,7 @@ def get_station_daterange_data(year_start, aggregate_q_dir, daily_q_dir, start_m
 
     out_records, short_records = [], []
     full_ct, partial_ct = 0, 0
+    full_years_by_station = {yr: 0 for yr in range(1991, 2021)}
     for c in q_files:
         sid = os.path.basename(c).split('.')[0]
         df = hydrograph(c)
@@ -185,13 +187,17 @@ def get_station_daterange_data(year_start, aggregate_q_dir, daily_q_dir, start_m
             for yr in range(1991, 2021):
                 try:
                     dfy = dft.loc['{}-01-01'.format(yr): '{}-12-31'.format(yr)]
-                    year_counts.append((yr, np.count_nonzero(~np.isnan(dfy))))
+                    non_nan = np.count_nonzero(~np.isnan(dfy))
+                    year_counts.append((yr, non_nan))
+                    if non_nan == dfy.shape[0]:
+                        full_years_by_station[yr] += 1
                 except IndexError:
                     pass
             [print(x[0], x[1]) for x in year_counts]
 
         continue
     print('{} partial, {} full'.format(partial_ct, full_ct))
+    pprint(full_years_by_station)
     #     if start_month or end_month:
     #         idx = idx[idx.month.isin([x for x in range(start_month, end_month)])]
     #         df = df[df.index.month.isin([x for x in range(start_month, end_month)])]
