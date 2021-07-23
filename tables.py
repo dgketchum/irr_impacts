@@ -2,8 +2,8 @@ import os
 from pandas import read_csv, concat, errors, DataFrame
 import json
 
-from gage_analysis import EXCLUDE_STATIONS, hydrograph
-
+from gage_analysis import EXCLUDE_STATIONS
+from hydrograph import hydrograph
 
 DROP = ['system:index', '.geo']
 ATTRS = ['SQMI', 'STANAME', 'start', 'end']
@@ -401,6 +401,23 @@ def write_station_metadata(csv, out_json):
         json.dump(meta_d, f)
 
 
+def compare_csv(csv_dir_1, csv_dir_2):
+    l_1 = [os.path.join(csv_dir_1, x) for x in os.listdir(csv_dir_1)]
+    l_2 = [os.path.join(csv_dir_2, x) for x in os.listdir(csv_dir_2)]
+    for v2, comp in zip(l_1, l_2):
+        sid = os.path.basename(v2).split('.')[0]
+        df1 = hydrograph(v2)
+        cols = list(df1.columns)
+        new_cols = ['{}_1'.format(x) for x in cols]
+        df1.columns = new_cols
+        df2 = hydrograph(comp)
+        new_cols = ['{}_2'.format(x) for x in cols]
+        df2.columns = new_cols
+        df = concat([df1, df2])
+        print(sid, df['irr_1'].mean(), df['irr_2'].mean())
+        pass
+
+
 def merge_hydrograph_gridded(csv, hydrograph_src, out_dir, metadata, per_area=False):
     df = read_csv(csv)
     df['STAID_STR'] = [str(x).rjust(8, '0') for x in df['STAID'].values]
@@ -412,51 +429,51 @@ def merge_hydrograph_gridded(csv, hydrograph_src, out_dir, metadata, per_area=Fa
 
     for d in dfd:
         if d['STAID_STR'] not in CLMB_STATIONS:
-            continue
+            # continue to exclude non-clmb stations
+            pass
         if d['STAID_STR'] in EXCLUDE_STATIONS:
             continue
 
         years = [x for x in range(1991, 2021)]
-        ranges = [x for x in range(30)]
-
-        cc = ['cc.{}'.format(y) for y in ranges]
-        cc[0] = 'cc'
-        cc = [d[c] for c in cc], 'cc'
 
         irr = [d['irr_{}'.format(y)] for y in years], 'irr'
+        cc = [d['cc_{}'.format(y)] for y in years], 'cc'
+        ppt_lt = [d['ppt_{}'.format(y)] for y in years], 'ppt'
+        ppt = [d['ppt_lt_{}'.format(y)] for y in years], 'ppt_lt'
+        pet_lt = [d['etr_{}'.format(y)] for y in years], 'etr'
+        pet = [d['etr_lt_{}'.format(y)] for y in years], 'etr_lt'
 
-        pr = ['pr.{}'.format(y) for y in ranges]
-        pr[0] = 'pr'
-        ppt = [d[c] for c in pr], 'pr'
-
-        etr = ['etr.{}'.format(y) for y in ranges]
-        etr[0] = 'etr'
-        pet = [d[c] for c in etr], 'etr'
-
-        hydrograph = os.path.join(hydrograph_src, '{}.csv'.format(d['STAID_STR']))
+        q_file = os.path.join(hydrograph_src, '{}.csv'.format(d['STAID_STR']))
 
         try:
-            h = read_csv(hydrograph, index_col='dt')
+            h = hydrograph(q_file)
         except FileNotFoundError:
             skip += 1
             continue
 
-        h.rename(columns={list(h.columns)[0]: 'q'}, inplace=True)
-        h = h.loc['1991-01-01':]
         try:
-            recs = DataFrame(dict([(x[1], x[0]) for x in [cc, irr, ppt, pet]]), index=h.index)
+            recs = DataFrame(dict([(x[1], x[0]) for x in [cc, irr, ppt, pet, ppt_lt, pet_lt]]), index=h.index)
             if per_area:
                 # basin-averaged mm, irr fraction
                 irr = recs['irr'] / (meta[d['STAID_STR']]['AREA_SQKM'] * 1e6)
                 recs = recs / (meta[d['STAID_STR']]['AREA_SQKM'] * 1e3)
                 recs['irr'] = irr
-                h = h / (meta[d['STAID_STR']]['AREA_SQKM'] * 1e3)
-            print(d['STAID_STR'])
+                h['q'] = h['q'] / (meta[d['STAID_STR']]['AREA_SQKM'] * 1e3)
+                h['qb'] = h['qb'] / (meta[d['STAID_STR']]['AREA_SQKM'] * 1e3)
+
         except ValueError as e:
             print(d['STAID_STR'], e)
             skip += 1
             continue
+        except KeyError as e:
+            print(d['STAID_STR'], e)
+            skip += 1
+            continue
+
         h = concat([h, recs], axis=1)
+        h['intensity'] = h['cc'] / h['irr']
+        h['aridity'] = h['etr'] / h['ppt']
+        print('{:.3f} {}'.format(h['irr'].mean(), d['STANAME']))
         h.to_csv(os.path.join(out_dir, '{}.csv'.format(d['STAID_STR'])), encoding='utf-8')
         ct += 1
     print('wrote {} csv, skipped {}'.format(ct, skip))
@@ -472,7 +489,7 @@ def write_gridded_data_jsn(csv_dir, jsn, jsn_out):
     meta_grid = {}
     for c in l:
         df = hydrograph(c)
-        df['ai'] = df['pr'] / df['etr']
+        df['aridity'] = df['etr'] / df['ppt']
         sid = os.path.basename(c).split('.')[0]
         print(sid)
         meta_grid[sid] = meta[sid]
@@ -488,15 +505,16 @@ def write_gridded_data_jsn(csv_dir, jsn, jsn_out):
 
 if __name__ == '__main__':
     r = '/media/research/IrrigationGIS/gages/ee_exports/annual'
-    extracts = '/media/research/IrrigationGIS/gages/ee_exports/series/extracts_21JUN2021.csv'
+    extracts = '/media/research/IrrigationGIS/gages/ee_exports/series/extracts_annual_version_2.csv'
     g = 'basins'
-    # concatenate_extracts(r, extracts, g)
+    concatenate_extracts(r, extracts, g)
     gage_src = '/media/research/IrrigationGIS/gages/hydrographs/july_october_q_bf'
-    dst = '/media/research/IrrigationGIS/gages/merged_q_ee/july_october_mm'
-    # jsn = '/media/research/IrrigationGIS/gages/station_metadata/metadata.json'
+    dst = '/media/research/IrrigationGIS/gages/merged_q_ee/JASO_mm'
     jsn_i = '/media/research/IrrigationGIS/gages/station_metadata/metadata_flows.json'
-    jsn_o = '/media/research/IrrigationGIS/gages/station_metadata/metadata_flows_gridded_julOct.json'
-    # merge_hydrograph_gridded(extracts, gage_src, dst, jsn_i, per_area=True)
+    merge_hydrograph_gridded(extracts, gage_src, dst, jsn_i, per_area=True)
     # write_station_metadata(extracts, jsn)
-    write_gridded_data_jsn(dst, jsn_i, jsn_o)
+    # write_gridded_data_jsn(dst, jsn_i, jsn_o)
+    # dst_1 = '/media/research/IrrigationGIS/gages/merged_q_ee/JAS_all_mm'
+    # dst_2 = '/media/research/IrrigationGIS/gages/merged_q_ee/july_october_mm'
+    # compare_csv(dst_2, dst_1)
 # ========================= EOF ====================================================================
