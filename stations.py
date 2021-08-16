@@ -1,12 +1,13 @@
 import os
 import json
-from pprint import pprint
 import numpy as np
 import fiona
 import hydrofunctions as hf
-from pandas import date_range, DatetimeIndex, Series
+from pandas import date_range, DatetimeIndex, Series, concat
 from collections import OrderedDict
-from gage_analysis import hydrograph, EXCLUDE_STATIONS
+from gage_analysis import EXCLUDE_STATIONS
+from hydrograph import hydrograph
+from figures import daily_temperature_plot
 
 
 def get_station_ids(shp):
@@ -133,6 +134,9 @@ def get_station_daily_data(param, start, end, stations_shapefile, out_dir):
         station_ids = [f['properties']['STAID'] for f in src]
 
     for sid in station_ids:
+        # TODO: investigate why 09196500 returns data 1991 - ~1996 while https://nwis.waterdata.usgs.gov/wy/nwis/uv/?cb_00010=on&format=gif_default&site_no=09196500&period=&begin_date=1991-01-01&end_date=2020-12-31 does not
+        # if sid != '09196500':
+        #     continue
         if sid in EXCLUDE_STATIONS:
             continue
         nwis = hf.NWIS(sid, 'dv', start_date=start, end_date=end)
@@ -141,14 +145,15 @@ def get_station_daily_data(param, start, end, stations_shapefile, out_dir):
             out_file = os.path.join(out_dir, '{}.csv'.format(sid))
             df.to_csv(out_file)
             print(out_file)
-        except ValueError:
-            pass
+        except ValueError as e:
+            print(e)
 
 
-def get_station_daterange_data(year_start, aggregate_q_dir, daily_q_dir, start_month=None, end_month=None,
+def get_station_daterange_data(year_start, daily_q_dir, aggregate_q_dir, start_month=None, end_month=None,
                                temp_dir=None):
     q_files = [os.path.join(daily_q_dir, x) for x in os.listdir(daily_q_dir)]
 
+    temp_files = None
     if temp_dir:
         temp_files = [os.path.join(temp_dir, x) for x in os.listdir(temp_dir)]
         temp_stations = [os.path.basename(x).split('.')[0] for x in temp_files]
@@ -158,70 +163,86 @@ def get_station_daterange_data(year_start, aggregate_q_dir, daily_q_dir, start_m
     idx = DatetimeIndex(date_range(s, e, freq='D'))
 
     out_records, short_records = [], []
-    full_ct, partial_ct = 0, 0
-    full_years_by_station = {yr: 0 for yr in range(1991, 2021)}
+    full_ct, partial_ct, suspect_ct, err_ct = 0, 0, 0, 0
     for c in q_files:
         sid = os.path.basename(c).split('.')[0]
         df = hydrograph(c)
 
+        if start_month or end_month:
+            idx_window = idx[idx.month.isin([x for x in range(start_month, end_month + 1)])]
+            df = df[df.index.month.isin([x for x in range(start_month, end_month + 1)])]
+            df = df[df.index.year.isin([x for x in range(year_start, 2021)])]
+            idx = idx_window
+
+        if df.shape[0] < int(idx.shape[0]):
+            short_records.append(sid)
+            print(sid, 'df: {}, idx: {}, q skipped'.format(df.shape[0], int(idx.shape[0])))
+            continue
+
+        # cfs to m ^3 d ^-1
+        df = df * 2446.58
+        df = df.resample('A').sum()
+
         if temp_files:
             t_file = os.path.join(temp_dir, '{}.csv'.format(sid))
             dft = hydrograph(t_file)
-            try:
-                col = [x for x in list(dft.columns) if '00002' in x][0]
-            except IndexError:
-                continue
-            dft = Series(dft[col]).asfreq('d')
+
+            if start_month or end_month:
+                idx_window = idx[idx.month.isin([x for x in range(start_month, end_month + 1)])]
+                dft = dft[dft.index.month.isin([x for x in range(start_month, end_month + 1)])]
+                dft = dft[dft.index.year.isin([x for x in range(year_start, 2021)])]
+                idx = idx_window
+
+            cols = list(dft.columns)
+            if len(cols) > 1:
+                col = [x for x in cols if '00002' in x][0]
+            else:
+                col = cols[0]
+
+            dft = Series(dft[col])
+            dft.name = 'temp'
             counts = dft.value_counts()
-            count_pct = counts / df.shape[0]
-            if np.count_nonzero(count_pct > 0.1) > 0:
+            count_pct = (counts / dft.shape[0]).sort_values(ascending=False)
+
+            if np.count_nonzero(count_pct.values > 0.1) > 0:
+                suspect_ct += 1
+                daily_temperature_plot(dft, sid,
+                                       '/media/research/IrrigationGIS/gages/figures/suspect_temperature_series')
                 continue
-            dft = dft.reindex_like(df)
+
+            # dft.dropna(inplace=True)
             count_nan = np.count_nonzero(np.isnan(dft.values))
             if count_nan > 0:
                 partial_ct += 1
+                continue
             else:
-                full_ct +=1
-            print('{}: {} nan of {}'.format(sid, count_nan, dft.shape[0]))
-            year_counts = []
-            for yr in range(1991, 2021):
-                try:
-                    dfy = dft.loc['{}-01-01'.format(yr): '{}-12-31'.format(yr)]
-                    non_nan = np.count_nonzero(~np.isnan(dfy))
-                    year_counts.append((yr, non_nan))
-                    if non_nan == dfy.shape[0]:
-                        full_years_by_station[yr] += 1
-                except IndexError:
-                    pass
-            [print(x[0], x[1]) for x in year_counts]
+                full_ct += 1
 
-        continue
-    print('{} partial, {} full'.format(partial_ct, full_ct))
-    pprint(full_years_by_station)
-    #     if start_month or end_month:
-    #         idx = idx[idx.month.isin([x for x in range(start_month, end_month)])]
-    #         df = df[df.index.month.isin([x for x in range(start_month, end_month)])]
-    #
-    #     if idx.shape[0] == df.shape[0]:
-    #         pass
-    #     elif df.shape[0] < int(idx.shape[0] * 0.7):
-    #         short_records.append(sid)
-    #         print(sid, ' q skipped')
-    #         continue
-    #     else:
-    #         print('df {} idx {}'.format(df.shape[0], idx.shape[0]))
-    #
-    #     # cfs to m ^3 d ^-1
-    #     df = df * 2446.58
-    #
-    #     # TODO: interpolate missing values
-    #     df_annual = df.resample('A').sum()
-    #     out_file = os.path.join(aggregate_q_dir, '{}.csv'.format(sid))
-    #     df_annual.to_csv(out_file)
-    #     out_records.append(sid)
-    #     print(sid)
-    #
-    # print('{} processed'.format(len(out_records)))
+            dft = dft.resample('A').mean()
+            df = concat([df, dft], axis=1)
+            daily_temperature_plot(dft, sid,
+                                   '/media/research/IrrigationGIS/gages/figures/accepted_temperature_series')
+
+        out_file = os.path.join(aggregate_q_dir, '{}.csv'.format(sid))
+        df.to_csv(out_file)
+        out_records.append(sid)
+        print(sid)
+
+    print('{} processed'.format(len(out_records)))
+    if temp_dir:
+        print('{} full temperature records, {} partial discarded, {} suspect, {} non-conforming, of {}'.format(
+            full_ct, partial_ct,
+            suspect_ct,
+            err_ct,
+            len(temp_files)))
+
+
+def parse_monthly_gage_data(year_start, daily_q_dir, aggregate_q_dir):
+    for m in range(1, 13):
+        m_dir = os.path.join(aggregate_q_dir, '{}'.format(m))
+        if not os.path.exists(m_dir):
+            os.mkdir(m_dir)
+        get_station_daterange_data(year_start, daily_q_dir, m_dir, start_month=m, end_month=m)
 
 
 def write_impacted_stations(in_shp, out_shp, json_):
@@ -251,16 +272,18 @@ def write_impacted_stations(in_shp, out_shp, json_):
 
 
 if __name__ == '__main__':
-    s, e = '1984-01-01', '2020-12-31'
+    s, e = '1991-01-01', '2020-12-31'
     src = '/media/research/IrrigationGIS/gages/hydrographs/daily_q_bf'
+    t_src = '/media/research/IrrigationGIS/gages/hydrographs/daily_temp'
     temp_src = '/media/research/IrrigationGIS/gages/hydrographs/daily_temp'
-    dst = '/media/research/IrrigationGIS/gages/hydrographs/temp_q_bf_JAS'
-    # shp = '/media/research/IrrigationGIS/gages/gage_loc_usgs/selected_gages.shp'
+    dst = '/media/research/IrrigationGIS/gages/hydrographs/q_bf_monthly'
+    shp = '/media/research/IrrigationGIS/gages/gage_loc_usgs/selected_gages.shp'
     # ishp = '/media/research/IrrigationGIS/gages/watersheds/combined_station_watersheds.shp'
     # oshp = '/media/research/IrrigationGIS/gages/watersheds/impacted_watersheds.shp'
     # jsn = '/media/research/IrrigationGIS/gages/station_metadata/impacted_julOct_bf.json'
 
-    # get_station_daily_q(s, e, shp, src)
-    get_station_daterange_data(1991, dst, src, 7, 9, temp_src)
+    # get_station_daily_data('00010', s, e, shp, t_src)
+    # get_station_daily_data('discharge', s, e, shp, src)
+    parse_monthly_gage_data(1991, src, dst)
     # write_impacted_stations(ishp, oshp, jsn)
 # ========================= EOF ====================================================================
