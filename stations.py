@@ -3,7 +3,7 @@ import json
 import numpy as np
 import fiona
 import hydrofunctions as hf
-from pandas import date_range, DatetimeIndex, Series, concat
+from pandas import date_range, DatetimeIndex, Series, concat, to_datetime, DataFrame
 from collections import OrderedDict
 from gage_analysis import EXCLUDE_STATIONS
 from hydrograph import hydrograph
@@ -150,7 +150,7 @@ def get_station_daily_data(param, start, end, stations_shapefile, out_dir):
 
 
 def get_station_daterange_data(year_start, daily_q_dir, aggregate_q_dir, start_month=None, end_month=None,
-                               temp_dir=None):
+                               temp_dir=None, resample_freq='A'):
     q_files = [os.path.join(daily_q_dir, x) for x in os.listdir(daily_q_dir)]
 
     temp_files = None
@@ -160,7 +160,8 @@ def get_station_daterange_data(year_start, daily_q_dir, aggregate_q_dir, start_m
         q_files = [x for x in q_files if os.path.basename(x).split('.')[0] in temp_stations]
 
     s, e = '{}-01-01'.format(year_start), '2020-12-31'
-    idx = DatetimeIndex(date_range(s, e, freq='D'))
+    daterange = date_range(s, e, freq='D')
+    idx = DatetimeIndex(daterange)
 
     out_records, short_records = [], []
     full_ct, partial_ct, suspect_ct, err_ct = 0, 0, 0, 0
@@ -174,14 +175,17 @@ def get_station_daterange_data(year_start, daily_q_dir, aggregate_q_dir, start_m
             df = df[df.index.year.isin([x for x in range(year_start, 2021)])]
             idx = idx_window
 
-        if df.shape[0] < int(idx.shape[0]):
+        dflen, idxlen = df.shape[0], idx.shape[0]
+        if dflen < idxlen:
             short_records.append(sid)
-            print(sid, 'df: {}, idx: {}, q skipped'.format(df.shape[0], int(idx.shape[0])))
-            continue
+            if float(dflen) / idxlen < 0.8:
+                print(sid, 'df: {}, idx: {}, q skipped'.format(df.shape[0], int(idx.shape[0])))
+                continue
+            df = df.reindex(idx)
 
         # cfs to m ^3 d ^-1
         df = df * 2446.58
-        df = df.resample('A').sum()
+        df = df.resample(resample_freq).agg(DataFrame.sum, skipna=False)
 
         if temp_files:
             t_file = os.path.join(temp_dir, '{}.csv'.format(sid))
@@ -218,7 +222,7 @@ def get_station_daterange_data(year_start, daily_q_dir, aggregate_q_dir, start_m
             else:
                 full_ct += 1
 
-            dft = dft.resample('A').mean()
+            dft = dft.resample(resample_freq).mean()
             df = concat([df, dft], axis=1)
             daily_temperature_plot(dft, sid,
                                    '/media/research/IrrigationGIS/gages/figures/accepted_temperature_series')
@@ -238,7 +242,7 @@ def get_station_daterange_data(year_start, daily_q_dir, aggregate_q_dir, start_m
 
 
 def parse_monthly_gage_data(year_start, daily_q_dir, aggregate_q_dir):
-    for m in range(1, 13):
+    for m in range(9, 13):
         m_dir = os.path.join(aggregate_q_dir, '{}'.format(m))
         if not os.path.exists(m_dir):
             os.mkdir(m_dir)
@@ -272,18 +276,7 @@ def write_impacted_stations(in_shp, out_shp, json_):
 
 
 if __name__ == '__main__':
-    s, e = '1991-01-01', '2020-12-31'
     src = '/media/research/IrrigationGIS/gages/hydrographs/daily_q_bf'
-    t_src = '/media/research/IrrigationGIS/gages/hydrographs/daily_temp'
-    temp_src = '/media/research/IrrigationGIS/gages/hydrographs/daily_temp'
     dst = '/media/research/IrrigationGIS/gages/hydrographs/q_bf_monthly'
-    shp = '/media/research/IrrigationGIS/gages/gage_loc_usgs/selected_gages.shp'
-    # ishp = '/media/research/IrrigationGIS/gages/watersheds/combined_station_watersheds.shp'
-    # oshp = '/media/research/IrrigationGIS/gages/watersheds/impacted_watersheds.shp'
-    # jsn = '/media/research/IrrigationGIS/gages/station_metadata/impacted_julOct_bf.json'
-
-    # get_station_daily_data('00010', s, e, shp, t_src)
-    # get_station_daily_data('discharge', s, e, shp, src)
-    parse_monthly_gage_data(1991, src, dst)
-    # write_impacted_stations(ishp, oshp, jsn)
+    get_station_daterange_data(1991, src, dst, resample_freq='M')
 # ========================= EOF ====================================================================

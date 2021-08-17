@@ -2,7 +2,7 @@ import os
 import json
 from pprint import pprint
 
-from pandas import read_csv, concat, errors, DataFrame
+from pandas import read_csv, concat, errors, DataFrame, DatetimeIndex, date_range
 
 from gage_analysis import EXCLUDE_STATIONS
 from hydrograph import hydrograph
@@ -367,7 +367,52 @@ CLMB_STATIONS = ['12302055',
                  '14243000']
 
 
-def compile_terraclime(in_dir, out_dir):
+def merge_q_terraclim(clim_dir, flow_dir, out_dir):
+    missing_ct = 0
+    l = [os.path.join(clim_dir, x) for x in os.listdir(clim_dir)]
+    first = True
+    for csv in l:
+        splt = os.path.basename(csv).split('_')
+        y, m = int(splt[1]), int(splt[2].split('.')[0])
+        try:
+            if first:
+                df = read_csv(csv, index_col='STAID')
+                df.columns = ['{}_{}_{}'.format(col, y, m) for col in list(df.columns)]
+                first = False
+            else:
+                c = read_csv(csv, index_col='STAID')
+                c.columns = ['{}_{}_{}'.format(col, y, m) for col in list(c.columns)]
+                df = concat([df, c], axis=1)
+        except errors.EmptyDataError:
+            print('{} is empty'.format(csv))
+            pass
+
+    year_start = [x.split('_')[1] for x in list(df.columns)][0]
+    df['STAID_STR'] = [str(x).rjust(8, '0') for x in list(df.index.values)]
+    dfd = df.to_dict(orient='records')
+    s, e = '{}-01-01'.format(year_start), '2020-12-31'
+    idx = DatetimeIndex(date_range(s, e, freq='M'))
+    months = [(idx.year[x], idx.month[x]) for x in range(idx.shape[0])]
+    for d in dfd:
+        try:
+            sta = d['STAID_STR']
+            etr = [d['etr_{}_{}'.format(y, m)] for y, m in months], 'etr'
+            sm = [d['sm_{}_{}'.format(y, m)] for y, m in months], 'sm'
+            ppt = [d['ppt_{}_{}'.format(y, m)] for y, m in months], 'ppt'
+            recs = DataFrame(dict([(x[1], x[0]) for x in [ppt, etr, sm]]), index=idx)
+            q_file = os.path.join(flow_dir, '{}.csv'.format(sta))
+            qdf = hydrograph(q_file)
+            h = concat([qdf, recs], axis=1)
+            file_name = os.path.join(out_dir, '{}.csv'.format(sta))
+            h.to_csv(file_name)
+            print(file_name)
+        except FileNotFoundError:
+            missing_ct += 1
+            print(d['STAID_STR'], 'not found')
+    print(missing_ct, 'missing')
+
+
+def compile_terraclim_monthly(in_dir, out_dir):
     for m in range(1, 13):
         m_str = str(m).rjust(2, '0')
         l = [os.path.join(in_dir, x) for x in os.listdir(in_dir) if '{}.csv'.format(m_str) in x]
@@ -585,19 +630,8 @@ def write_gridded_data_jsn(csv_dir, jsn, jsn_out):
 
 
 if __name__ == '__main__':
-    # TODO find why irrigated fractions are so high in e.g. 6099000
-    r = '/media/research/IrrigationGIS/gages/ee_exports/water_year'
-    extracts = '/media/research/IrrigationGIS/gages/ee_exports/series/extracts_wy_Comp_4AUG2021.csv'
-    g = 'basins_wy_Comp_4AUG2021'
-    # concatenate_extracts(r, extracts, g)
-    gage_src = '/media/research/IrrigationGIS/gages/hydrographs/q_bf_JAS'
-    dst = '/media/research/IrrigationGIS/gages/merged_q_ee/JAS_Comp_4AUG2021'
-    jsn_i = '/media/research/IrrigationGIS/gages/station_metadata/metadata_flows.json'
-    # jsn_o = '/media/research/IrrigationGIS/gages/station_metadata/metadata_flows_gridded_JAS_4AUG2021.json'
-    # write_station_metadata(extracts, jsn_i)
-    # write_gridded_data_jsn(dst, jsn_i, jsn_o)
-    # merge_hydrograph_gridded(extracts, gage_src, dst, jsn_i, per_area=True)
+    gage_src = '/media/research/IrrigationGIS/gages/hydrographs/q_bf_monthly'
     tc = '/media/research/IrrigationGIS/gages/ee_exports/terraclim/raw_export'
-    tc_concat = '/media/research/IrrigationGIS/gages/ee_exports/terraclim/monthly'
-    compile_terraclime(tc, tc_concat)
+    tc_concat = '/media/research/IrrigationGIS/gages/merged_q_ee/q_terraclim'
+    merge_q_terraclim(tc, gage_src, tc_concat)
 # ========================= EOF ====================================================================

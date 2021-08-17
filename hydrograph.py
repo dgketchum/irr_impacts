@@ -5,6 +5,8 @@ from pandas import read_csv, to_datetime
 
 def hydrograph(c):
     df = read_csv(c)
+    if 'Unnamed: 0' in list(df.columns):
+        df = df.rename(columns={'Unnamed: 0': 'dt'})
     try:
         df['dt'] = to_datetime(df['dt'])
     except KeyError:
