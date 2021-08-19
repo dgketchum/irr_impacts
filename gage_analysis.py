@@ -4,7 +4,7 @@ from copy import copy
 from collections import OrderedDict
 from itertools import permutations, product
 
-from scipy.stats.stats import pearsonr
+from scipy.stats.stats import pearsonr, linregress
 import numpy as np
 from pandas import DataFrame, read_csv
 from datetime import datetime, date
@@ -585,21 +585,22 @@ def write_flow_parameters(dir_, metadata_in, out_dir, metadata_out):
         json.dump(meta, f)
 
 
-def write_bfi_to_shapefile(in_shp, out_shp, meta):
+def write_controls_to_shapefile(in_shp, out_shp, meta):
     with open(meta, 'r') as f:
         meta = json.load(f)
 
     features = []
+    gages = list(meta.keys())
     with fiona.open(in_shp, 'r') as src:
         shape_meta = src.meta
         for f in src:
             sid = f['properties']['STAID']
-            if len(meta[sid].keys()) > 10:
+            if sid in gages:
                 features.append(f)
 
-    shape_meta['schema']['properties']['bfi_early'] = 'float:19.11'
-    shape_meta['schema']['properties']['bfi_late'] = 'float:19.11'
-    shape_meta['schema']['properties']['bfi_dlt'] = 'float:19.11'
+    shape_meta['schema']['properties']['lag'] = 'float:19.11'
+    shape_meta['schema']['properties']['IRR_AREA'] = 'float:19.11'
+    shape_meta['schema']['properties']['SLOPE'] = 'float:19.11'
 
     ct = 0
     with fiona.open(out_shp, 'w', **shape_meta) as dst:
@@ -612,9 +613,9 @@ def write_bfi_to_shapefile(in_shp, out_shp, meta):
                                                   ('STANAME', f['properties']['STANAME']),
                                                   ('SQMI', f['properties']['SQMI']),
 
-                                                  ('bfi_early', meta[sid]['bfi_early']),
-                                                  ('bfi_late', meta[sid]['bfi_late']),
-                                                  ('bfi_dlt', meta[sid]['bfi_dlt']),
+                                                  ('lag', meta[sid]['lag']),
+                                                  ('IRR_AREA', meta[sid]['IRR_AREA']),
+                                                  ('SLOPE', meta[sid]['SLOPE']),
 
                                                   ('start', f['properties']['start']),
                                                   ('end', f['properties']['end'])]),
@@ -622,54 +623,67 @@ def write_bfi_to_shapefile(in_shp, out_shp, meta):
             ct += 1
             try:
                 dst.write(feature)
-                print(f['properties']['STAID'])
+                print(f['properties']['STAID'], f['properties']['STANAME'])
             except TypeError:
                 pass
 
 
-def cross_corr(x, y, lag):
-    return x.corr(y.shift(lag))
-
-
-def baseflow_correlation_search(climate_dir, station_json):
+def baseflow_correlation_search(climate_dir, in_json, out_json):
     l = [os.path.join(climate_dir, x) for x in os.listdir(climate_dir)]
-    offsets = [x for x in range(1, 60)]
+    offsets = [x for x in range(1, 61)]
     windows = {}
+    annual_response, irrigated, irrigated_annual_resp = 0, 0, 0
+    with open(in_json, 'r') as f:
+        metadata = json.load(f)
     for csv in l:
-        station = os.path.basename(csv).strip('.csv')
-        print('\n{}'.format(station))
-        df = hydrograph(csv)
-        df['ai'] = df['ppt'] - df['etr']
         try:
-            mean_m_qb = [df[df.index.month == m].dropna()['qb'].mean() for m in range(1, 13)]
-        except KeyError:
-            continue
-        lf = mean_m_qb.index(min(mean_m_qb))
-        qb, ai = df[df.index.month.isin([lf])]['qb'].dropna(), df['ai']
-        years = [x.year for x in qb.index]
-        corr = (0, 0, 0.0)
-        for span in offsets:
+            station = os.path.basename(csv).strip('.csv')
+            if station != '06019500':
+                continue
+            print('\n{}'.format(station))
+            df = hydrograph(csv)
+            df['ai'] = df['ppt'] - df['etr']
+            qb = df[df.index.month.isin([7, 8, 9, 10, 11, 12])]['qb'].dropna().resample('A').agg(DataFrame.sum, skipna=False)
+            ai = df['ai']
+            years = [x.year for x in qb.index]
+            corr = (0, 0.0)
             for lag in offsets:
-                if span > lag:
-                    continue
-                dates = [(date(y, lf, 1) + rdlt(months=-lag), date(y, lf, 1) + rdlt(months=-(lag - span))) for y in
+                dates = [(date(y, 12, 1), date(y, 12, 1) + rdlt(months=-lag)) for y in
                          years]
-                ind = [ai[d[0]: d[1]].sum() for d in dates]
-                rpearson = pearsonr(ind, qb)
-                c, p = abs(rpearson[0]), rpearson[1]
-                if c > corr[2]:
-                    corr = (lag, span, c)
-                    d = {'lag': lag, 'span': span, 'pearsonr': c, 'pval': p}
-                    print('high', lag, span, c, p)
-        windows[station] = d
-        print(windows)
+                ind = [ai[d[1]: d[0]].sum() for d in dates]
+                lr = linregress(ind, qb)
+                r, p = lr.rvalue, lr.pvalue
+                if abs(r) > corr[1]:
+                    corr = (lag, abs(r))
+                    d = {'STANAME': metadata[station]['STANAME'], 'AREA_SQKM': metadata[station]['AREA_SQKM'],
+                         'lag': lag, 'r': r, 'pval': p, 'irr': metadata[station]['irr']}
+                    print(d['lag'], '{:.2f}'.format(d['r']), '{:.2f}'.format(p),
+                          d['STANAME'], metadata[station]['irr'], dates[0])
+            windows[station] = d
+            if d['lag'] < 13:
+                annual_response += 1
+            if metadata[station]['irr'] > 0.01:
+                irrigated += 1
+            if d['lag'] < 13 and metadata[station]['irr'] > 0.01:
+                irrigated_annual_resp += 1
 
-    with open(station_json, 'w') as f:
+        except Exception as e:
+            print(csv, 'failed', e)
+
+    with open(out_json, 'w') as f:
         json.dump(windows, f)
+    print('{} annual response, {} irrigated, {} annual response and irrigated'.format(annual_response, irrigated,
+                                                                                      irrigated_annual_resp))
 
 
 if __name__ == '__main__':
     clim_dir = '/media/research/IrrigationGIS/gages/merged_q_ee/q_terraclim'
-    _json = '/media/research/IrrigationGIS/gages/station_metadata/climate_sensitivity_metadata.json'
-    baseflow_correlation_search(clim_dir, _json)
+    i_json = '/media/research/IrrigationGIS/gages/station_metadata/irr_areas.json'
+    o_json = '/media/research/IrrigationGIS/gages/station_metadata/climresponse_qbJASO_fromOct1.json'
+    baseflow_correlation_search(clim_dir, i_json, o_json)
+
+    i_json = '/media/research/IrrigationGIS/gages/station_metadata/irr_impacted_metadata.json'
+    i_shp = '/media/research/IrrigationGIS/gages/watersheds/selected_watersheds_meta.shp'
+    o_shp = '/media/research/IrrigationGIS/gages/watersheds/watersheds_irr_impacted_17AUG2021_linregress.shp'
+    # write_controls_to_shapefile(i_shp, o_shp, i_json)
 # ========================= EOF ====================================================================
