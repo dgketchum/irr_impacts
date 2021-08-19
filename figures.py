@@ -1,7 +1,9 @@
 import os
 import json
+from datetime import datetime, date
+from dateutil.relativedelta import relativedelta as rdlt
 
-from pandas import read_csv, to_datetime, DatetimeIndex, date_range
+from pandas import read_csv, to_datetime, DatetimeIndex, date_range, DataFrame
 import numpy as np
 import matplotlib
 from matplotlib import colors, cm
@@ -294,83 +296,95 @@ def scatter_delta_qb_delta_deficit(metadata, csv_dir, fig_d):
     plt.show()
 
 
-def filter_by_significance(metadata, csv_dir, fig_d, out_jsn):
-    l = [os.path.join(csv_dir, x) for x in os.listdir(csv_dir) if 'lock' not in x]
+def filter_by_significance(metadata, ee_series, climate_dir, fig_d, out_jsn):
+    idf = read_csv(ee_series)
+    idx = [str(c).rjust(8, '0') for c in idf['STAID'].values]
+    idf.index = idx
     ct, irr_ct, irr_sig_ct, ct_tot = 0, 0, 0, 0
     sig_stations = {}
     with open(metadata, 'r') as f:
         metadata = json.load(f)
-    for c in l:
+    for sid, v in metadata.items():
+        if sid != '06076690':
+            continue
         ct_tot += 1
-        sid = os.path.basename(c).split('.')[0]
-        df = hydrograph(c)
+        cdf = hydrograph(os.path.join(climate_dir, '{}.csv'.format(sid)))
+        r, p, lag = (v[s] for s in ['pearsonr', 'pval', 'lag'])
+        if lag > 12:
+            continue
         try:
             years = [x for x in range(1991, 2021)]
-            irr = df['irr'].values
-            ind_var = df['irr'].values
+            irr = np.array([idf.loc[sid]['irr_{}'.format(y)] for y in years]) / (metadata[sid]['AREA_SQKM'] * 1e6)
             irr_area = irr.mean()
-            if irr_area > 0.01:
-                try:
-                    _def = (df['etr'] / df['ppt']).values
-                except KeyError:
-                    _def = (df['etr'] / df['pr']).values
+            cdf['ai'] = cdf['etr'] / cdf['ppt']
+            qb = cdf[cdf.index.month.isin([8, 9])]['qb'].dropna().resample('A').agg(DataFrame.sum, skipna=False)
+            ai = cdf['ai']
+            dates = [(date(y, 10, 1), date(y, 10, 1) + rdlt(months=-lag)) for y in
+                     years]
+            ind_var = np.array([ai[d[1]: d[0]].sum() for d in dates])
 
-                _def_c = sm.add_constant(_def)
-                dep_var = df['q'].values
-                try:
-                    ols = sm.OLS(dep_var, _def_c)
-                except sm_exceptions.MissingDataError:
-                    pass
-                fit_clim = ols.fit()
-                clim_line = fit_clim.params[1] * _def + fit_clim.params[0]
-                irr_ct += 1
-                if fit_clim.pvalues[1] < 0.05:
-                    resid = fit_clim.resid
-                    _irr_c = sm.add_constant(ind_var)
-                    ols = sm.OLS(resid, _irr_c)
-                    fit_resid = ols.fit()
-                    if fit_resid.pvalues[1] < 0.05:
-                        resid_line = fit_resid.params[1] * ind_var + fit_resid.params[0]
-                        sig_stations[sid] = fit_resid.params[1]
-                        desc_str = '{} {}\np = {:.3f}, irr = {:.3f}, m = {:.2f}'.format(sid,
-                                                                                        metadata[sid]['STANAME'],
-                                                                                        fit_resid.pvalues[1],
-                                                                                        irr_area, fit_resid.params[1])
-                        print(desc_str)
-                        sig_stations[sid] = {'STANAME': metadata[sid]['STANAME'],
-                                             'SIG': fit_resid.pvalues[1],
-                                             'IRR_AREA': irr_area,
-                                             'SLOPE': fit_resid.params[1]}
+            _ind_c = sm.add_constant(ind_var)
+            dep_var = qb.values
 
-                        rcParams['figure.figsize'] = 16, 10
-                        fig, (ax1, ax2) = plt.subplots(1, 2)
-                        ax1.scatter(_def, dep_var)
-                        ax1.plot(_def, clim_line)
-                        ax1.set(xlabel='ETr / PPT')
-                        ax1.set(ylabel='qb')
-                        for i, y in enumerate(years):
-                            ax1.annotate(y, (_def[i], dep_var[i]))
-                        plt.suptitle(desc_str)
-                        ax2.set(xlabel='cc')
-                        ax2.set(ylabel='qb epsilon')
-                        ax2.scatter(ind_var, resid)
-                        ax2.plot(ind_var, resid_line)
-                        for i, y in enumerate(years):
-                            ax2.annotate(y, (ind_var[i], resid[i]))
-                        fig_name = os.path.join(fig_d, '{}.png'.format(sid))
-                        plt.savefig(fig_name)
-                        plt.close('all')
-                        irr_sig_ct += 1
+            try:
+                ols = sm.OLS(dep_var, _ind_c)
+            except Exception as e:
+                print(e)
+                continue
 
-                        ct += 1
+            fit_clim = ols.fit()
+            clim_line = fit_clim.params[1] * ind_var + fit_clim.params[0]
+            irr_ct += 1
+
+            if fit_clim.pvalues[1] < 0.05:
+                resid = fit_clim.resid
+                _irr_c = sm.add_constant(irr)
+                ols = sm.OLS(resid, _irr_c)
+                fit_resid = ols.fit()
+                if fit_resid.pvalues[1] < 0.05:
+                    resid_line = fit_resid.params[1] * irr + fit_resid.params[0]
+                    sig_stations[sid] = fit_resid.params[1]
+                    desc_str = '{} {}\np = {:.3f}, ' \
+                               'irr = {:.3f}, m = {:.2f}'.format(sid,
+                                                                 metadata[sid]['STANAME'],
+                                                                 fit_resid.pvalues[1],
+                                                                 irr_area, fit_resid.params[1])
+                    print(desc_str)
+
+                    rcParams['figure.figsize'] = 16, 10
+                    fig, (ax1, ax2) = plt.subplots(1, 2)
+                    ax1.scatter(ind_var, dep_var)
+                    ax1.plot(ind_var, clim_line)
+                    ax1.set(xlabel='ETr / PPT')
+                    ax1.set(ylabel='qb')
+                    for i, y in enumerate(years):
+                        ax1.annotate(y, (ind_var[i], dep_var[i]))
+                    plt.suptitle(desc_str)
+                    ax2.set(xlabel='irr')
+                    ax2.set(ylabel='qb epsilon')
+                    ax2.scatter(irr, resid)
+                    ax2.plot(irr, resid_line)
+                    for i, y in enumerate(years):
+                        ax2.annotate(y, (ind_var[i], resid[i]))
+                    fig_name = os.path.join(fig_d, '{}.png'.format(sid))
+                    plt.savefig(fig_name)
+                    plt.close('all')
+                    irr_sig_ct += 1
+
+                    ct += 1
+                    sig_stations[sid] = {'STANAME': metadata[sid]['STANAME'],
+                                         'SIG': fit_resid.pvalues[1],
+                                         'IRR_AREA': irr_area,
+                                         'SLOPE': fit_resid.params[1],
+                                         'lag': metadata[sid]['lag']}
 
         except KeyError as e:
             print('{} has no {}'.format(sid, e.args[0]))
             pass
 
-    if out_jsn:
-        with open(out_jsn, 'w') as f:
-            json.dump(sig_stations, f)
+    # if out_jsn:
+    #     with open(out_jsn, 'w') as f:
+    #         json.dump(sig_stations, f)
 
     print('{} climate-sig, {} irrigated, {} irr imapacted, {} total'.format(ct, irr_ct, irr_sig_ct, ct_tot))
     print(sig_stations)
@@ -481,9 +495,11 @@ if __name__ == '__main__':
     # fig = '/media/research/IrrigationGIS/gages/figures/bfi_vs_irr.png'
     # src = '/media/research/IrrigationGIS/gages/hydrographs/daily_q_bf'
 
-    data = '/media/research/IrrigationGIS/gages/merged_q_ee/JAS_Comp_4AUG2021'
-    jsn = '/media/research/IrrigationGIS/gages/station_metadata/metadata_flows_gridded_JAS_4AUG2021.json'
-    fig_dir = '/media/research/IrrigationGIS/gages/figures/sig_irr_qb_wy_comp_scatter'
-    filter_by_significance(jsn, data, fig_dir, out_jsn=None)
+    clim_dir = '/media/research/IrrigationGIS/gages/merged_q_ee/q_terraclim'
+    ee_data = '/media/research/IrrigationGIS/gages/ee_exports/series/extracts_wy_v2_5AUG2021.csv'
+    _json = '/media/research/IrrigationGIS/gages/station_metadata/climate_sensitivity_metadata.json'
+    o_json = '/media/research/IrrigationGIS/gages/station_metadata/irr_impacted_metadata.json'
+    fig_dir = '/media/research/IrrigationGIS/gages/figures/sig_irr_qb_wy_comp_scatter_17AUG2021'
+    filter_by_significance(_json, ee_data, clim_dir, fig_dir, out_jsn=o_json)
     # two_variable_relationship('qb', 'irr', jsn, data, fig_dir)
 # ========================= EOF ====================================================================
