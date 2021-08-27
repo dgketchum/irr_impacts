@@ -4,13 +4,12 @@ from copy import copy
 from collections import OrderedDict, Counter
 from pprint import pprint
 
+import numpy as np
 from scipy.stats.stats import linregress
-from pandas import DataFrame
-from datetime import datetime, date
-from dateutil.rrule import rrule, DAILY
+from pandas import DataFrame, read_csv
+from datetime import date
 from dateutil.relativedelta import relativedelta as rdlt
 import fiona
-
 
 from hydrograph import hydrograph
 
@@ -387,25 +386,74 @@ CLMB_STATIONS = ['12302055',
                  '14243000']
 
 
-def low_flow_months(monthly_q_dir, months=3):
+def low_flow_months(monthly_q_dir, n_months=1):
     l = [os.path.join(monthly_q_dir, x) for x in os.listdir(monthly_q_dir)]
+    d = {}
     for c in l:
+        sid = os.path.basename(c).split('.')[0]
+        d[sid] = {}
+        full_yr_rec = 0
         df = hydrograph(c)
+        if 'qb' not in list(df.columns):
+            continue
         s, e = df.index[0], df.index[-1]
-        df['doy'] = [int(datetime.strftime(x, '%j')) for x in rrule(DAILY, dtstart=s, until=e)]
-        df['month'] = [int(datetime.strftime(x, '%m')) for x in rrule(DAILY, dtstart=s, until=e)]
-        peak_doy = []
+        lf_months = []
         for y in range(s.year, e.year + 1):
             ydf = copy(df.loc['{}-01-01'.format(y): '{}-12-31'.format(y)])
-            if ydf.shape[0] < 364:
+            if np.count_nonzero(np.isnan(ydf['qb'].values)) > 0:
                 continue
-            peak_doy.append(ydf['doy'].loc[ydf['q'].idxmax()])
-            peak_doy.append(ydf['doy'].loc[ydf['q'].idxmin()])
+            else:
+                full_yr_rec += 1
+            series = ydf['qb'].values
+            idx = np.argpartition(series, n_months) + 1
+            lf_months += list(idx[:m])
+        hist = Counter(lf_months).most_common(n_months)
+        target_months = sorted([int(x[0]) for x in hist])
+        d[sid]['lf_m'] = target_months
+        d[sid]['qb_years'] = full_yr_rec
 
-        print(peak_doy)
+    return d
 
 
-def find_baseflow(dir_, metadata_in, out_dir, metadata_out):
+def irrigation_metadata(csv):
+    d = {}
+    df = read_csv(csv)
+    df['frac'] = [99 for x in range(df.shape[0])]
+    df['sid'] = [str(c).rjust(8, '0') for c in df['STAID'].values]
+    df.index = df['sid']
+    for s, r in df.iterrows():
+        d[s] = {}
+        i = np.array([r[x] for x in r.index if 'irr' in x])
+        d[s]['mean_'], d[s]['std'], d[s]['norm_std'] = i.mean(), i.std(), i.std() / i.mean()
+    return d
+
+
+def get_basin_meatadata(base_metadata, monthly_q_dir, irr_csv, metadata_out, months=3):
+    with open(base_metadata, 'r') as f:
+        metadata = json.load(f)
+    irr = irrigation_metadata(irr_csv)
+    lf = low_flow_months(monthly_q_dir, n_months=months)
+    new_metadata = {}
+    for sid, v in metadata.items():
+        try:
+            mean_ = irr[sid]['mean_'] / (metadata[sid]['AREA_SQKM'] * 1e6)
+            std = irr[sid]['std'] / (metadata[sid]['AREA_SQKM'] * 1e6)
+            norm_std = irr[sid]['norm_std'] / (metadata[sid]['AREA_SQKM'] * 1e6)
+            lowflo = lf[sid]['lf_m']
+            qb_yrs = lf[sid]['qb_years']
+            new_metadata[sid] = metadata[sid]
+            new_metadata[sid]['irr_mean'] = mean_
+            new_metadata[sid]['irr_std'] = std
+            new_metadata[sid]['irr_normstd'] = norm_std
+            new_metadata[sid]['lf_m'] = lowflo
+            new_metadata[sid]['qb_years'] = qb_yrs
+        except KeyError:
+            pass
+    with open(metadata_out, 'w') as f:
+        json.dump(new_metadata, f)
+
+
+def get_baseflow(dir_, metadata_in, out_dir, metadata_out):
     pandas2ri.activate()
     r['source']('BaseflowSeparationFunctions.R')
     rec_const_r = robjects.globalenv['baseflow_RecessionConstant']
@@ -516,12 +564,12 @@ def baseflow_correlation_search(climate_dir, in_json, out_json):
             df = hydrograph(csv)
             df['ai'] = (df['etr'] - df['ppt']) / (df['etr'] + df['ppt'])
             ai = df['ai']
-            for m in range(7, 13):
+            for m in range(1, 13):
                 qb = df[df.index.month.isin([m])]['qb'].dropna().resample('A').agg(DataFrame.sum, skipna=False)
                 years = [x.year for x in qb.index]
                 corr = (0, 0.0)
                 for lag in offsets:
-                    dates = [(date(y, 9, 1), date(y, 9, 1) + rdlt(months=-lag)) for y in
+                    dates = [(date(y, m, 1), date(y, m, 1) + rdlt(months=-lag)) for y in
                              years]
                     ind = [ai[d[1]: d[0]].sum() for d in dates]
                     lr = linregress(ind, qb)
@@ -553,20 +601,26 @@ def baseflow_correlation_search(climate_dir, in_json, out_json):
 
 
 if __name__ == '__main__':
-    # i_json = '/media/research/IrrigationGIS/gages/station_metadata/metadata.json'
+    i_json = '/media/research/IrrigationGIS/gages/station_metadata/metadata.json'
+    o_json = '/media/research/IrrigationGIS/gages/station_metadata/basin_irr_lf.json'
+    mq = '/media/research/IrrigationGIS/gages/hydrographs/q_bf_monthly'
+    m = 1
+    irr_data = '/media/research/IrrigationGIS/gages/ee_exports/series/extracts_comp_25AUG2021.csv'
+    get_basin_meatadata(i_json, mq, irr_data, o_json, m)
+
     # o_json = '/media/research/IrrigationGIS/gages/station_metadata/metadata_qbf.json'
     # daily_q = '/media/research/IrrigationGIS/gages/hydrographs/daily_q'
     # dst = '/media/research/IrrigationGIS/gages/hydrographs/daily_q_bf'
     # write_flow_parameters(daily_q, i_json, dst, o_json)
 
-    clim_dir = '/media/research/IrrigationGIS/gages/merged_q_ee/q_terraclim'
-    i_json = '/media/research/IrrigationGIS/gages/station_metadata/irr_areas.json'
-    o_json = '/media/research/IrrigationGIS/gages/station_metadata/climresponse_qbJASO_fromOct1.json'
-    baseflow_correlation_search(clim_dir, i_json, o_json)
+    # clim_dir = '/media/research/IrrigationGIS/gages/merged_q_ee/q_terraclim'
+    # i_json = '/media/research/IrrigationGIS/gages/station_metadata/irr_areas.json'
+    # o_json = '/media/research/IrrigationGIS/gages/station_metadata/climresponse_qbJASO_fromOct1.json'
+    # baseflow_correlation_search(clim_dir, i_json, o_json)
 
-    i_json = '/media/research/IrrigationGIS/gages/station_metadata/irr_impacted_metadata_25AUG2021.json'
-    i_shp = '/media/research/IrrigationGIS/gages/watersheds/selected_watersheds_meta.shp'
-    o_shp = '/media/research/IrrigationGIS/gages/watersheds/response_qbm_25AUG2021.shp'
+    # i_json = '/media/research/IrrigationGIS/gages/station_metadata/irr_impacted_metadata_25AUG2021.json'
+    # i_shp = '/media/research/IrrigationGIS/gages/watersheds/selected_watersheds_meta.shp'
+    # o_shp = '/media/research/IrrigationGIS/gages/watersheds/response_qbm_25AUG2021.shp'
     # write_json_to_shapefile(i_shp, o_shp, i_json)
     # monthly = '/media/research/IrrigationGIS/gages/hydrographs/q_bf_monthly'
     # low_flow_months(monthly)
