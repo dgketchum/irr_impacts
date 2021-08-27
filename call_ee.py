@@ -2,13 +2,11 @@ import os
 import sys
 
 import ee
-import fiona
-from shapely import geometry
+from assets import is_authorized
 
 sys.path.insert(0, os.path.abspath('..'))
 sys.setrecursionlimit(2000)
 
-from assets import is_authorized
 
 RF_ASSET = 'projects/ee-dgketchum/assets/IrrMapper/IrrMapperComp'
 BASINS = 'users/dgketchum/gages/gage_basins'
@@ -77,39 +75,29 @@ def extract_gridmet(tables, years=None, description=None, min_years=0):
         # et_coll = ee.ImageCollection(ET_ASSET).filter(ee.Filter.date('{}-01-01'.format(yr), '{}-12-31'.format(yr)))
         # et = et_coll.mosaic().mask(irr).multiply(0.001)
         # et = et.reproject(crs='EPSG:5070', scale=30)
-        #
-        # s, e = '{}-10-01'.format(yr - 1), '{}-09-30'.format(yr)
-        # gridmet = ee.ImageCollection("IDAHO_EPSCOR/GRIDMET").filterDate(s, e).select('pr', 'etr')
-        # gridmet_red = ee.Reducer.sum()
-        # gridmet_sums = gridmet.select('pr', 'etr'). \
-        #     reduce(gridmet_red).multiply(0.001).rename(['pr', 'etr']).reproject(crs='EPSG:5070', scale=30)
 
-        # area = ee.Image.pixelArea()
-        # ppt = gridmet_sums.select('pr').multiply(area).rename('ppt_{}'.format(yr))
-        # pet = gridmet_sums.select('etr').multiply(area).rename('etr_{}'.format(yr))
+        s, e = '{}-10-01'.format(yr - 1), '{}-09-30'.format(yr)
+        gridmet = ee.ImageCollection("IDAHO_EPSCOR/GRIDMET").filterDate(s, e).select('pr', 'etr')
+        gridmet_red = ee.Reducer.sum()
+        gridmet_sums = gridmet.select('pr', 'etr'). \
+            reduce(gridmet_red).multiply(0.001).rename(['pr', 'etr']).reproject(crs='EPSG:5070', scale=30)
+
+        area = ee.Image.pixelArea()
+        ppt = gridmet_sums.select('pr').multiply(area).rename('ppt_{}'.format(yr))
+        pet = gridmet_sums.select('etr').multiply(area).rename('etr_{}'.format(yr))
         # crop_cons = et.subtract(gridmet_sums.select('pr')).rename('cc_{}'.format(yr)).multiply(area)
-
-        # late season
-        # s, e = '{}-07-01'.format(yr), '{}-10-31'.format(yr)
-        # gridmet = ee.ImageCollection("IDAHO_EPSCOR/GRIDMET").filterDate(s, e).select('pr', 'etr')
-        # gridmet_red = ee.Reducer.sum()
-        # gridmet_sums = gridmet.select('pr', 'etr'). \
-        #     reduce(gridmet_red).multiply(0.001).rename(['pr', 'etr']).reproject(crs='EPSG:5070', scale=30)
-
-        # ppt_lt = gridmet_sums.select('pr').multiply(area).rename('ppt_lt_{}'.format(yr))
-        # pet_lt = gridmet_sums.select('etr').multiply(area).rename('etr_lt_{}'.format(yr))
 
         area = ee.Image.pixelArea()
         irr = irr.reproject(crs='EPSG:5070', scale=30)
         irr = irr.multiply(area).rename('irr_{}'.format(yr))
-        # bands = irr.addBands([ppt, pet, crop_cons])
+        bands = irr.addBands([ppt, pet])
 
-        data = irr.reduceRegions(collection=fc,
-                                 reducer=ee.Reducer.sum(),
-                                 scale=30)
+        data = bands.reduceRegions(collection=fc,
+                                   reducer=ee.Reducer.sum(),
+                                   scale=30)
 
         # fields = data.first().propertyNames().remove('.geo')
-        out_desc = '{}_Comp_18AUG2021_{}'.format(description, yr)
+        out_desc = '{}_Comp_25AUG2021_{}'.format(description, yr)
         task = ee.batch.Export.table.toCloudStorage(
             data,
             description=out_desc,
@@ -117,23 +105,14 @@ def extract_gridmet(tables, years=None, description=None, min_years=0):
             fileNamePrefix=out_desc,
             fileFormat='CSV',
             selectors=['STAID',
+                       'ppt_{}'.format(yr),
+                       'etr_{}'.format(yr),
                        'irr_{}'.format(yr)])
         task.start()
         print(out_desc)
 
 
-def area(shp):
-    area = 0
-    with fiona.open(shp, 'r') as src:
-        for f in src:
-            g = geometry.shape(f['geometry'])
-            area += g.area
-    print(area)
-
-
 if __name__ == '__main__':
     is_authorized()
     extract_gridmet(BASINS, years=[i for i in range(1986, 2021)], description='basins', min_years=3)
-    # extract_terraclimate_monthly(BASINS, [i for i in range(1984, 2021)], description='terraclim')
-    # area('/home/dgketchum/Downloads/bitterroot_fields.shp')
 # ========================= EOF ================================================================================

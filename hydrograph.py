@@ -16,6 +16,10 @@ def hydrograph(c):
         df.drop(columns='datetimeUTC', inplace=True)
     except KeyError:
         pass
+    try:
+        df = df.tz_convert(None)
+    except:
+        pass
     return df
 
 
