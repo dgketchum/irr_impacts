@@ -74,9 +74,6 @@ def get_station_daily_data(param, start, end, stations_shapefile, out_dir):
         station_ids = [f['properties']['STAID'] for f in src]
 
     for sid in station_ids:
-        # TODO: investigate why 09196500 returns data 1991 - ~1996 while https://nwis.waterdata.usgs.gov/wy/nwis/uv/?cb_00010=on&format=gif_default&site_no=09196500&period=&begin_date=1991-01-01&end_date=2020-12-31 does not
-        # if sid != '09196500':
-        #     continue
         if sid in EXCLUDE_STATIONS:
             continue
         nwis = hf.NWIS(sid, 'dv', start_date=start, end_date=end)
