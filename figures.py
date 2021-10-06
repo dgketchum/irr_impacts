@@ -23,9 +23,7 @@ def filter_by_significance(metadata, ee_series, climate_dir, fig_d, out_jsn):
     with open(metadata, 'r') as f:
         metadata = json.load(f)
     for sid, v in metadata.items():
-        if sid in EXCLUDE_STATIONS:
-            print(metadata[sid]['STANAME'], 'excluded')
-        r, p, lag = (v[s] for s in ['r', 'pval', 'lag'])
+        r, p, lag, months = (v[s] for s in ['r', 'pval', 'lag', 'recession_months'])
         lag_yrs = int(np.ceil(float(lag) / 12))
         try:
             ct_tot += 1
@@ -33,16 +31,17 @@ def filter_by_significance(metadata, ee_series, climate_dir, fig_d, out_jsn):
             if not os.path.exists(h_file):
                 continue
             cdf = hydrograph(h_file)
-            years = [x for x in range(1986, 2021)]
+            years = metadata[sid]['qb_years']
             irr = np.array([idf.loc[sid]['irr_{}'.format(y)] for y in years]) / (metadata[sid]['AREA_SQKM'] * 1e6)
             irr_area = irr.mean()
             if irr_area < 0.005:
                 continue
             cdf['ai'] = (cdf['etr'] - cdf['ppt']) / (cdf['etr'] + cdf['ppt'])
-            qb = cdf[cdf.index.month.isin([8, 9, 10, 11])]['qb'].dropna().resample('A').agg(DataFrame.sum,
-                                                                                               skipna=False)
+            cdf = cdf[cdf.index.year.isin(years)]
+            qb = cdf[cdf.index.month.isin(months)]['qb'].dropna().resample('A').agg(DataFrame.sum,
+                                                                                    skipna=False)
             ai = cdf['ai']
-            dates = [(date(y, 11, 1), date(y, 11, 1) + rdlt(months=-lag)) for y in
+            dates = [(date(y, months[0], 1), date(y, months[0], 1) + rdlt(months=-lag)) for y in
                      years]
             ind_var = np.array([ai[d[1]: d[0]].sum() for d in dates])
 
@@ -52,7 +51,7 @@ def filter_by_significance(metadata, ee_series, climate_dir, fig_d, out_jsn):
             try:
                 ols = sm.OLS(dep_var, _ind_c)
             except Exception as e:
-                print(e, cdf['qb'].dropna().index[0], cdf['qb'].dropna().index[-1])
+                print(sid, e, cdf['qb'].dropna().index[0], cdf['qb'].dropna().index[-1])
                 continue
 
             fit_clim = ols.fit()
@@ -63,7 +62,7 @@ def filter_by_significance(metadata, ee_series, climate_dir, fig_d, out_jsn):
                 resid = fit_clim.resid
 
                 if 3 > lag_yrs > 1:
-                    irr = np.array([irr[i] + irr[i + 1] for i, _ in enumerate(years[1:])])
+                    irr = np.array([irr[i] + irr[i - 1] for i, _ in enumerate(years[1:])])
                     resid = resid[1:]
                     alt_years = years[1:]
                 else:
@@ -116,10 +115,86 @@ def filter_by_significance(metadata, ee_series, climate_dir, fig_d, out_jsn):
         except KeyError as e:
             print('{} has no {}'.format(sid, e.args[0]))
             pass
+        except IndexError as e:
+            print('{} has no {}'.format(sid, e.args[0]))
+            pass
 
     if out_jsn:
         with open(out_jsn, 'w') as f:
             json.dump(sig_stations, f)
+
+    print('{} climate-sig, {} irrigated, {} irr imapacted, {} total'.format(ct, irr_ct, irr_sig_ct, ct_tot))
+    print('{} positive slope, {} negative'.format(slp_pos, slp_neg))
+
+
+def trend_analysis(meta, ee_data, climate_dir, fig_d, out_jsn=None):
+    idf = read_csv(ee_data)
+    idx = [str(c).rjust(8, '0') for c in idf['STAID'].values]
+    idf.index = idx
+    ct, irr_ct, irr_sig_ct, ct_tot = 0, 0, 0, 0
+    slp_pos, slp_neg = 0, 0
+    sig_stations = {}
+    with open(meta, 'r') as f:
+        metadata = json.load(f)
+    for sid, v in metadata.items():
+        r, p, lag, months = (v[s] for s in ['r', 'pval', 'lag', 'recession_months'])
+        # months = [x for x in range(7, 10)]
+        lag_yrs = int(np.ceil(float(lag) / 12))
+        ct_tot += 1
+        h_file = os.path.join(climate_dir, '{}.csv'.format(sid))
+        if not os.path.exists(h_file):
+            continue
+        try:
+            cdf = hydrograph(h_file)
+            years = metadata[sid]['qb_years']
+            irr = np.array([idf.loc[sid]['irr_{}'.format(y)] for y in years]) / (metadata[sid]['AREA_SQKM'] * 1e6)
+            irr_area = irr.mean()
+            if sid not in ['06309000', '06327500', '06329500', '06295000', '06214500']:
+                continue
+            if irr_area < 0.005:
+                continue
+            cdf = cdf[cdf.index.year.isin(years)]
+            qb = cdf[cdf.index.month.isin(months)]['q'].dropna().resample('A').agg(DataFrame.sum,
+                                                                                    skipna=False)
+            ind_var = years
+            _ind_c = sm.add_constant(ind_var)
+            dep_var = qb.values
+
+            try:
+                ols = sm.OLS(dep_var, _ind_c)
+            except Exception as e:
+                print(sid, e, cdf['qb'].dropna().index[0], cdf['qb'].dropna().index[-1])
+                continue
+
+            trend_fit = ols.fit()
+            trend_line = trend_fit.params[1] * np.array(ind_var) + trend_fit.params[0]
+            irr_ct += 1
+            desc_str = '\n{} {}\nlag = {} p = {:.3f}, ' \
+                       'irr = {:.3f}, m = {:.2f}'.format(sid,
+                                                         metadata[sid]['STANAME'], lag,
+                                                         trend_fit.pvalues[1],
+                                                         irr_area, trend_fit.params[1])
+            print(desc_str)
+
+            rcParams['figure.figsize'] = 16, 10
+            plt.scatter(ind_var, qb.values)
+            plt.plot(ind_var, trend_line)
+            plt.xlabel('Year')
+            plt.ylabel('qb')
+            fig_name = os.path.join(fig_d, '{}.png'.format(sid))
+            plt.savefig(fig_name)
+            plt.close('all')
+
+        except KeyError as e:
+            print('{} has no {}'.format(sid, e.args[0]))
+            pass
+        except IndexError as e:
+            print('{} has no {}'.format(sid, e.args[0]))
+            pass
+
+        if out_jsn:
+            with open(out_jsn, 'w') as f:
+                json.dump(sig_stations, f)
 
     print('{} climate-sig, {} irrigated, {} irr imapacted, {} total'.format(ct, irr_ct, irr_sig_ct, ct_tot))
     print('{} positive slope, {} negative'.format(slp_pos, slp_neg))
@@ -134,9 +209,11 @@ if __name__ == '__main__':
 
     clim_dir = '/media/research/IrrigationGIS/gages/merged_q_ee/q_terraclim'
     ee_data = '/media/research/IrrigationGIS/gages/ee_exports/series/extracts_comp_25AUG2021.csv'
-    _json = '/media/research/IrrigationGIS/gages/station_metadata/climresponse_qbJASO_fromOct1.json'
-    o_json = '/media/research/IrrigationGIS/gages/station_metadata/irr_impacted_metadata_25AUG2021.json'
-    fig_dir = '/media/research/IrrigationGIS/gages/figures/sig_irr_qb_monthly_comp_scatter_18AUG2021'
-    filter_by_significance(_json, ee_data, clim_dir, fig_dir, out_jsn=o_json)
-    # two_variable_relationship('qb', 'irr', jsn, data, fig_dir)
+    _json = '/media/research/IrrigationGIS/gages/station_metadata/basin_lag_recessoion.json'
+    o_json = '/media/research/IrrigationGIS/gages/station_metadata/irr_impacted_metadata_31AUG2021.json'
+    # fig_dir = '/media/research/IrrigationGIS/gages/figures/sig_irr_qb_monthly_comp_scatter_18AUG2021'
+
+    # filter_by_significance(_json, ee_data, clim_dir, fig_dir, out_jsn=o_json)
+    fig_dir = '/media/research/IrrigationGIS/gages/figures/trends_irrBasins_29SEPT2021'
+    trend_analysis(_json, ee_data, clim_dir, fig_dir, out_jsn=o_json)
 # ========================= EOF ====================================================================
