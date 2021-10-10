@@ -3,9 +3,12 @@ import sys
 from calendar import monthrange
 
 import fiona
+import numpy as np
 from pandas import read_csv
 import ee
 from assets import is_authorized
+from matplotlib import pyplot as plt
+from scipy.stats import linregress
 
 is_authorized()
 
@@ -161,13 +164,14 @@ def extract_flux_stations(shp):
             else:
                 continue
 
+    et_comp = []
     for site, props in dct.items():
 
         if props['basin'] == 'cmbrb':
             annual_coll = ee.ImageCollection('users/dgketchum/ssebop/cmbrb').merge(
                 ee.ImageCollection('users/hoylmanecohydro2/ssebop/cmbrb'))
-        elif p['basin'] == 'umrb':
-            annual_coll_ = ee.ImageCollection('projects/usgs-ssebop/et/umrb')
+        elif props['basin'] == 'umrb':
+            annual_coll = ee.ImageCollection('projects/usgs-ssebop/et/umrb')
         else:
             continue
 
@@ -175,31 +179,56 @@ def extract_flux_stations(shp):
         csv = os.path.join(FLUX_DIR, _file)
         df = read_csv(csv)
         df = df[df['ET_corr'].notna()]
+        et_ssebop = []
         dates = [('{}-01'.format(x[:7]), x) for x in df.date.values]
-        for s, e in dates:
+        et_corr = [x for x in df['ET_corr'].values]
 
+        geo = ee.Geometry.Point(props['geo'][0], props['geo'][1]).buffer(3.5 * 30.0)
+
+        for et_ec, (s, e) in zip(et_corr, dates):
             et_coll = annual_coll.filter(ee.Filter.date(s, e))
             et = et_coll.sum().multiply(0.01)
-            et = et.reproject(crs='EPSG:5070', scale=30).resample('bilinear')
-            geo = ee.Geometry.Point(props['geo'][0], props['geo'][1]).buffer(3.5 * 30.0)
-            fc = ee.FeatureCollection([geo])
 
-            data = et.reduceRegions(collection=fc,
-                                    reducer=ee.Reducer.sum(),
-                                    scale=30)
+            data = et.reduceRegion(geometry=geo,
+                                   reducer=ee.Reducer.mean(),
+                                   scale=30)
+            try:
+                ee_obj = data.getInfo()
+                et_extract = ee_obj['et']
+                if et_extract is None:
+                    et_extract = np.nan
+            except (ee.EEException, KeyError):
+                et_extract = np.nan
 
-            out_desc = 'ec_site_{}_5OCT2021_{}_{}'.format(props['site_id'], s[:4], s[5:7])
-            task = ee.batch.Export.table.toCloudStorage(
-                data,
-                description=out_desc,
-                bucket='wudr',
-                fileNamePrefix=out_desc,
-                fileFormat='CSV')
-            task.start()
-            print(out_desc)
+            et_ssebop.append(et_extract)
+            if not np.any(np.isnan([et_ec, et_extract])):
+                et_comp.append((et_ec, et_extract))
+
+            print('{}: {:.2f} et, {:.2f} ssebop, {}'.format(site, et_ec, et_extract, s))
+
+        df['et_ssebop'] = et_ssebop
+        _file = '{}_monthly_data_ee.csv'.format(props['site_id'])
+        csv = os.path.join(FLUX_DIR, _file)
+        df.to_csv(csv)
+
+    scatter = '/home/dgketchum/Downloads/et_comp.png'
+    et_ec = np.array([x[0] for x in et_comp])
+    et_model = np.array([x[1] for x in et_comp])
+    rmse = np.sqrt(np.mean((et_model - et_ec)**2))
+    lin = np.arange(0, 200)
+    plt.plot(lin, lin)
+    # m, b = np.polyfit(et_ec, et_model, 1)
+    m, b, r, p, stderr = linregress(et_ec, et_model)
+    plt.annotate('{:.2f}x + {:.2f}\n rmse: {:.2f} mm/month\n r2: {:.2f}'.format(m, b, rmse, r**2),
+                 xy=(0.05, 0.75), xycoords='axes fraction')
+    plt.plot(lin, m * lin + b)
+    plt.scatter(et_ec, et_model)
+    plt.ylabel('SSEBop ET')
+    plt.xlabel('Eddy Covariance')
+    plt.savefig(scatter)
 
 
 if __name__ == '__main__':
-    # extract_gridded_data(BASINS, years=[i for i in range(1991, 2021)], description='basins', min_years=5)
+    # extract_gridded_data(BASINS, years=[i for i in range(2017, 2019)], description='basins', min_years=5)
     extract_flux_stations(FLUX_SHP)
 # ========================= EOF ================================================================================
