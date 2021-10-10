@@ -1,38 +1,17 @@
 import os
-
+import numpy as np
 from pandas import read_csv, concat, errors, DataFrame, DatetimeIndex, date_range
 
 from hydrograph import hydrograph
 
 
-def concatenate_irrmapper_ssebop_extracts(root, out_csv, glob='None', in_json=None, out_json=None):
-    l = [os.path.join(root, x) for x in os.listdir(root) if glob in x]
-    l.sort()
-    first = True
-    for csv in l:
-        try:
-            if first:
-                df = read_csv(csv, index_col='STAID')
-                print(df.shape, csv)
-                first = False
-            else:
-                c = read_csv(csv, index_col='STAID')
-                df = concat([df, c], axis=1)
-                print(c.shape, csv)
-        except errors.EmptyDataError:
-            print('{} is empty'.format(csv))
-            pass
-
-    df.to_csv(out_csv)
-
-
-def merge_q_terraclim(clim_dir, flow_dir, out_dir):
+def merge_ssebop_tc_q(extracts, flow_dir, out_dir, glob='glob'):
     missing_ct = 0
-    l = [os.path.join(clim_dir, x) for x in os.listdir(clim_dir)]
+    l = [os.path.join(extracts, x) for x in os.listdir(extracts) if glob in x]
     first = True
     for csv in l:
         splt = os.path.basename(csv).split('_')
-        y, m = int(splt[1]), int(splt[2].split('.')[0])
+        y, m = int(splt[3]), int(splt[4].split('.')[0])
         try:
             if first:
                 df = read_csv(csv, index_col='STAID')
@@ -55,13 +34,19 @@ def merge_q_terraclim(clim_dir, flow_dir, out_dir):
     for d in dfd:
         try:
             sta = d['STAID_STR']
-            etr = [d['etr_{}_{}'.format(y, m)] for y, m in months], 'etr'
-            sm = [d['sm_{}_{}'.format(y, m)] for y, m in months], 'sm'
+            irr = [d['irr_{}_{}'.format(y, m)] for y, m in months], 'irr'
+            if not np.any(irr[0]):
+                print(sta, 'no irrigation')
+                continue
+            et = [d['et_{}_{}'.format(y, m)] for y, m in months], 'et'
+            cc = [d['cc_{}_{}'.format(y, m)] for y, m in months], 'cc'
             ppt = [d['ppt_{}_{}'.format(y, m)] for y, m in months], 'ppt'
-            recs = DataFrame(dict([(x[1], x[0]) for x in [ppt, etr, sm]]), index=idx)
+            etr = [d['etr_{}_{}'.format(y, m)] for y, m in months], 'etr'
+            sm = [d['swb_aet_{}_{}'.format(y, m)] for y, m in months], 'sm'
+            recs = DataFrame(dict([(x[1], x[0]) for x in [irr, et, cc, ppt, etr, sm]]), index=idx)
             q_file = os.path.join(flow_dir, '{}.csv'.format(sta))
             qdf = hydrograph(q_file)
-            h = concat([qdf, recs], axis=1)
+            h = concat([qdf, recs], axis=1)[s: e]
             file_name = os.path.join(out_dir, '{}.csv'.format(sta))
             h.to_csv(file_name)
             print(file_name)
@@ -74,11 +59,12 @@ def merge_q_terraclim(clim_dir, flow_dir, out_dir):
 if __name__ == '__main__':
     r = '/media/research/IrrigationGIS/gages/ee_exports/annual'
     extracts = '/media/research/IrrigationGIS/gages/ee_exports/series/extracts_comp_25AUG2021.csv'
-    g = 'basins_Comp_25AUG2021'
-    concatenate_irrmapper_ssebop_extracts(r, extracts, g)
+    g = 'basins_Comp_5OCT2021'
+    # concatenate_irrmapper_ssebop_extracts(r, extracts, g)
 
     gage_src = '/media/research/IrrigationGIS/gages/hydrographs/q_bf_monthly'
-    tc = '/media/research/IrrigationGIS/gages/ee_exports/terraclim/raw_export'
-    tc_concat = '/media/research/IrrigationGIS/gages/merged_q_ee/q_terraclim'
-    # merge_q_terraclim(tc, gage_src, tc_concat)
+    extract_ = '/media/research/IrrigationGIS/gages/ee_exports/monthly'
+    out_dir = '/media/research/IrrigationGIS/gages/merged_q_ee/monthly_ssebop_tc_q'
+    g = 'basins_Comp_5OCT2021'
+    merge_ssebop_tc_q(extract_, gage_src, out_dir, glob=g)
 # ========================= EOF ====================================================================
