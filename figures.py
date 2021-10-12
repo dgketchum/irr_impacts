@@ -200,7 +200,7 @@ if __name__ == '__main__':
 
     ee_data = '/media/research/IrrigationGIS/gages/merged_q_ee/monthly_ssebop_tc_q'
 
-    _json = '/media/research/IrrigationGIS/gages/station_metadata/basin_lag_recession_11OCT2021.json'
+    _json = '/media/research/IrrigationGIS/gages/station_metadata/basin_lag_recession_ai_11OCT2021.json'
     o_json = '/media/research/IrrigationGIS/gages/station_metadata/irr_impacted_metadata_11OCT2021.json'
     fig_dir = '/media/research/IrrigationGIS/gages/figures/sig_irr_qb_monthly_comp_scatter_10OCT2021'
 

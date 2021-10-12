@@ -292,8 +292,6 @@ def baseflow_correlation_search(climate_dir, in_json, out_json):
             if irr == 0.0:
                 continue
             df = hydrograph(csv)
-            df['ai'] = (df['etr'] - df['ppt']) / (df['etr'] + df['ppt'])
-            ai = df['ai']
 
             years = [x for x in range(1991, 2021)]
             flow_periods = [x for x in range(7, 11)]
@@ -304,7 +302,10 @@ def baseflow_correlation_search(climate_dir, in_json, out_json):
                 q = np.array([df['q'][d[0]: d[1]].sum() for d in q_dates])
                 for lag in offsets:
                     dates = [(date(y, 11, 1), date(y, 11, 1) + rdlt(months=-lag)) for y in years]
-                    ind = [ai[d[1]: d[0]].sum() for d in dates]
+                    etr = np.array([df['etr'][d[1]: d[0]].sum() for d in dates])
+                    ppt = np.array([df['ppt'][d[1]: d[0]].sum() for d in dates])
+
+                    ind = etr / ppt
                     lr = linregress(ind, q)
                     r, p = lr.rvalue, lr.pvalue
                     if abs(r) > corr[1] and p < 0.05:
@@ -318,7 +319,7 @@ def baseflow_correlation_search(climate_dir, in_json, out_json):
 
             if not found_sig:
                 print('no significant r at {}: {} ({} nan)'.format(sid, s_meta['STANAME'],
-                                                                   np.count_nonzero(np.isnan(ai.values))))
+                                                                   np.count_nonzero(np.isnan(ind))))
                 continue
 
             print('month {}'.format(d['qb_month']), 'lag {}'.format(d['lag']),
@@ -350,7 +351,7 @@ if __name__ == '__main__':
 
     clim_dir = '/media/research/IrrigationGIS/gages/merged_q_ee/monthly_ssebop_tc_q'
     i_json = '/media/research/IrrigationGIS/gages/station_metadata/basin_irr_lf.json'
-    o_json = '/media/research/IrrigationGIS/gages/station_metadata/basin_lag_recession_11OCT2021.json'
+    o_json = '/media/research/IrrigationGIS/gages/station_metadata/basin_lag_recession_ai_11OCT2021.json'
     baseflow_correlation_search(clim_dir, i_json, o_json)
 
     # i_json = '/media/research/IrrigationGIS/gages/station_metadata/irr_impacted_metadata_31AUG2021.json'
