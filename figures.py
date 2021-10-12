@@ -1,4 +1,5 @@
 import os
+from pprint import pprint
 import json
 from datetime import date
 from dateutil.relativedelta import relativedelta as rdlt
@@ -10,119 +11,113 @@ from matplotlib import pyplot as plt
 from pylab import rcParams
 import statsmodels.api as sm
 from hydrograph import hydrograph
-from gage_analysis import EXCLUDE_STATIONS
+from gage_list import CLMB_STATIONS, UMRB_STATIONS
+
+STATIONS = CLMB_STATIONS + UMRB_STATIONS
 
 
-def filter_by_significance(metadata, ee_series, climate_dir, fig_d, out_jsn):
-    idf = read_csv(ee_series)
-    idx = [str(c).rjust(8, '0') for c in idf['STAID'].values]
-    idf.index = idx
+def plot_clim_q_resid(q, ai, fit_clim, desc_str, years, cc, resid, fit_resid, fig_d):
+    resid_line = fit_resid.params[1] * cc + fit_resid.params[0]
+    clim_line = fit_clim.params[1] * ai + fit_clim.params[0]
+    rcParams['figure.figsize'] = 16, 10
+    fig, (ax1, ax2) = plt.subplots(1, 2)
+    ax1.scatter(ai, q)
+    ax1.plot(ai, clim_line)
+    ax1.set(xlabel='ETr / PPT [-]')
+    ax1.set(ylabel='q [m^3]')
+    for i, y in enumerate(years):
+        ax1.annotate(y, (ai[i], q[i]))
+    plt.suptitle(desc_str)
+    ax2.set(xlabel='cc [m]')
+    ax2.set(ylabel='q epsilon [m^3]')
+    ax2.scatter(cc, resid)
+    ax2.plot(cc, resid_line)
+    for i, y in enumerate(years):
+        ax2.annotate(y, (cc[i], resid[i]))
+    fig_name = os.path.join(fig_d, '{}.png'.format(desc_str.strip().split(' ')[0]))
+    plt.savefig(fig_name)
+    plt.close('all')
+
+
+def filter_by_significance(metadata, ee_series, fig_d, out_jsn, plot=False):
     ct, irr_ct, irr_sig_ct, ct_tot = 0, 0, 0, 0
     slp_pos, slp_neg = 0, 0
     sig_stations = {}
     with open(metadata, 'r') as f:
         metadata = json.load(f)
     for sid, v in metadata.items():
-        r, p, lag, months = (v[s] for s in ['r', 'pval', 'lag', 'recession_months'])
-        lag_yrs = int(np.ceil(float(lag) / 12))
+        if sid not in STATIONS:
+            continue
+        r, p, lag, months, q_start = (v[s] for s in ['r', 'pval', 'lag', 'recession_months', 'q_start'])
+        _file = os.path.join(ee_series, '{}.csv'.format(sid))
+        if not os.path.exists(_file):
+            continue
+        cdf = hydrograph(_file)
+
+        ct_tot += 1
+        years = [x for x in range(1991, 2021)]
+
+        tot_area = metadata[sid]['AREA_SQKM'] * 1e6
+        irr_area = np.nanmean(cdf['irr'].values) / tot_area
+        if irr_area < 0.005:
+            continue
+
+        cdf['ai'] = (cdf['etr'] - cdf['ppt']) / (cdf['etr'] + cdf['ppt'])
+        cdf['cci'] = cdf['cc'] / cdf['irr']
+
+        q_dates = [(date(y, q_start, 1), date(y, 11, 1)) for y in years]
+        clim_dates = [(date(y, months[-1], 1) + rdlt(months=-lag), date(y, 10, 31)) for y in years]
+        cc_dates = [(date(y, 5, 1), date(y, 10, 31)) for y in years]
+
+        q = np.array([cdf['q'][d[0]: d[1]].sum() for d in q_dates])
+        ai = np.array([cdf['ai'][d[0]: d[1]].sum() for d in clim_dates])
+        cc = np.array([cdf['cci'][d[0]: d[1]].sum() for d in cc_dates])
+
+        ai_c = sm.add_constant(ai)
+
         try:
-            ct_tot += 1
-            h_file = os.path.join(climate_dir, '{}.csv'.format(sid))
-            if not os.path.exists(h_file):
-                continue
-            cdf = hydrograph(h_file)
-            years = metadata[sid]['qb_years']
-            irr = np.array([idf.loc[sid]['irr_{}'.format(y)] for y in years]) / (metadata[sid]['AREA_SQKM'] * 1e6)
-            irr_area = irr.mean()
-            if irr_area < 0.005:
-                continue
-            cdf['ai'] = (cdf['etr'] - cdf['ppt']) / (cdf['etr'] + cdf['ppt'])
-            cdf = cdf[cdf.index.year.isin(years)]
-            qb = cdf[cdf.index.month.isin(months)]['qb'].dropna().resample('A').agg(DataFrame.sum,
-                                                                                    skipna=False)
-            ai = cdf['ai']
-            dates = [(date(y, months[0], 1), date(y, months[0], 1) + rdlt(months=-lag)) for y in
-                     years]
-            ind_var = np.array([ai[d[1]: d[0]].sum() for d in dates])
+            ols = sm.OLS(q, ai_c)
+        except Exception as e:
+            print(sid, e, cdf['q'].dropna().index[0], cdf['qb'].dropna().index[-1])
+            continue
 
-            _ind_c = sm.add_constant(ind_var)
-            dep_var = qb.values
+        fit_clim = ols.fit()
 
-            try:
-                ols = sm.OLS(dep_var, _ind_c)
-            except Exception as e:
-                print(sid, e, cdf['qb'].dropna().index[0], cdf['qb'].dropna().index[-1])
-                continue
+        irr_ct += 1
 
-            fit_clim = ols.fit()
-            clim_line = fit_clim.params[1] * ind_var + fit_clim.params[0]
-            irr_ct += 1
-
-            if fit_clim.pvalues[1] < 0.05:
-                resid = fit_clim.resid
-
-                if 3 > lag_yrs > 1:
-                    irr = np.array([irr[i] + irr[i - 1] for i, _ in enumerate(years[1:])])
-                    resid = resid[1:]
-                    alt_years = years[1:]
+        if fit_clim.pvalues[1] < 0.05:
+            ct += 1
+            resid = fit_clim.resid
+            _cc_c = sm.add_constant(cc)
+            ols = sm.OLS(resid, _cc_c)
+            fit_resid = ols.fit()
+            resid_p = fit_resid.pvalues[1]
+            print(sid, '{:.2f}'.format(resid_p))
+            if resid_p < 0.05:
+                if fit_resid.params[1] > 0.0:
+                    slp_pos += 1
                 else:
-                    alt_years = years
-
-                _irr_c = sm.add_constant(irr)
-                ols = sm.OLS(resid, _irr_c)
-                fit_resid = ols.fit()
-                if fit_resid.pvalues[1] < 0.05:
-                    if fit_resid.params[1] > 0.0:
-                        slp_pos += 1
-                    else:
-                        slp_neg += 1
-                    resid_line = fit_resid.params[1] * irr + fit_resid.params[0]
-                    sig_stations[sid] = fit_resid.params[1]
-                    desc_str = '\n{} {}\nlag = {} p = {:.3f}, ' \
-                               'irr = {:.3f}, m = {:.2f}'.format(sid,
-                                                                 metadata[sid]['STANAME'], lag,
-                                                                 fit_resid.pvalues[1],
-                                                                 irr_area, fit_resid.params[1])
-                    print(desc_str)
-
-                    rcParams['figure.figsize'] = 16, 10
-                    fig, (ax1, ax2) = plt.subplots(1, 2)
-                    ax1.scatter(ind_var, dep_var)
-                    ax1.plot(ind_var, clim_line)
-                    ax1.set(xlabel='ETr / PPT')
-                    ax1.set(ylabel='qb')
-                    for i, y in enumerate(years):
-                        ax1.annotate(y, (ind_var[i], dep_var[i]))
-                    plt.suptitle(desc_str)
-                    ax2.set(xlabel='irr')
-                    ax2.set(ylabel='qb epsilon')
-                    ax2.scatter(irr, resid)
-                    ax2.plot(irr, resid_line)
-                    for i, y in enumerate(alt_years):
-                        ax2.annotate(y, (irr[i], resid[i]))
-                    fig_name = os.path.join(fig_d, '{}.png'.format(sid))
-                    plt.savefig(fig_name)
-                    plt.close('all')
-                    irr_sig_ct += 1
-
-                    ct += 1
-                    sig_stations[sid] = {'STANAME': metadata[sid]['STANAME'],
-                                         'SIG': fit_resid.pvalues[1],
-                                         'IRR_AREA': irr_area,
-                                         'SLOPE': fit_resid.params[1],
-                                         'lag': metadata[sid]['lag']}
-
-        except KeyError as e:
-            print('{} has no {}'.format(sid, e.args[0]))
-            pass
-        except IndexError as e:
-            print('{} has no {}'.format(sid, e.args[0]))
-            pass
+                    slp_neg += 1
+                sig_stations[sid] = fit_resid.params[1]
+                desc_str = '\n{} {}\nlag = {} p = {:.3f}, ' \
+                           'irr = {:.3f}, m = {:.2f}'.format(sid,
+                                                             metadata[sid]['STANAME'], lag,
+                                                             fit_resid.pvalues[1],
+                                                             irr_area, fit_resid.params[1])
+                if plot:
+                    plot_clim_q_resid(q, ai, fit_clim, desc_str, years, cc, resid, fit_resid, fig_d)
+                print(desc_str)
+                irr_sig_ct += 1
+                sig_stations[sid] = {'STANAME': metadata[sid]['STANAME'],
+                                     'SIG': fit_resid.pvalues[1],
+                                     'IRR_AREA': irr_area,
+                                     'SLOPE': fit_resid.params[1],
+                                     'lag': metadata[sid]['lag']}
 
     if out_jsn:
         with open(out_jsn, 'w') as f:
             json.dump(sig_stations, f)
-
+    pprint(list(sig_stations.keys()))
     print('{} climate-sig, {} irrigated, {} irr imapacted, {} total'.format(ct, irr_ct, irr_sig_ct, ct_tot))
     print('{} positive slope, {} negative'.format(slp_pos, slp_neg))
 
@@ -155,7 +150,7 @@ def trend_analysis(meta, ee_data, climate_dir, fig_d, out_jsn=None):
                 continue
             cdf = cdf[cdf.index.year.isin(years)]
             qb = cdf[cdf.index.month.isin(months)]['q'].dropna().resample('A').agg(DataFrame.sum,
-                                                                                    skipna=False)
+                                                                                   skipna=False)
             ind_var = years
             _ind_c = sm.add_constant(ind_var)
             dep_var = qb.values
@@ -203,17 +198,11 @@ def trend_analysis(meta, ee_data, climate_dir, fig_d, out_jsn=None):
 if __name__ == '__main__':
     matplotlib.use('TkAgg')
 
-    # c = '/media/research/IrrigationGIS/gages/hydrographs/group_stations/stations_annual.csv'
-    # fig = '/media/research/IrrigationGIS/gages/figures/bfi_vs_irr.png'
-    # src = '/media/research/IrrigationGIS/gages/hydrographs/daily_q_bf'
+    ee_data = '/media/research/IrrigationGIS/gages/merged_q_ee/monthly_ssebop_tc_q'
 
-    clim_dir = '/media/research/IrrigationGIS/gages/merged_q_ee/q_terraclim'
-    ee_data = '/media/research/IrrigationGIS/gages/ee_exports/series/extracts_comp_25AUG2021.csv'
-    _json = '/media/research/IrrigationGIS/gages/station_metadata/basin_lag_recessoion.json'
-    o_json = '/media/research/IrrigationGIS/gages/station_metadata/irr_impacted_metadata_31AUG2021.json'
-    # fig_dir = '/media/research/IrrigationGIS/gages/figures/sig_irr_qb_monthly_comp_scatter_18AUG2021'
+    _json = '/media/research/IrrigationGIS/gages/station_metadata/basin_lag_recession_11OCT2021.json'
+    o_json = '/media/research/IrrigationGIS/gages/station_metadata/irr_impacted_metadata_11OCT2021.json'
+    fig_dir = '/media/research/IrrigationGIS/gages/figures/sig_irr_qb_monthly_comp_scatter_10OCT2021'
 
-    # filter_by_significance(_json, ee_data, clim_dir, fig_dir, out_jsn=o_json)
-    fig_dir = '/media/research/IrrigationGIS/gages/figures/trends_irrBasins_29SEPT2021'
-    trend_analysis(_json, ee_data, clim_dir, fig_dir, out_jsn=o_json)
+    filter_by_significance(_json, ee_data, fig_dir, out_jsn=o_json, plot=True)
 # ========================= EOF ====================================================================
