@@ -46,8 +46,6 @@ def filter_by_significance(metadata, ee_series, fig_d, out_jsn, plot=False):
     with open(metadata, 'r') as f:
         metadata = json.load(f)
     for sid, v in metadata.items():
-        if sid not in STATIONS:
-            continue
         r, p, lag, months, q_start = (v[s] for s in ['r', 'pval', 'lag', 'recession_months', 'q_start'])
         _file = os.path.join(ee_series, '{}.csv'.format(sid))
         if not os.path.exists(_file):
@@ -65,7 +63,7 @@ def filter_by_significance(metadata, ee_series, fig_d, out_jsn, plot=False):
         cdf['ai'] = (cdf['etr'] - cdf['ppt']) / (cdf['etr'] + cdf['ppt'])
         cdf['cci'] = cdf['cc'] / cdf['irr']
 
-        q_dates = [(date(y, q_start, 1), date(y, 11, 1)) for y in years]
+        q_dates = [(date(y, 9, 1), date(y, 10, 1)) for y in years]
         clim_dates = [(date(y, months[-1], 1) + rdlt(months=-lag), date(y, 10, 31)) for y in years]
         cc_dates = [(date(y, 5, 1), date(y, 10, 31)) for y in years]
 
@@ -200,9 +198,9 @@ if __name__ == '__main__':
 
     ee_data = '/media/research/IrrigationGIS/gages/merged_q_ee/monthly_ssebop_tc_q'
 
-    _json = '/media/research/IrrigationGIS/gages/station_metadata/basin_lag_recession_ai_11OCT2021.json'
-    o_json = '/media/research/IrrigationGIS/gages/station_metadata/irr_impacted_metadata_11OCT2021.json'
-    fig_dir = '/media/research/IrrigationGIS/gages/figures/sig_irr_qb_monthly_comp_scatter_10OCT2021'
+    _json = '/media/research/IrrigationGIS/gages/station_metadata/basin_lag_recession_ai_25OCT2021.json'
+    o_json = '/media/research/IrrigationGIS/gages/station_metadata/irr_impacted_metadata_25OCT2021.json'
+    fig_dir = '/media/research/IrrigationGIS/gages/figures/sig_irr_qb_monthly_comp_scatter_25OCT2021'
 
     filter_by_significance(_json, ee_data, fig_dir, out_jsn=o_json, plot=True)
 # ========================= EOF ====================================================================
