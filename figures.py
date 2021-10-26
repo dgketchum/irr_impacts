@@ -65,7 +65,7 @@ def filter_by_significance(metadata, ee_series, fig_d, out_jsn, plot=False):
 
         q_dates = [(date(y, 9, 1), date(y, 10, 1)) for y in years]
         clim_dates = [(date(y, months[-1], 1) + rdlt(months=-lag), date(y, 10, 31)) for y in years]
-        cc_dates = [(date(y, 5, 1), date(y, 10, 31)) for y in years]
+        cc_dates = [(date(y, 5, 1), date(y, 9, 30)) for y in years]
 
         q = np.array([cdf['q'][d[0]: d[1]].sum() for d in q_dates])
         ai = np.array([cdf['ai'][d[0]: d[1]].sum() for d in clim_dates])
