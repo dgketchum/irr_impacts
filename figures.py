@@ -19,6 +19,17 @@ MAJOR_IMPORTS = ['06088500', '06253000', '12472600', '12513000', '12324680', '12
                  '13153500', '09372000', '09371492']
 
 
+def get_station_coordinates(shp, coords):
+    dct = {}
+    with fiona.open(shp, 'r') as src:
+        for f in src:
+            coord = f['geometry']['coordinates']
+            dct[f['properties']['STAID']] = {'lat': coord[1], 'lon': coord[0]}
+    if coords:
+        with open(coords, 'w') as f:
+            json.dump(dct, f, indent=4, sort_keys=False)
+
+
 def fraction_cc_water_balance(metadata, ee_series, fig, watersheds=None):
     with open(metadata, 'r') as f:
         metadata = json.load(f)
@@ -74,14 +85,19 @@ def fraction_cc_water_balance(metadata, ee_series, fig, watersheds=None):
                     dst.write(f)
 
 
-
 if __name__ == '__main__':
     matplotlib.use('TkAgg')
 
     watersheds_shp = '/media/research/IrrigationGIS/gages/watersheds/selected_watersheds.shp'
 
     figs = '/media/research/IrrigationGIS/gages/figures'
+    o_json = '/media/research/IrrigationGIS/gages/station_metadata/irr_impacted_metadata_17NOV2021.json'
+
+    figs = '/media/research/IrrigationGIS/gages/figures'
 
     frac_fig = os.path.join(figs, 'water_balance_frac_cc.png')
     # fraction_cc_water_balance(_json, ee_data, frac_fig, watersheds=None)
+    coords = '/media/research/IrrigationGIS/gages/station_coordinates.json'
+    stations = '/media/research/IrrigationGIS/gages/gage_loc_usgs/selected_gages.shp'
+    get_station_coordinates(stations, coords)
 # ========================= EOF ====================================================================
