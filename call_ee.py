@@ -13,12 +13,13 @@ from scipy.stats import linregress
 is_authorized()
 
 sys.path.insert(0, os.path.abspath('..'))
-sys.setrecursionlimit(2000)
+sys.setrecursionlimit(5000)
 
-RF_ASSET = 'projects/ee-dgketchum/assets/IrrMapper/IrrMapperComp'
+RF_ASSET = 'users/dgketchum/IrrMapper/IrrMapper_sw'
 BASINS = 'users/dgketchum/gages/gage_basins'
 UMRB_CLIP = 'users/dgketchum/boundaries/umrb_ylstn_clip'
 CMBRB_CLIP = 'users/dgketchum/boundaries/CMB_RB_CLIP'
+CORB_CLIP = 'users/dgketchum/boundaries/CO_RB'
 
 FLUX_SHP = '/media/research/IrrigationGIS/ameriflux/select_flux_sites/select_flux_sites_impacts_ECcorrrected.shp'
 FLUX_DIR = '/media/research/IrrigationGIS/ameriflux/ec_data/monthly'
@@ -75,6 +76,7 @@ def extract_gridded_data(tables, years=None, description=None, min_years=0):
     fc = ee.FeatureCollection(tables)
     cmb_clip = ee.FeatureCollection(CMBRB_CLIP)
     umrb_clip = ee.FeatureCollection(UMRB_CLIP)
+    corb_clip = ee.FeatureCollection(CORB_CLIP)
 
     # fc = ee.FeatureCollection(ee.FeatureCollection(tables).filter(ee.Filter.eq('STAID', '12484500')))
 
@@ -96,20 +98,26 @@ def extract_gridded_data(tables, years=None, description=None, min_years=0):
             annual_coll = ee.ImageCollection('users/dgketchum/ssebop/cmbrb').merge(
                 ee.ImageCollection('users/hoylmanecohydro2/ssebop/cmbrb'))
             et_coll = annual_coll.filter(ee.Filter.date(s, e))
-            et_sum = et_coll.sum().multiply(0.00001).clip(cmb_clip.geometry())
+            et_cmb = et_coll.sum().multiply(0.00001).clip(cmb_clip.geometry())
+
+            annual_coll = ee.ImageCollection('users/kelseyjencso/ssebop/corb').merge(
+                ee.ImageCollection('users/dgketchum/ssebop/corb')).merge(
+                ee.ImageCollection('users/dpendergraph/ssebop/corb'))
+            et_coll = annual_coll.filter(ee.Filter.date(s, e))
+            et_corb = et_coll.sum().multiply(0.00001).clip(corb_clip.geometry())
 
             annual_coll_ = ee.ImageCollection('projects/usgs-ssebop/et/umrb')
-            et_coll_ = annual_coll_.filter(ee.Filter.date(s, e))
-            et_sum_ = et_coll_.sum().multiply(0.00001).clip(umrb_clip.geometry())
+            et_coll = annual_coll_.filter(ee.Filter.date(s, e))
+            et_umrb = et_coll.sum().multiply(0.00001).clip(umrb_clip.geometry())
 
-            et_sum = ee.ImageCollection([et_sum, et_sum_]).mosaic()
+            et_sum = ee.ImageCollection([et_cmb, et_corb, et_umrb]).mosaic()
             et = et_sum.mask(irr_mask)
 
             tclime = ee.ImageCollection("IDAHO_EPSCOR/TERRACLIMATE").filterDate(s, e).select('pr', 'pet', 'aet')
             tclime_red = ee.Reducer.sum()
             tclime_sums = tclime.select('pr', 'pet', 'aet').reduce(tclime_red)
-            ppt = tclime_sums.select('pr_sum').mask(irr_mask).multiply(0.001)
-            etr = tclime_sums.select('pet_sum').mask(irr_mask).multiply(0.0001)
+            ppt = tclime_sums.select('pr_sum').multiply(0.001)
+            etr = tclime_sums.select('pet_sum').multiply(0.0001)
             swb_aet = tclime_sums.select('aet_sum').mask(irr_mask).multiply(0.0001)
 
             irr_mask = irr_mask.reproject(crs='EPSG:5070', scale=30)
@@ -128,7 +136,12 @@ def extract_gridded_data(tables, years=None, description=None, min_years=0):
             etr = etr.multiply(area).rename('etr')
             swb_aet = swb_aet.multiply(area).rename('swb_aet')
 
-            bands = irr.addBands([et, cc, ppt, etr, swb_aet])
+            if yr > 1990 and month in [x for x in range(4, 11)]:
+                bands = irr.addBands([et, cc, ppt, etr, swb_aet])
+                select_ = ['STAID', 'irr', 'et', 'cc', 'ppt', 'etr', 'swb_aet']
+            else:
+                bands = irr.addBands([ppt, etr, swb_aet])
+                select_ = ['STAID', 'ppt', 'etr', 'swb_aet']
 
             data = bands.reduceRegions(collection=fc,
                                        reducer=ee.Reducer.sum(),
@@ -136,14 +149,14 @@ def extract_gridded_data(tables, years=None, description=None, min_years=0):
 
             # fields = data.first().propertyNames().remove('.geo')
             # p = data.first().getInfo()['properties']
-            out_desc = '{}_Comp_5OCT2021_{}_{}'.format(description, yr, month)
+            out_desc = '{}_{}_{}'.format(description, yr, month)
             task = ee.batch.Export.table.toCloudStorage(
                 data,
                 description=out_desc,
                 bucket='wudr',
                 fileNamePrefix=out_desc,
                 fileFormat='CSV',
-                selectors=['STAID', 'irr', 'et', 'cc', 'ppt', 'etr', 'swb_aet'])
+                selectors=select_)
             task.start()
             print(out_desc)
 
@@ -214,12 +227,12 @@ def extract_flux_stations(shp):
     scatter = '/home/dgketchum/Downloads/et_comp.png'
     et_ec = np.array([x[0] for x in et_comp])
     et_model = np.array([x[1] for x in et_comp])
-    rmse = np.sqrt(np.mean((et_model - et_ec)**2))
+    rmse = np.sqrt(np.mean((et_model - et_ec) ** 2))
     lin = np.arange(0, 200)
     plt.plot(lin, lin)
     # m, b = np.polyfit(et_ec, et_model, 1)
     m, b, r, p, stderr = linregress(et_ec, et_model)
-    plt.annotate('{:.2f}x + {:.2f}\n rmse: {:.2f} mm/month\n r2: {:.2f}'.format(m, b, rmse, r**2),
+    plt.annotate('{:.2f}x + {:.2f}\n rmse: {:.2f} mm/month\n r2: {:.2f}'.format(m, b, rmse, r ** 2),
                  xy=(0.05, 0.75), xycoords='axes fraction')
     plt.plot(lin, m * lin + b)
     plt.scatter(et_ec, et_model)
@@ -229,6 +242,6 @@ def extract_flux_stations(shp):
 
 
 if __name__ == '__main__':
-    # extract_gridded_data(BASINS, years=[i for i in range(2017, 2019)], description='basins', min_years=5)
-    extract_flux_stations(FLUX_SHP)
+    extract_gridded_data(BASINS, years=[i for i in range(1991, 2021)], description='sw_17NOV2021', min_years=5)
+    # extract_flux_stations(FLUX_SHP)
 # ========================= EOF ================================================================================

@@ -5,6 +5,7 @@ from pandas import read_csv, to_datetime
 
 def hydrograph(c):
     df = read_csv(c)
+
     if 'Unnamed: 0' in list(df.columns):
         df = df.rename(columns={'Unnamed: 0': 'dt'})
     try:
@@ -20,6 +21,10 @@ def hydrograph(c):
         df = df.tz_convert(None)
     except:
         pass
+
+    if 'USGS' in list(df.columns)[0]:
+        df = df.rename(columns={list(df.columns)[0]: 'q'})
+
     return df
 
 

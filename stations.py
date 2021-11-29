@@ -3,7 +3,6 @@ import fiona
 import hydrofunctions as hf
 from pandas import date_range, DatetimeIndex, DataFrame
 from collections import OrderedDict
-from gage_analysis import EXCLUDE_STATIONS
 from hydrograph import hydrograph
 
 
@@ -67,35 +66,38 @@ def get_station_watersheds(stations_source, watersheds_source, out_stations, out
             dst.write(f)
 
 
-def get_station_daily_data(param, start, end, stations_shapefile, out_dir):
+def get_station_daily_data(param, start, end, stations_shapefile, out_dir, freq='dv'):
     if param not in ['00010', 'discharge']:
         raise ValueError('Use param = 00010 or discharge.')
     with fiona.open(stations_shapefile, 'r') as src:
         station_ids = [f['properties']['STAID'] for f in src]
 
     for sid in station_ids:
-        if sid in EXCLUDE_STATIONS:
-            continue
-        nwis = hf.NWIS(sid, 'dv', start_date=start, end_date=end)
         try:
+            nwis = hf.NWIS(sid, freq, start_date=start, end_date=end)
             df = nwis.df(param)
-            out_file = os.path.join(out_dir, '{}.csv'.format(sid))
+            if freq == 'iv':
+                out_file = os.path.join(out_dir, '{}_{}.csv'.format(sid, start[:4]))
+            else:
+                out_file = os.path.join(out_dir, '{}.csv'.format(sid))
             df.to_csv(out_file)
             print(out_file)
         except ValueError as e:
             print(e)
+        except hf.exceptions.HydroNoDataError:
+            print('no data for {} to {}'.format(start, end))
+            pass
 
 
 def get_station_daterange_data(year_start, daily_q_dir, aggregate_q_dir, start_month=None, end_month=None,
-                               resample_freq='A'):
+                               resample_freq='A', convert_to_mcube=True):
     q_files = [os.path.join(daily_q_dir, x) for x in os.listdir(daily_q_dir)]
-
+    sids = [os.path.basename(c).split('.')[0] for c in q_files]
     s, e = '{}-01-01'.format(year_start), '2020-12-31'
     daterange = date_range(s, e, freq='D')
     idx = DatetimeIndex(daterange, tz=None)
 
     out_records, short_records = [], []
-    full_ct, partial_ct, suspect_ct, err_ct = 0, 0, 0, 0
     for c in q_files:
         sid = os.path.basename(c).split('.')[0]
         df = hydrograph(c)
@@ -115,7 +117,8 @@ def get_station_daterange_data(year_start, daily_q_dir, aggregate_q_dir, start_m
             df = df.reindex(idx)
 
         # cfs to m ^3 d ^-1
-        df = df * 2446.58
+        if convert_to_mcube:
+            df = df * 2446.58
         df = df.resample(resample_freq).agg(DataFrame.sum, skipna=False)
 
         out_file = os.path.join(aggregate_q_dir, '{}.csv'.format(sid))
@@ -127,8 +130,17 @@ def get_station_daterange_data(year_start, daily_q_dir, aggregate_q_dir, start_m
 
 
 if __name__ == '__main__':
+    # shp = '/media/research/IrrigationGIS/gages/gage_loc_usgs/selected_gages.shp'
+    # dst = '/media/research/IrrigationGIS/gages/hydrographs/daily_q_update'
+    # get_station_daily_data('discharge', '1988-01-01', '2020-12-31',
+    #                        shp, dst, freq='dv')
 
-    src = '/media/research/IrrigationGIS/gages/hydrographs/daily_q_bf'
-    dst = '/media/research/IrrigationGIS/gages/hydrographs/q_bf_monthly'
-    get_station_daterange_data(1986, src, dst, resample_freq='M')
+    src = '/media/research/IrrigationGIS/gages/hydrographs/daily_q'
+    dst = '/media/research/IrrigationGIS/gages/hydrographs/q_monthly'
+    get_station_daterange_data(1988, src, dst, resample_freq='M')
+
+    # dst = '/media/research/IrrigationGIS/Montana/water_rights/hydrographs/insta_q'
+    # for year in [x for x in range(1987, 2021)]:
+    #     get_station_daily_data('discharge', '{}-01-01'.format(year), '{}-12-31'.format(year),
+    #                            shp, dst, freq='iv')
 # ========================= EOF ====================================================================

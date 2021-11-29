@@ -12,7 +12,7 @@ from dateutil.relativedelta import relativedelta as rdlt
 import fiona
 import statsmodels.api as sm
 
-from figures import MAJOR_IMPORTS, plot_clim_q_resid
+from figures import MAJOR_IMPORTS
 from hydrograph import hydrograph
 
 os.environ['R_HOME'] = '/home/dgketchum/miniconda3/envs/renv/lib/R'
@@ -140,7 +140,7 @@ def climate_flow_correlation(climate_dir, in_json, out_json):
         json.dump(windows, f)
 
 
-def filter_by_significance(metadata, ee_series, out_jsn, fig_d=None):
+def get_sig_irr_impact(metadata, ee_series, out_jsn):
     ct, irr_ct, irr_sig_ct, ct_tot = 0, 0, 0, 0
     slp_pos, slp_neg = 0, 0
     sig_stations = {}
@@ -216,26 +216,25 @@ def filter_by_significance(metadata, ee_series, out_jsn, fig_d=None):
                                                              metadata[sid]['STANAME'], lag,
                                                              fit_resid.pvalues[1],
                                                              irr_area, fit_resid.params[1])
-                if fig_d:
-                    plot_clim_q_resid(q, ai, fit_clim, desc_str, years, cc, resid, fit_resid, fig_d)
                 print(desc_str)
                 irr_sig_ct += 1
+                slope = fit_resid.params[1] * (np.std(cc) / np.std(resid))
                 if sid not in sig_stations.keys():
                     sig_stations[sid] = {'STANAME': metadata[sid]['STANAME'],
                                          '{}_{}'.format(start_cci, 10): {'sig': fit_resid.pvalues[1],
                                                                          'irr_area': irr_area,
-                                                                         'slope': fit_resid.params[1],
+                                                                         'slope': slope,
                                                                          'lag': metadata[sid]['lag']}}
                 else:
                     sig_stations[sid]['{}_{}'.format(start_cci, 10)] = {'sig': fit_resid.pvalues[1],
                                                                         'irr_area': irr_area,
-                                                                        'slope': fit_resid.params[1],
+                                                                        'slope': slope,
                                                                         'lag': metadata[sid]['lag']}
 
     impacted_gages = list(set(impacted_gages))
     if out_jsn:
         with open(out_jsn, 'w') as f:
-            json.dump(sig_stations, f)
+            json.dump(sig_stations, f, indent=4, sort_keys=False)
     pprint(list(sig_stations.keys()))
     print('{} climate-sig, {} irrigated, {} irr imapacted, {} total'.format(ct, irr_ct, irr_sig_ct,
                                                                             ct_tot))
@@ -265,11 +264,8 @@ if __name__ == '__main__':
 
     _json = '/media/research/IrrigationGIS/gages/station_metadata/basin_lag_recession_ai_17NOV2021.json'
     o_json = '/media/research/IrrigationGIS/gages/station_metadata/irr_impacted_metadata_17NOV2021.json'
-
-    figs = '/media/research/IrrigationGIS/gages/figures'
-    fig_dir = os.path.join(figs, 'sig_irr_qb_monthly_comp_scatter_17NOV2021')
     ee_data = '/media/research/IrrigationGIS/gages/merged_q_ee/monthly_ssebop_tc_q_sw_17NOV2021'
 
-    filter_by_significance(_json, ee_data, out_jsn=o_json, fig_d=None)
+    get_sig_irr_impact(_json, ee_data, out_jsn=o_json)
 
 # ========================= EOF ====================================================================
