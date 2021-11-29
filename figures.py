@@ -3,12 +3,10 @@ import json
 from datetime import date
 
 import fiona
-from pandas import read_csv, DataFrame
 import numpy as np
 import matplotlib
+from matplotlib import cm
 from matplotlib import pyplot as plt
-from pylab import rcParams
-import statsmodels.api as sm
 from hydrograph import hydrograph
 from gage_list import CLMB_STATIONS, UMRB_STATIONS
 
@@ -17,17 +15,6 @@ STATIONS = CLMB_STATIONS + UMRB_STATIONS
 MAJOR_IMPORTS = ['06088500', '06253000', '12472600', '12513000', '12324680', '12329500',
                  '12467000', '13108150', '13153500', '13152500',
                  '13153500', '09372000', '09371492']
-
-
-def get_station_coordinates(shp, coords):
-    dct = {}
-    with fiona.open(shp, 'r') as src:
-        for f in src:
-            coord = f['geometry']['coordinates']
-            dct[f['properties']['STAID']] = {'lat': coord[1], 'lon': coord[0]}
-    if coords:
-        with open(coords, 'w') as f:
-            json.dump(dct, f, indent=4, sort_keys=False)
 
 
 def fraction_cc_water_balance(metadata, ee_series, fig, watersheds=None):
@@ -85,6 +72,38 @@ def fraction_cc_water_balance(metadata, ee_series, fig, watersheds=None):
                     dst.write(f)
 
 
+def impact_time_series_heat(sig_stations, station_coords):
+    with open(sig_stations, 'r') as f:
+        stations = json.load(f)
+    with open(station_coords, 'r') as f:
+        coords = json.load(f)
+
+    [stations[k].update({'coordinates': coords[k]}) for k, v in stations.items()]
+    station_l = stations.keys()
+
+    sort_keys = sorted(station_l, key=lambda x: stations[x]['coordinates']['lat'], reverse=True)
+
+    fig, axes = plt.subplots(figsize=(12, 6))
+    all_slope = []
+    min_slope, max_slope = -0.60624, 0.63862
+    for i, sid in enumerate(sort_keys):
+        d = stations[sid]
+        periods = [(int(p.split('_')[0]), int(p.split('_')[1])) for p in d.keys() if p not in ['STANAME',
+                                                                                                   'coordinates']]
+        slopes = [d[k]['slope'] for k in d.keys() if k not in ['STANAME', 'coordinates']]
+        [all_slope.append(s) for s in slopes]
+        period_arr = [[k for k in range(x[0], x[1] + 1)] for x in periods]
+        durations = [len(x) for x in period_arr]
+        max_d_idx = durations.index(max(durations))
+        cmap = cm.get_cmap('RdBu')
+        slope_scale = (slopes[max_d_idx] - min_slope) / (max_slope - min_slope)
+        color = cmap(slope_scale)
+        print(slope_scale, durations[max_d_idx])
+        axes.barh(i, left=periods[max_d_idx][0], width=periods[max_d_idx][1] - periods[max_d_idx][0] + 1, color=color)
+    plt.xlim([4, 12])
+    plt.show()
+
+
 if __name__ == '__main__':
     matplotlib.use('TkAgg')
 
@@ -98,6 +117,5 @@ if __name__ == '__main__':
     frac_fig = os.path.join(figs, 'water_balance_frac_cc.png')
     # fraction_cc_water_balance(_json, ee_data, frac_fig, watersheds=None)
     coords = '/media/research/IrrigationGIS/gages/station_coordinates.json'
-    stations = '/media/research/IrrigationGIS/gages/gage_loc_usgs/selected_gages.shp'
-    get_station_coordinates(stations, coords)
+    impact_time_series_heat(o_json, coords)
 # ========================= EOF ====================================================================
