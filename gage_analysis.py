@@ -1,225 +1,25 @@
 import os
 import json
-from copy import copy
 from collections import OrderedDict, Counter
 from pprint import pprint
+from itertools import combinations
+from calendar import monthrange
 
 import numpy as np
 from scipy.stats.stats import linregress
-from pandas import DataFrame, read_csv, concat
 from datetime import date
 from dateutil.relativedelta import relativedelta as rdlt
 import fiona
 import statsmodels.api as sm
 
+from figures import MAJOR_IMPORTS, plot_clim_q_resid
 from hydrograph import hydrograph
 
 os.environ['R_HOME'] = '/home/dgketchum/miniconda3/envs/renv/lib/R'
-import rpy2.robjects as ro
-import rpy2.robjects as robjects
-from rpy2.robjects import pandas2ri, r
-from rpy2.robjects.conversion import localconverter
-from rpy2.rinterface_lib.embedded import RRuntimeError
-
-EXCLUDE_STATIONS = ['05015500', '06154400', '06311000', '06329590', '06329610', '06329620',
-                    '09125800', '09131495', '09147022', '09213700', '09362800', '09398300',
-                    '09469000', '09509501', '09509502', '12371550', '12415500', '12452000',
-                    '13039000', '13106500', '13115000', '13119000', '13126000', '13142000',
-                    '13148200', '13171500', '13174000', '13201500', '13238500', '13340950',
-                    '14149000', '14150900', '14153000', '14155000', '14162100', '14168000',
-                    '14180500', '14186100', '14186600', '14207740', '14207770', '14234800',
-                    '12472600']
 
 from gage_list import CLMB_STATIONS, UMRB_STATIONS
 
 STATIONS = CLMB_STATIONS + UMRB_STATIONS
-
-
-def daily_median_flow(daily_q_dir, metadata_in):
-    l = [os.path.join(daily_q_dir, x) for x in os.listdir(daily_q_dir)]
-    l.sort()
-    d = {}
-    with open(metadata_in, 'r') as f:
-        meta = json.load(f)
-    for c in l:
-        try:
-            sid = os.path.basename(c).split('.')[0]
-            d[sid] = {}
-            if sid not in meta.keys():
-                continue
-            df = hydrograph(c)
-            s, e = df.index[0], df.index[-1]
-            annual_df = None
-            first = True
-            for y in range(s.year, e.year + 1):
-                ydf = copy(df['q'].loc['{}-01-01'.format(y): '{}-12-31'.format(y)])
-                if ydf.shape[0] < 365:
-                    continue
-                ydf.name = 'q_{}'.format(y)
-                months = [i.month for i, r in ydf.iteritems()]
-                days = [i.day for i, r in ydf.iteritems()]
-                if first:
-                    base_idx = ['{}-{}'.format(m, d) for m, d in zip(months, days)]
-                    ydf.index = base_idx
-                    annual_df = ydf
-                    first = False
-                else:
-                    idx = ['{}-{}'.format(m, d) for m, d in zip(months, days)]
-                    ydf.index = idx
-                    ydf = ydf.reindex(base_idx)
-                    if np.count_nonzero(np.isnan(ydf.values)) > 0:
-                        continue
-                    else:
-                        annual_df = concat([annual_df, ydf], axis=1)
-        except Exception as e:
-            print('error', sid, e)
-
-        try:
-            medians = annual_df.median(axis=1)
-            d[sid]['max_mo'] = months[medians.values.argmax()]
-            d[sid]['min_mo'] = months[medians.values.argmin()]
-            d[sid]['max_median_q'] = medians.max()
-            d[sid]['min_median_q'] = medians.min()
-        except Exception as e:
-            pass
-
-    return d
-
-
-def low_flow_months(monthly_q_dir, n_months=1):
-    l = [os.path.join(monthly_q_dir, x) for x in os.listdir(monthly_q_dir)]
-    d = {}
-    for c in l:
-        sid = os.path.basename(c).split('.')[0]
-        d[sid] = {}
-        full_yr_rec = []
-        df = hydrograph(c)
-        if 'qb' not in list(df.columns):
-            continue
-        s, e = df.index[0], df.index[-1]
-        lf_months = []
-
-        for y in range(s.year, e.year + 1):
-            ydf = copy(df.loc['{}-01-01'.format(y): '{}-12-31'.format(y)])
-            if np.count_nonzero(np.isnan(ydf['qb'].values)) > 0:
-                continue
-            else:
-                full_yr_rec.append(y)
-            series = ydf['qb'].values
-            idx = np.argpartition(series, n_months) + 1
-            lf_months += list(idx[:m])
-        hist = Counter(lf_months).most_common(n_months)
-        target_months = sorted([int(x[0]) for x in hist])
-        d[sid]['lf_m'] = target_months
-        d[sid]['qb_years'] = full_yr_rec
-
-    return d
-
-
-def irrigation_metadata(csv):
-    d = {}
-    df = read_csv(csv)
-    df['frac'] = [99 for x in range(df.shape[0])]
-    df['sid'] = [str(c).rjust(8, '0') for c in df['STAID'].values]
-    df.index = df['sid']
-    for s, r in df.iterrows():
-        d[s] = {}
-        i = np.array([r[x] for x in r.index if 'irr' in x])
-        if i.mean() > 1e-4:
-            d[s]['mean_'], d[s]['std'], d[s]['norm_std'] = i.mean(), i.std(), i.std() / i.mean()
-        else:
-            d[s]['mean_'], d[s]['std'], d[s]['norm_std'] = 0, 0, 0
-    return d
-
-
-def get_basin_metadata(base_metadata, monthly_q_dir, daily_q_dir, irr_csv, metadata_out, months=3):
-    with open(base_metadata, 'r') as f:
-        metadata = json.load(f)
-    dq = daily_median_flow(daily_q_dir, base_metadata)
-    lf = low_flow_months(monthly_q_dir, n_months=months)
-    irr = irrigation_metadata(irr_csv)
-    new_metadata = {}
-    for sid, v in metadata.items():
-        try:
-            mean_ = irr[sid]['mean_'] / (metadata[sid]['AREA_SQKM'] * 1e6)
-            std = irr[sid]['std'] / (metadata[sid]['AREA_SQKM'] * 1e6)
-            norm_std = irr[sid]['norm_std'] / (metadata[sid]['AREA_SQKM'] * 1e6)
-            lowflo = lf[sid]['lf_m']
-            qb_yrs = lf[sid]['qb_years']
-            max_mo = dq[sid]['max_mo']
-            min_mo = dq[sid]['min_mo']
-            max_median_q = dq[sid]['max_median_q']
-            min_median_q = dq[sid]['min_median_q']
-
-            new_metadata[sid] = metadata[sid]
-
-            new_metadata[sid]['max_mo'] = max_mo
-            new_metadata[sid]['min_mo'] = min_mo
-            new_metadata[sid]['max_median_q'] = max_median_q
-            new_metadata[sid]['min_median_q'] = min_median_q
-            new_metadata[sid]['irr_mean'] = mean_
-            new_metadata[sid]['irr_std'] = std
-            new_metadata[sid]['irr_normstd'] = norm_std
-            new_metadata[sid]['lf_m'] = lowflo
-            new_metadata[sid]['qb_years'] = qb_yrs
-
-        except KeyError as e:
-            print(sid, e)
-            pass
-    with open(metadata_out, 'w') as f:
-        json.dump(new_metadata, f)
-
-
-def get_baseflow(dir_, metadata_in, out_dir, metadata_out):
-    pandas2ri.activate()
-    r['source']('BaseflowSeparationFunctions.R')
-    rec_const_r = robjects.globalenv['baseflow_RecessionConstant']
-    bfi_max_r = robjects.globalenv['baseflow_BFImax']
-    bf_eckhardt_r = robjects.globalenv['baseflow_Eckhardt']
-
-    l = [os.path.join(dir_, x) for x in os.listdir(dir_)]
-
-    with open(metadata_in, 'r') as f:
-        meta = json.load(f)
-
-    for c in l:
-
-        sid = os.path.basename(c).split('.')[0]
-        if sid in EXCLUDE_STATIONS:
-            print('exclude {}'.format(sid))
-            continue
-
-        if sid not in meta.keys():
-            print(sid, 'not found')
-            continue
-        print(sid, meta[sid]['STANAME'])
-
-        df = hydrograph(c)
-        df.rename(columns={list(df.columns)[0]: 'q'}, inplace=True)
-
-        keys = ('bfi_pr', 'k_pr')
-        slices = [('1986-01-01', '2020-12-31')]
-
-        for bk, s in zip(keys, slices):
-
-            with localconverter(ro.default_converter + pandas2ri.converter):
-                dfs = df['q'].loc[s[0]: s[1]]
-                dfr = ro.conversion.py2rpy(dfs)
-                dfs = DataFrame(dfs)
-
-            try:
-                k = rec_const_r(dfr)[0]
-                bfi_max = bfi_max_r(dfr, k)[0]
-                dfs['qb'] = bf_eckhardt_r(dfr, bfi_max, k)
-                meta[sid].update({bk[0]: bfi_max, bk[1]: k})
-
-            except RRuntimeError:
-                print('error ', sid, meta[sid]['STANAME'])
-
-            dfs.to_csv(os.path.join(out_dir, '{}.csv'.format(sid)))
-
-    with open(metadata_out, 'w') as f:
-        json.dump(meta, f)
 
 
 def write_json_to_shapefile(in_shp, out_shp, meta):
@@ -265,9 +65,10 @@ def write_json_to_shapefile(in_shp, out_shp, meta):
                 pass
 
 
-def baseflow_correlation_search(climate_dir, in_json, out_json):
+def climate_flow_correlation(climate_dir, in_json, out_json):
     """Find linear relationship between climate and flow in an expanding time window"""
     l = sorted([os.path.join(climate_dir, x) for x in os.listdir(climate_dir)])
+    print(len(l), 'station files')
     offsets = [x for x in range(1, 36)]
     windows = {}
     lags = []
@@ -278,43 +79,42 @@ def baseflow_correlation_search(climate_dir, in_json, out_json):
     for csv in l:
         try:
             sid = os.path.basename(csv).strip('.csv')
-            if sid not in STATIONS:
-                continue
+            # if sid != '09209400':
+            #     continue
             s_meta = metadata[sid]
-            print('\n{}'.format(sid))
             max_q_mo, min_q_mo = s_meta['max_mo'], s_meta['min_mo']
             if min_q_mo < max_q_mo:
                 recession_months = month_series[max_q_mo: min_q_mo + 12]
             else:
                 recession_months = month_series[max_q_mo: min_q_mo + 1]
-            print(max_q_mo, min_q_mo, recession_months)
             irr = s_meta['irr_mean']
             if irr == 0.0:
                 continue
+            print('\n{}'.format(sid))
             df = hydrograph(csv)
 
             years = [x for x in range(1991, 2021)]
-            flow_periods = [x for x in range(7, 11)]
+            base_l = [x for x in range(7, 11)]
+            flow_periods = [x for n in range(2, len(base_l)) for x in combinations(base_l, n)]
             corr = (0, 0.0)
             found_sig = False
+            d = None
+            ind = None
             for q_win in flow_periods:
-                q_dates = [(date(y, q_win, 1), date(y, 11, 1)) for y in years]
+                q_dates = [(date(y, q_win[0], 1), date(y, q_win[-1], monthrange(y, q_win[-1])[1])) for y in years]
                 q = np.array([df['q'][d[0]: d[1]].sum() for d in q_dates])
                 for lag in offsets:
-                    dates = [(date(y, 11, 1), date(y, 11, 1) + rdlt(months=-lag)) for y in years]
-                    etr = np.array([df['etr'][d[1]: d[0]].sum() for d in dates])
-                    ppt = np.array([df['ppt'][d[1]: d[0]].sum() for d in dates])
-
+                    dates = [(date(y, 10, 31) + rdlt(months=-lag), date(y, 10, 31)) for y in years]
+                    etr = np.array([df['etr'][d[0]: d[1]].sum() for d in dates])
+                    ppt = np.array([df['ppt'][d[0]: d[1]].sum() for d in dates])
                     ind = etr / ppt
                     lr = linregress(ind, q)
                     r, p = lr.rvalue, lr.pvalue
                     if abs(r) > corr[1] and p < 0.05:
                         corr = (lag, abs(r))
-                        d = {'STANAME': s_meta['STANAME'], 'qb_month': m, 'q_start': q_win,
+                        d = {'STANAME': s_meta['STANAME'], 'q_window': q_win,
                              'lag': lag, 'r': r, 'pval': p, 'recession_months': recession_months}
-                        date_sample = dates[0]
-                        # print('month {}'.format(d['qb_month']), 'lag {}'.format(d['lag']), 'r {:.2f}'.format(d['r']),
-                        #       '\np {:.2f}'.format(d['pval']), d['STANAME'], '{:.3f}'.format(irr), date_sample)
+                        date_sample = dates[0][1], dates[0][0]
                         found_sig = True
 
             if not found_sig:
@@ -322,8 +122,8 @@ def baseflow_correlation_search(climate_dir, in_json, out_json):
                                                                    np.count_nonzero(np.isnan(ind))))
                 continue
 
-            print('month {}'.format(d['qb_month']), 'lag {}'.format(d['lag']),
-                  'q start {}'.format(d['q_start']), 'r {:.2f}'.format(d['r']),
+            print('month {} to {}'.format(d['q_window'][0], d['q_window'][-1]),
+                  'lag {}'.format(d['lag']), 'r {:.2f}'.format(d['r']),
                   '\np {:.2f}'.format(d['pval']), d['STANAME'], '{:.3f}'.format(irr), date_sample)
 
             windows[sid] = {**d, **s_meta}
@@ -340,23 +140,136 @@ def baseflow_correlation_search(climate_dir, in_json, out_json):
         json.dump(windows, f)
 
 
+def filter_by_significance(metadata, ee_series, out_jsn, fig_d=None):
+    ct, irr_ct, irr_sig_ct, ct_tot = 0, 0, 0, 0
+    slp_pos, slp_neg = 0, 0
+    sig_stations = {}
+    impacted_gages = []
+    with open(metadata, 'r') as f:
+        metadata = json.load(f)
+    for sid, v in metadata.items():
+        # if sid != '09209400':
+        #     continue
+        r, p, lag, months, q_window = (v[s] for s in ['r', 'pval', 'lag',
+                                                      'recession_months', 'q_window'])
+        _file = os.path.join(ee_series, '{}.csv'.format(sid))
+        if p > 0.05:
+            continue
+        if not os.path.exists(_file):
+            continue
+        if sid in MAJOR_IMPORTS:
+            continue
+
+        cdf = hydrograph(_file)
+
+        ct_tot += 1
+        years = [x for x in range(1991, 2021)]
+
+        tot_area = metadata[sid]['AREA_SQKM'] * 1e6
+        irr_area = np.nanmean(cdf['irr'].values) / tot_area
+        if irr_area < 0.005:
+            continue
+
+        cdf['cci'] = cdf['cc'] / cdf['irr']
+        q_dates = [(date(y, q_window[0], 1), date(y, q_window[-1], monthrange(y, q_window[-1])[1])) for y in years]
+        clim_dates = [(date(y, months[-1], 1) + rdlt(months=-lag), date(y, 11, 1)) for y in years]
+
+        for start_cci in range(5, 11):
+            cc_dates = [(date(y, start_cci, 1), date(y, 10, 31)) for y in years]
+
+            q = np.array([cdf['q'][d[0]: d[1]].sum() for d in q_dates])
+            ppt = np.array([cdf['ppt'][d[0]: d[1]].sum() for d in clim_dates])
+            etr = np.array([cdf['etr'][d[0]: d[1]].sum() for d in clim_dates])
+            ai = etr / ppt
+            cc = np.array([cdf['cci'][d[0]: d[1]].sum() for d in cc_dates])
+
+            ai_c = sm.add_constant(ai)
+
+            try:
+                ols = sm.OLS(q, ai_c)
+            except Exception as e:
+                print(sid, e, cdf['q'].dropna().index[0])
+                continue
+
+            fit_clim = ols.fit()
+
+            irr_ct += 1
+            clim_p = fit_clim.pvalues[1]
+            if clim_p > p and clim_p > 0.05:
+                print('\n', sid, v['STANAME'], '{:.3f} p {:.3f} clim p'.format(p, clim_p), '\n')
+            # if clim_p < 0.05:
+            ct += 1
+            resid = fit_clim.resid
+            _cc_c = sm.add_constant(cc)
+            ols = sm.OLS(resid, _cc_c)
+            fit_resid = ols.fit()
+            resid_p = fit_resid.pvalues[1]
+            # print(sid, '{:.2f}'.format(resid_p))
+            if resid_p < 0.05:
+                impacted_gages.append(sid)
+                if fit_resid.params[1] > 0.0:
+                    slp_pos += 1
+                else:
+                    slp_neg += 1
+                desc_str = '\n{} {}\nlag = {} p = {:.3f}, ' \
+                           'irr = {:.3f}, m = {:.2f}'.format(sid,
+                                                             metadata[sid]['STANAME'], lag,
+                                                             fit_resid.pvalues[1],
+                                                             irr_area, fit_resid.params[1])
+                if fig_d:
+                    plot_clim_q_resid(q, ai, fit_clim, desc_str, years, cc, resid, fit_resid, fig_d)
+                print(desc_str)
+                irr_sig_ct += 1
+                if sid not in sig_stations.keys():
+                    sig_stations[sid] = {'STANAME': metadata[sid]['STANAME'],
+                                         '{}_{}'.format(start_cci, 10): {'sig': fit_resid.pvalues[1],
+                                                                         'irr_area': irr_area,
+                                                                         'slope': fit_resid.params[1],
+                                                                         'lag': metadata[sid]['lag']}}
+                else:
+                    sig_stations[sid]['{}_{}'.format(start_cci, 10)] = {'sig': fit_resid.pvalues[1],
+                                                                        'irr_area': irr_area,
+                                                                        'slope': fit_resid.params[1],
+                                                                        'lag': metadata[sid]['lag']}
+
+    impacted_gages = list(set(impacted_gages))
+    if out_jsn:
+        with open(out_jsn, 'w') as f:
+            json.dump(sig_stations, f)
+    pprint(list(sig_stations.keys()))
+    print('{} climate-sig, {} irrigated, {} irr imapacted, {} total'.format(ct, irr_ct, irr_sig_ct,
+                                                                            ct_tot))
+    print('{} positive slope, {} negative'.format(slp_pos, slp_neg))
+    print('total impacted gages: {}'.format(len(impacted_gages)))
+    pprint(impacted_gages)
+
+
 if __name__ == '__main__':
     dq = '/media/research/IrrigationGIS/gages/hydrographs/daily_q'
     # i_json = '/media/research/IrrigationGIS/gages/station_metadata/metadata.json'
     # o_json = '/media/research/IrrigationGIS/gages/station_metadata/basin_irr_lf.json'
-    mq = '/media/research/IrrigationGIS/gages/hydrographs/q_bf_monthly'
-    m = 1
-    irr_data = '/media/research/IrrigationGIS/gages/ee_exports/series/extracts_comp_25AUG2021.csv'
+    # mq = '/media/research/IrrigationGIS/gages/hydrographs/q_bf_monthly'
+    # m = 1
+    # irr_data = '/media/research/IrrigationGIS/gages/ee_exports/series/extracts_comp_25AUG2021.csv'
     # get_basin_metadata(i_json, mq, dq, irr_data, o_json, m)
 
-    clim_dir = '/media/research/IrrigationGIS/gages/merged_q_ee/monthly_ssebop_tc_q'
+    clim_dir = '/media/research/IrrigationGIS/gages/merged_q_ee/monthly_ssebop_tc_q_sw_17NOV2021'
     i_json = '/media/research/IrrigationGIS/gages/station_metadata/basin_irr_lf.json'
-    o_json = '/media/research/IrrigationGIS/gages/station_metadata/basin_lag_recession_ai_11OCT2021.json'
-    baseflow_correlation_search(clim_dir, i_json, o_json)
+    o_json = '/media/research/IrrigationGIS/gages/station_metadata/basin_lag_recession_ai_17NOV2021.json'
+    # climate_flow_correlation(clim_dir, i_json, o_json)
 
     # i_json = '/media/research/IrrigationGIS/gages/station_metadata/irr_impacted_metadata_31AUG2021.json'
     # i_shp = '/media/research/IrrigationGIS/gages/watersheds/selected_watersheds_meta.shp'
     # o_shp = '/media/research/IrrigationGIS/gages/watersheds/response_31AUG2021.shp'
     # write_json_to_shapefile(i_shp, o_shp, i_json)
+
+    _json = '/media/research/IrrigationGIS/gages/station_metadata/basin_lag_recession_ai_17NOV2021.json'
+    o_json = '/media/research/IrrigationGIS/gages/station_metadata/irr_impacted_metadata_17NOV2021.json'
+
+    figs = '/media/research/IrrigationGIS/gages/figures'
+    fig_dir = os.path.join(figs, 'sig_irr_qb_monthly_comp_scatter_17NOV2021')
+    ee_data = '/media/research/IrrigationGIS/gages/merged_q_ee/monthly_ssebop_tc_q_sw_17NOV2021'
+
+    filter_by_significance(_json, ee_data, out_jsn=o_json, fig_d=None)
 
 # ========================= EOF ====================================================================
