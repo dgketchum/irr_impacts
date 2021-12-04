@@ -1,4 +1,5 @@
 import os
+import json
 import fiona
 import hydrofunctions as hf
 from pandas import date_range, DatetimeIndex, DataFrame
@@ -6,12 +7,13 @@ from collections import OrderedDict
 from hydrograph import hydrograph
 
 
-def get_station_watersheds(stations_source, watersheds_source, out_stations, out_watersheds):
+def get_station_watersheds(stations_source, watersheds_source, out_stations, out_watersheds, station_json=None):
+    sta_dct = {}
     with fiona.open(stations_source, 'r') as src:
         point_meta = src.meta
         all_stations = [f for f in src]
         station_ids = [f['properties']['STAID'] for f in src]
-        station_meta = [(f['properties']['STANAME'], f['properties']['start'], f['properties']['end']) for f in src]
+        station_meta = [(f['properties']['STANAME'].replace(',', ''), f['properties']['start'], f['properties']['end']) for f in src]
 
     selected_shapes = []
     selected_points = []
@@ -23,14 +25,16 @@ def get_station_watersheds(stations_source, watersheds_source, out_stations, out
                 idx = station_ids.index(f['properties']['SITE_NO'])
                 attrs = station_meta[idx]
                 station_point = all_stations[idx]
-                f['properties']['STANAME'] = attrs[0]
+                f['properties']['STANAME'] = attrs[0].upper().replace(',', '')
                 f['properties']['start'] = attrs[1]
                 f['properties']['end'] = attrs[2]
+                f['properties']['AREA'] = f['properties']['SQMI'] / 0.386102
                 selected_shapes.append(f)
+                station_point['properties']['AREA'] = f['properties']['AREA']
                 selected_points.append(station_point)
 
     meta['schema'] = {'properties': OrderedDict([('STAID', 'str:40'),
-                                                 ('SQMI', 'float:19.11'),
+                                                 ('AREA', 'float:19.11'),
                                                  ('STANAME', 'str:254'),
                                                  ('start', 'str:254'),
                                                  ('end', 'str:254')]),
@@ -42,7 +46,6 @@ def get_station_watersheds(stations_source, watersheds_source, out_stations, out
             if f['geometry']['type'] == 'MultiPolygon':
                 lengths = [len(x[0]) for x in f['geometry']['coordinates']]
                 coords = f['geometry']['coordinates'][lengths.index(max(lengths))]
-                # print(f['properties']['SITE_NO'], lengths)
             else:
                 coords = f['geometry']['coordinates']
 
@@ -50,20 +53,28 @@ def get_station_watersheds(stations_source, watersheds_source, out_stations, out
                                     'type': 'Polygon'},
                        'id': ct,
                        'properties': OrderedDict([('STAID', f['properties']['SITE_NO']),
-                                                  ('STANAME', f['properties']['STANAME'].upper()),
-                                                  ('SQMI', f['properties']['SQMI']),
+                                                  ('STANAME', f['properties']['STANAME']),
+                                                  ('AREA', f['properties']['AREA']),
                                                   ('start', f['properties']['start']),
                                                   ('end', f['properties']['end'])]),
                        'type': 'Feature'}
             ct += 1
             try:
                 dst.write(feature)
+                sta_dct[f['properties']['SITE_NO']] = {k: v for k, v in f['properties'].items() if k != 'SITE_NO'}
             except TypeError:
                 pass
 
+    point_meta['schema']['properties']['AREA'] = 'float:19.11'
     with fiona.open(out_stations, 'w', **point_meta) as dst:
         for f in selected_points:
             dst.write(f)
+
+    if station_json:
+        with open(station_json, 'w') as fp:
+            json.dump(sta_dct, fp, indent=4)
+
+    print(len(selected_points))
 
 
 def get_station_daily_data(param, start, end, stations_shapefile, out_dir, freq='dv'):
@@ -130,14 +141,26 @@ def get_station_daterange_data(year_start, daily_q_dir, aggregate_q_dir, start_m
 
 
 if __name__ == '__main__':
+    por_stations = '/media/research/IrrigationGIS/gages/gage_loc_usgs/por_gages_nhd.shp'
+    watershed_source = '/media/research/IrrigationGIS/gages/watersheds/combined_station_watersheds.shp'
+    selected_stations = '/media/research/IrrigationGIS/gages/gage_loc_usgs/selected_gages.shp'
+    selected_watersheds = '/media/research/IrrigationGIS/gages/watersheds/selected_watersheds.shp'
+    station_json = '/media/research/IrrigationGIS/gages/station_metadata/station_metadata.json'
+    get_station_watersheds(stations_source=por_stations,
+                           watersheds_source=watershed_source,
+                           out_stations=selected_stations,
+                           out_watersheds=selected_watersheds,
+                           station_json=station_json)
+
+    # shp = '/media/research/IrrigationGIS/gages/gage_loc_usgs/selected_gages.shp'
     # shp = '/media/research/IrrigationGIS/gages/gage_loc_usgs/selected_gages.shp'
     # dst = '/media/research/IrrigationGIS/gages/hydrographs/daily_q_update'
     # get_station_daily_data('discharge', '1988-01-01', '2020-12-31',
     #                        shp, dst, freq='dv')
 
-    src = '/media/research/IrrigationGIS/gages/hydrographs/daily_q'
-    dst = '/media/research/IrrigationGIS/gages/hydrographs/q_monthly'
-    get_station_daterange_data(1988, src, dst, resample_freq='M')
+    # src = '/media/research/IrrigationGIS/gages/hydrographs/daily_q'
+    # dst = '/media/research/IrrigationGIS/gages/hydrographs/q_monthly'
+    # get_station_daterange_data(1988, src, dst, resample_freq='M')
 
     # dst = '/media/research/IrrigationGIS/Montana/water_rights/hydrographs/insta_q'
     # for year in [x for x in range(1987, 2021)]:

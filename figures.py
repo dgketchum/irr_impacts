@@ -16,13 +16,13 @@ STATIONS = CLMB_STATIONS + UMRB_STATIONS
 
 MAJOR_IMPORTS = ['06088500', '06253000', '12472600', '12513000', '12324680', '12329500',
                  '12467000', '13108150', '13153500', '13152500',
-                 '13153500', '09372000', '09371492', '12398600']
+                 '13153500', '09372000', '09371492', '12398600', '09520500']
 
-RESEVOIRS = ['09211200', '09261000']
+RESEVOIRS = ['09211200', '09261000', '09128000', '09519800']
 EXCLUDE = MAJOR_IMPORTS + RESEVOIRS
 
 
-def plot_clim_q_resid(q, ai, fit_clim, desc_str, years, cc, resid, fit_resid, fig_d, append_str=None):
+def plot_clim_q_resid(q, ai, fit_clim, desc_str, years, cc, resid, fit_resid, fig_d, cci_per):
     resid_line = fit_resid.params[1] * cc + fit_resid.params[0]
     clim_line = fit_clim.params[1] * ai + fit_clim.params[0]
     rcParams['figure.figsize'] = 16, 10
@@ -34,9 +34,6 @@ def plot_clim_q_resid(q, ai, fit_clim, desc_str, years, cc, resid, fit_resid, fi
 
     for i, y in enumerate(years):
         ax1.annotate(y, (ai[i], q[i]))
-    if append_str:
-        plt.suptitle('{}_{}'.format(desc_str, append_str))
-    else:
         plt.suptitle(desc_str)
 
     ax2.set(xlabel='cc [m]')
@@ -46,10 +43,10 @@ def plot_clim_q_resid(q, ai, fit_clim, desc_str, years, cc, resid, fit_resid, fi
     for i, y in enumerate(years):
         ax2.annotate(y, (cc[i], resid[i]))
 
-    if append_str:
-        fig_name = os.path.join(fig_d, '{}_{}.png'.format(desc_str.strip().split(' ')[0], append_str))
-    else:
-        fig_name = os.path.join(fig_d, '{}.png'.format(desc_str.strip().split(' ')[0]))
+    desc_split = desc_str.strip().split('\n')
+    file_name = desc_split[0].replace(' ', '_')
+
+    fig_name = os.path.join(fig_d, '{}_{}-{}.png'.format(file_name, cci_per[0], cci_per[1]))
 
     plt.savefig(fig_name)
     plt.close('all')
@@ -183,6 +180,26 @@ def impact_time_series_heat(sig_stations, sorting_data, slope_meta_out=None):
             json.dump(slope_d, fp, indent=4)
 
 
+def scatter_from_json(json_, fig_dir):
+    with open(json_, 'r') as fp:
+        dct = json.load(fp)
+    slope = [v['slope'] for k, v in dct.items()]
+    irr = [v['irr_pct'] for k, v in dct.items()]
+    ccfr = [v['cc_frac'] for k, v in dct.items()]
+
+    plt.scatter(slope, irr)
+    plt.xlabel('slope')
+    plt.ylabel('irr')
+    plt.savefig(os.path.join(fig_dir, 'slope_irr.png'))
+    plt.close()
+
+    plt.scatter(slope, ccfr)
+    plt.xlabel('slope')
+    plt.ylabel('ccfr')
+    plt.savefig(os.path.join(fig_dir, 'slope_ccfr.png'))
+    plt.close()
+
+
 if __name__ == '__main__':
     matplotlib.use('TkAgg')
     figs = '/media/research/IrrigationGIS/gages/figures'
@@ -198,5 +215,6 @@ if __name__ == '__main__':
     s_json = '/media/research/IrrigationGIS/gages/station_metadata/irr_impacted_slopes_1DEC2021.json'
 
     # coords = '/media/research/IrrigationGIS/gages/basin_areas.json'
-    impact_time_series_heat(o_json, cc_frac_json, slope_meta_out=s_json)
+    # impact_time_series_heat(o_json, cc_frac_json, slope_meta_out=s_json)
+    scatter_from_json(s_json, fig_dir=figs)
 # ========================= EOF ====================================================================
