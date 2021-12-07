@@ -14,14 +14,12 @@ from dateutil.relativedelta import relativedelta as rdlt
 import fiona
 import statsmodels.api as sm
 
-from figures import MAJOR_IMPORTS, plot_clim_q_resid
+from figures import plot_clim_q_resid, SYSTEM_STATIONS
 from hydrograph import hydrograph
 
 os.environ['R_HOME'] = '/home/dgketchum/miniconda3/envs/renv/lib/R'
 
-from gage_list import CLMB_STATIONS, UMRB_STATIONS
-
-STATIONS = CLMB_STATIONS + UMRB_STATIONS
+from gage_list import EXCLUDE_STATIONS
 
 
 def write_json_to_shapefile(in_shp, out_shp, meta):
@@ -76,16 +74,14 @@ def climate_flow_correlation(climate_dir, in_json, out_json, plot_r=None):
     print(len(l), 'station files')
     offsets = [x for x in range(1, 61)]
     windows = {}
-    lags = []
-    date_sample = None
     with open(in_json, 'r') as f:
         metadata = json.load(f)
     for csv in l:
         # try:
         sid = os.path.basename(csv).strip('.csv')
         s_meta = metadata[sid]
-        if s_meta['AREA'] < 8000.:
-            continue
+        # if s_meta['AREA'] < 8000.:
+        #     continue
 
         df = hydrograph(csv)
         mean_irr = np.nanmean(df['irr'].values)
@@ -106,12 +102,12 @@ def climate_flow_correlation(climate_dir, in_json, out_json, plot_r=None):
                 per = tuple(per)
                 flow_periods.append(per)
 
-        corr = (0, 0.0)
         found_sig = False
-        d = None
+        response_d = {}
         ind = None
         r_dct = {}
         for q_win in flow_periods:
+            corr = (0, 0.0)
             key_ = '{}-{}'.format(q_win[0], q_win[-1])
             r_dct[key_] = []
             q_dates = [(date(y, q_win[0], 1), date(y, q_win[-1], monthrange(y, q_win[-1])[1])) for y in years]
@@ -120,7 +116,9 @@ def climate_flow_correlation(climate_dir, in_json, out_json, plot_r=None):
                 if lag < q_win[-1] - q_win[0] + 1:
                     r_dct[key_].append(np.nan)
                     continue
-                dates = [(date(y, 10, 31) + rdlt(months=-lag), date(y, 10, 31)) for y in years]
+                dates = [(date(y, q_win[-1], monthrange(y, q_win[-1])[1]) + rdlt(months=-lag),
+                          date(y, q_win[-1], monthrange(y, q_win[-1])[1])) for y in years]
+
                 etr = np.array([df['etr'][d[0]: d[1]].sum() for d in dates])
                 ppt = np.array([df['ppt'][d[0]: d[1]].sum() for d in dates])
                 ind = etr / ppt
@@ -129,33 +127,32 @@ def climate_flow_correlation(climate_dir, in_json, out_json, plot_r=None):
                 r_dct[key_].append(r)
                 if r > corr[1] and p < 0.05:
                     corr = (lag, abs(r))
-                    d = {'STANAME': s_meta['STANAME'], 'q_window': q_win,
-                         'lag': lag, 'r': r, 'pval': p, 'irr_pct': irr_pct}
-                    date_sample = dates[0][1], dates[0][0]
+
+                    response_d[key_] = {'q_window': q_win, 'lag': lag, 'r': r, 'pval': p, 'irr_pct': irr_pct,
+                                        'c_dates': '{} to {}'.format(str(dates[0][0]), str(dates[0][1])),
+                                        'q_dates': '{} to {}'.format(str(q_dates[0][0]), str(q_dates[0][1]))}
                     found_sig = True
+
         df = DataFrame(data=r_dct)
         if plot_r:
             desc = '{} {}\n{:.1f} sq km, {:.1f}% irr'.format(sid, s_meta['STANAME'], s_meta['AREA'], irr_pct * 100)
             df.plot(title=desc)
             plt.savefig(os.path.join(plot_r, '{}_{}.png'.format(sid, s_meta['STANAME'])))
+            plt.close()
+
         if not found_sig:
             print('no significant r at {}: {} ({} nan)'.format(sid, s_meta['STANAME'],
                                                                np.count_nonzero(np.isnan(ind))))
             continue
 
-        print('\nmonth {} to {}'.format(d['q_window'][0], d['q_window'][-1]),
-              'lag {}'.format(d['lag']), 'r {:.2f}'.format(d['r']),
-              '\np {:.2f}'.format(d['pval']), d['STANAME'], '{:.3f}'.format(irr_pct), date_sample)
+        print('\n', sid, s_meta['STANAME'], 'irr {:.3f}'.format(irr_pct))
+        desc_strs = [(k, v['lag'], 'r: {:.3f}, p: {:.3f} q {} climate {}'.format(v['r'], v['pval'],
+                                                                                 v['q_dates'],
+                                                                                 v['c_dates'])) for k, v in
+                     response_d.items()]
+        [print('{}'.format(x)) for x in desc_strs]
 
-        windows[sid] = {**d, **s_meta}
-        if irr_pct > 0.01:
-            lags.append(d['lag'])
-        # except Exception as e:
-        #     print(csv, e)
-
-    hist = sorted(Counter(lags).items())
-    pprint(hist)
-    print(sum([x[1] for x in hist]), ' stations')
+        windows[sid] = {**response_d, **s_meta}
 
     with open(out_json, 'w') as f:
         json.dump(windows, f, indent=4)
@@ -170,111 +167,120 @@ def get_sig_irr_impact(metadata, ee_series, out_jsn=None, fig_dir=None):
         metadata = json.load(f)
     for sid, v in metadata.items():
         s_meta = metadata[sid]
-        r, p, lag, q_window = (v[s] for s in ['r', 'pval', 'lag', 'q_window'])
-        q_start, q_end = q_window[0], q_window[-1]
         _file = os.path.join(ee_series, '{}.csv'.format(sid))
-        if sid not in ['09209400']:
-            continue
-        if p > 0.05:
-            continue
+        cdf = hydrograph(_file)
+
         if not os.path.exists(_file):
             continue
-        if sid in MAJOR_IMPORTS:
+        if sid in EXCLUDE_STATIONS:
             continue
-        if s_meta['irr_pct'] < 0.001:
+        if sid not in SYSTEM_STATIONS:
             continue
-
-        cdf = hydrograph(_file)
 
         ct_tot += 1
         years = [x for x in range(1991, 2021)]
 
-        cdf['cci'] = cdf['cc'] / cdf['irr']
-        q_dates = [(date(y, q_start, 1), date(y, q_end, monthrange(y, q_end)[1])) for y in years]
-        clim_dates = [(date(y, 11, 1) + rdlt(months=-lag), date(y, 11, 1)) for y in years]
-        ppt = np.array([cdf['ppt'][d[0]: d[1]].sum() for d in clim_dates])
-        etr = np.array([cdf['etr'][d[0]: d[1]].sum() for d in clim_dates])
-        ai = etr / ppt
-
-        cc_periods = []
-        max_len = 7
-        rr = [x for x in range(5, 11)]
-        for n in range(1, max_len + 1):
-            for i in range(max_len - n):
-                per = rr[i: i + n]
-                if len(per) == 1:
-                    per = [per[0], per[0]]
-                per = tuple(per)
-                cc_periods.append(per)
-
-        for cc_period in cc_periods:
-            cc_start, cc_end = cc_period[0], cc_period[-1]
-
-            if cc_end > q_end:
-                continue
-            # if cc_start > q_start:
-            #     continue
-
-            month_end = monthrange(2000, cc_end)[1]
-            cc_dates = [(date(y, cc_start, 1), date(y, cc_end, month_end)) for y in years]
-
-            q = np.array([cdf['q'][d[0]: d[1]].sum() for d in q_dates])
-
-            cc = np.array([cdf['cci'][d[0]: d[1]].sum() for d in cc_dates])
-
-            ai_c = sm.add_constant(ai)
-
-            try:
-                ols = sm.OLS(q, ai_c)
-            except Exception as e:
-                print(sid, e, cdf['q'].dropna().index[0])
+        # iterate over flow windows
+        for k, v in s_meta.items():
+            if not isinstance(v, dict):
                 continue
 
-            fit_clim = ols.fit()
+            r, p, lag, q_window = (v[s] for s in ['r', 'pval', 'lag', 'q_window'])
+            q_start, q_end = q_window[0], q_window[-1]
 
-            irr_ct += 1
-            clim_p = fit_clim.pvalues[1]
-            if clim_p > p and clim_p > 0.05:
-                print('\n', sid, v['STANAME'], '{:.3f} p {:.3f} clim p'.format(p, clim_p), '\n')
-            ct += 1
-            resid = fit_clim.resid
-            _cc_c = sm.add_constant(cc)
-            ols = sm.OLS(resid, _cc_c)
-            fit_resid = ols.fit()
-            resid_p = fit_resid.pvalues[1]
-            if resid_p < 0.05:
-                impacted_gages.append(sid)
-                if fit_resid.params[1] > 0.0:
-                    slp_pos += 1
-                else:
-                    slp_neg += 1
+            if p > 0.05 or v['irr_pct'] < 0.001:
+                continue
 
-                slope = fit_resid.params[1] * (np.std(cc) / np.std(resid))
-                desc_str = '{} {}\n' \
-                           '{} months climate, flow months {}-{}\n' \
-                           'crop consumption {} to {}\n' \
-                           'p = {:.3f}, irr = {:.3f}, m = {:.2f}\n        '.format(sid, s_meta['STANAME'],
-                                                                                   lag, q_start, q_end,
-                                                                                   cc_start, cc_end,
-                                                                                   fit_resid.pvalues[1],
-                                                                                   s_meta['irr_pct'],
-                                                                                   slope)
+            cdf['cci'] = cdf['cc'] / cdf['irr']
+            q_dates = [(date(y, q_start, 1), date(y, q_end, monthrange(y, q_end)[1])) for y in years]
+            clim_dates = [(date(y, q_end, monthrange(y, q_end)[1]) + rdlt(months=-lag),
+                           date(y, q_end, monthrange(y, q_end)[1])) for y in years]
+            ppt = np.array([cdf['ppt'][d[0]: d[1]].sum() for d in clim_dates])
+            etr = np.array([cdf['etr'][d[0]: d[1]].sum() for d in clim_dates])
+            ai = etr / ppt
 
-                print(desc_str)
-                irr_sig_ct += 1
-                if fig_dir:
-                    plot_clim_q_resid(q=q, ai=ai, fit_clim=fit_clim, desc_str=desc_str, years=years, cc=cc,
-                                      resid=resid, fit_resid=fit_resid, fig_d=fig_dir, cci_per=cc_period)
+            cc_periods = []
+            max_len = 7
+            rr = [x for x in range(5, 11)]
+            for n in range(1, max_len + 1):
+                for i in range(max_len - n):
+                    per = rr[i: i + n]
+                    if len(per) == 1:
+                        per = [per[0], per[0]]
+                    per = tuple(per)
+                    cc_periods.append(per)
 
-                if sid not in sig_stations.keys():
-                    sig_stations[sid] = s_meta
-                    sig_stations[sid].update({'{}_{}'.format(cc_start, cc_end): {'sig': fit_resid.pvalues[1],
-                                                                                 'slope': slope,
-                                                                                 'lag': s_meta['lag']}})
-                else:
-                    sig_stations[sid].update({'{}_{}'.format(cc_start, cc_end): {'sig': fit_resid.pvalues[1],
-                                                                                 'slope': slope,
-                                                                                 'lag': s_meta['lag']}})
+            # iterate over crop consumption windows
+            for cc_period in cc_periods:
+                cc_start, cc_end = cc_period[0], cc_period[-1]
+
+                if cc_end > q_end:
+                    continue
+                if cc_start > q_start:
+                    continue
+
+                month_end = monthrange(2000, cc_end)[1]
+                cc_dates = [(date(y, cc_start, 1), date(y, cc_end, month_end)) for y in years]
+
+                q = np.array([cdf['q'][d[0]: d[1]].sum() for d in q_dates])
+
+                cc = np.array([cdf['cci'][d[0]: d[1]].sum() for d in cc_dates])
+
+                ai_c = sm.add_constant(ai)
+
+                try:
+                    ols = sm.OLS(q, ai_c)
+                except Exception as e:
+                    print(sid, e, cdf['q'].dropna().index[0])
+                    continue
+
+                fit_clim = ols.fit()
+
+                irr_ct += 1
+                clim_p = fit_clim.pvalues[1]
+                if clim_p > p and clim_p > 0.05:
+                    print('\n', sid, v['STANAME'], '{:.3f} p {:.3f} clim p'.format(p, clim_p), '\n')
+                ct += 1
+                resid = fit_clim.resid
+                _cc_c = sm.add_constant(cc)
+                ols = sm.OLS(resid, _cc_c)
+                fit_resid = ols.fit()
+                resid_p = fit_resid.pvalues[1]
+                if resid_p < 0.05:
+                    impacted_gages.append(sid)
+                    if fit_resid.params[1] > 0.0:
+                        slp_pos += 1
+                    else:
+                        slp_neg += 1
+
+                    slope = fit_resid.params[1] * (np.std(cc) / np.std(resid))
+                    desc_str = '{} {}\n' \
+                               '{} months climate, flow months {}-{}\n' \
+                               'crop consumption {} to {}\n' \
+                               'p = {:.3f}, irr = {:.3f}, m = {:.2f}\n        '.format(sid, s_meta['STANAME'],
+                                                                                       lag, q_start, q_end,
+                                                                                       cc_start, cc_end,
+                                                                                       fit_resid.pvalues[1],
+                                                                                       v['irr_pct'],
+                                                                                       slope)
+
+                    print(desc_str)
+                    irr_sig_ct += 1
+                    if fig_dir:
+                        plot_clim_q_resid(q=q, ai=ai, fit_clim=fit_clim, desc_str=desc_str, years=years, cc=cc,
+                                          resid=resid, fit_resid=fit_resid, fig_d=fig_dir, cci_per=cc_period)
+
+                    if sid not in sig_stations.keys():
+                        sig_stations[sid] = {k: v for k, v in s_meta.items() if not isinstance(v, dict)}
+                        sig_stations[sid].update({'{}-{}'.format(cc_start, cc_end): {'sig': fit_resid.pvalues[1],
+                                                                                     'slope': slope,
+                                                                                     'lag': lag,
+                                                                                     'q_window': k}})
+                    else:
+                        sig_stations[sid].update({'{}-{}'.format(cc_start, cc_end): {'sig': fit_resid.pvalues[1],
+                                                                                     'slope': slope,
+                                                                                     'lag': lag,
+                                                                                     'q_window': k}})
 
     impacted_gages = list(set(impacted_gages))
     if out_jsn:
@@ -295,12 +301,12 @@ if __name__ == '__main__':
 
     clim_dir = os.path.join(root, 'gages/merged_q_ee/monthly_ssebop_tc_q_sw_17NOV2021')
     i_json = os.path.join(root, 'gages/station_metadata/station_metadata.json')
-    clim_resp = os.path.join(root, 'gages/station_metadata/basin_climate_response_.json')
+    clim_resp = os.path.join(root, 'gages/station_metadata/basin_climate_response_gt8000.json')
     fig_dir_ = os.path.join(root, 'gages/figures/clim_q_correlations')
     # climate_flow_correlation(clim_dir, i_json, clim_resp, plot_r=fig_dir_)
 
     fig_dir = os.path.join(root, 'gages/figures/irr_impact_q_clim_delQ_cci')
-    irr_resp = os.path.join(root, 'gages/station_metadata/irr_impacted.json')
+    irr_resp = os.path.join(root, 'gages/station_metadata/irr_impacted_gt8000.json')
     ee_data = os.path.join(root, 'gages/merged_q_ee/monthly_ssebop_tc_q_sw_17NOV2021')
     get_sig_irr_impact(clim_resp, ee_data, out_jsn=None, fig_dir=fig_dir)
 
