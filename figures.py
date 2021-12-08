@@ -12,12 +12,16 @@ from pylab import rcParams
 from hydrograph import hydrograph
 from gage_list import EXCLUDE_STATIONS
 
-SYSTEM_STATIONS = ['06109500', '06130500', '06329500', '09180500', '09315000', '09333500',
-                   '09379500', '09419000', '09466500', '12396500', '12510500', '13269000',
-                   '13317000', '13333000', '14048000', '14103000', '14211720']
+SYSTEM_STATIONS = ['06109500', '06329500', '09180500', '09315000',
+                   '09379500', '12396500', '13269000', '13317000']
+
+SELECTED_SYSTEMS = ['06109500', '06329500', '09180500', '09315000',
+                    '09379500', '09466500', '12389000', '12510500',
+                    '13269000', '13317000', '14048000',
+                    '14103000', '14211720']
 
 
-def plot_clim_q_resid(q, ai, fit_clim, desc_str, years, cc, resid, fit_resid, fig_d, cci_per):
+def plot_clim_q_resid(q, ai, fit_clim, desc_str, years, cc, resid, fit_resid, fig_d, cci_per, flow_per):
     resid_line = fit_resid.params[1] * cc + fit_resid.params[0]
     clim_line = fit_clim.params[1] * ai + fit_clim.params[0]
     rcParams['figure.figsize'] = 16, 10
@@ -41,7 +45,8 @@ def plot_clim_q_resid(q, ai, fit_clim, desc_str, years, cc, resid, fit_resid, fi
     desc_split = desc_str.strip().split('\n')
     file_name = desc_split[0].replace(' ', '_')
 
-    fig_name = os.path.join(fig_d, '{}_{}-{}.png'.format(file_name, cci_per[0], cci_per[1]))
+    fig_name = os.path.join(fig_d, '{}_cc_{}-{}_q_{}-{}.png'.format(file_name, cci_per[0], cci_per[1],
+                                                                    flow_per[0], flow_per[1]))
 
     plt.savefig(fig_name)
     plt.close('all')
@@ -66,7 +71,7 @@ def fraction_cc_water_balance(metadata, ee_series, fig, watersheds=None, metadat
         q = np.array([cdf['q'][d[0]: d[1]].sum() for d in clim_dates])
         ppt = np.array([cdf['ppt'][d[0]: d[1]].sum() for d in clim_dates])
         cc = np.array([cdf['cc'][d[0]: d[1]].sum() for d in cc_dates])
-        f = cc.sum() / ppt.sum()
+        f = q.sum() / ppt.sum()
         if f > 0.15:
             suspect.append(sid)
             print('\nsuspect {:.3f}'.format(f), v['STANAME'], sid, '\n')
@@ -82,7 +87,7 @@ def fraction_cc_water_balance(metadata, ee_series, fig, watersheds=None, metadat
     bins = np.linspace(0, lim_, 10)
     plt.xlim(0, lim_)
     plt.hist(frac, bins=bins, histtype='barstacked', rwidth=0.95)
-    plt.title('Crop Consumption of Total Available Water\n{} Basins'.format(len(frac)))
+    plt.title('Flow to Precipitation Ratio\n{} Basins'.format(len(frac)))
     plt.xlabel('Crop Consumption Fraction')
     plt.ylabel('Count')
     plt.savefig(fig)
@@ -104,8 +109,7 @@ def fraction_cc_water_balance(metadata, ee_series, fig, watersheds=None, metadat
                     dst.write(f)
 
 
-def impact_time_series_heat(sig_stations, sorting_data):
-
+def impact_time_series_heat(sig_stations, sorting_data, figures, multimonth=True):
     cmap = cm.get_cmap('RdYlGn')
 
     with open(sig_stations, 'r') as f:
@@ -120,10 +124,10 @@ def impact_time_series_heat(sig_stations, sorting_data):
     all_slope = []
     min_slope, max_slope = -0.584, 0.582
 
-    for i, sid in enumerate(SYSTEM_STATIONS):
-        if sid not in ['06130500']:
-            continue
-        fig, axes = plt.subplots(figsize=(12, 18))
+    vert_increment = 1 / 7.
+    v_position = 0
+    fig, axes = plt.subplots(figsize=(12, 18))
+    for i, sid in enumerate(SELECTED_SYSTEMS):
         dct = stations[sid]
         impact_keys = [p for p, v in dct.items() if isinstance(v, dict)]
 
@@ -135,9 +139,12 @@ def impact_time_series_heat(sig_stations, sorting_data):
         slopes = [dct[k]['slope'] for k in dct.keys() if k in impact_keys]
         [all_slope.append(s) for s in slopes]
 
-        vert_increment = 1 / 7.
-        v_position = 0
-        print('')
+        if not multimonth:
+            single_month_resp = [x[1] - x[0] == 0 for x in periods]
+            periods = [p for p, s in zip(periods, single_month_resp) if s]
+            durations = [d for d, s in zip(durations, single_month_resp) if s]
+            slopes = [sl for sl, s in zip(slopes, single_month_resp) if s]
+
         for j, (s, p, d) in enumerate(zip(slopes, periods, durations)):
             slope_scale = (s - min_slope) / (max_slope - min_slope)
             color = cmap(slope_scale)
@@ -147,35 +154,49 @@ def impact_time_series_heat(sig_stations, sorting_data):
                 v_position += vert_increment
             axes.barh(v_position, left=p[0], width=d, height=vert_increment, color=color,
                       edgecolor=color, align='edge', alpha=0.5)
-            print('{} {:.2f} {}'.format(sid, s, d))
 
-        plt.xlim([4, 12])
-        plt.suptitle('{}\n{}'.format(sid, dct['STANAME']))
-        # plt.show()
-        plt.savefig('/home/dgketchum/Downloads/impacts/impacted_gages_{}_{}_6DEC2021.png'.format(sid, sort_key))
-        plt.close()
+        v_position += vert_increment
+
+    fig_file = os.path.join(figures, 'slope_bar_ALL_8DEC2021.png')
+    plt.xlim([4, 12])
+    plt.ylim([0, v_position])
+    plt.suptitle('Irrigation Impact on Gages')
+    # plt.show()
+    plt.savefig(fig_file)
+    plt.close()
 
     print('\nall slopes min {:.3f}, max {:.3f}'.format(min(all_slope), max(all_slope)))
     print('colorbar slopes used min {:.3f}, max {:.3f}'.format(min_slope, max_slope))
 
 
-def scatter_from_json(json_, fig_dir):
-    with open(json_, 'r') as fp:
-        dct = json.load(fp)
-    slope = [v['slope'] for k, v in dct.items()]
-    irr = [v['irr_pct'] for k, v in dct.items()]
-    ccfr = [v['cc_frac'] for k, v in dct.items()]
+def response_time_to_area(climate_resp, fig_dir):
+    with open(climate_resp, 'r') as fp:
+        c_dct = json.load(fp)
 
-    plt.scatter(slope, irr)
-    plt.xlabel('slope')
-    plt.ylabel('irr')
+    irr_ids = []
+    c_lags = []
+    i_lags = []
+    i_areas = []
+    c_areas = []
+    for k, v in c_dct.items():
+        impact_keys = [v for p, v in v.items() if isinstance(v, dict)]
+        irr_pct = impact_keys[0]['irr_pct']
+        if irr_pct > 0.01:
+            irr_ids.append(k)
+            i_lags.append(np.median([d['lag'] for d in impact_keys]))
+            i_areas.append(v['AREA'])
+        else:
+            c_lags.append(np.median([d['lag'] for d in impact_keys]))
+            c_areas.append(v['AREA'])
+
+    plt.hist(c_lags, bins=20, color='r', label='Unirrigated Basins')
+    plt.hist(i_lags, bins=20, color='b', label='Irrigated Basins')
+    plt.legend()
+    plt.suptitle('Basin Median Response Time')
+    plt.ylabel('Response Time [months]')
+    plt.xlabel('Area [sq km]')
+    plt.show()
     plt.savefig(os.path.join(fig_dir, 'slope_irr.png'))
-    plt.close()
-
-    plt.scatter(slope, ccfr)
-    plt.xlabel('slope')
-    plt.ylabel('ccfr')
-    plt.savefig(os.path.join(fig_dir, 'slope_ccfr.png'))
     plt.close()
 
 
@@ -184,15 +205,20 @@ if __name__ == '__main__':
     figs = '/media/research/IrrigationGIS/gages/figures'
 
     watersheds_shp = '/media/research/IrrigationGIS/gages/watersheds/selected_watersheds.shp'
-    frac_fig = os.path.join(figs, 'water_balance_frac_cc.png')
+    frac_fig = os.path.join(figs, 'q_ratio_ppt.png')
     _json = '/media/research/IrrigationGIS/gages/station_metadata/basin_climate_response_gt8000.json'
     ee_data = '/media/research/IrrigationGIS/gages/merged_q_ee/monthly_ssebop_tc_q_sw_17NOV2021'
     cc_frac_json = '/media/research/IrrigationGIS/gages/basin_cc_fraction_water_bal.json'
-    # fraction_cc_water_balance(_json, ee_data, frac_fig, watersheds=None, metadata_out=cc_frac_json)
+    # fraction_cc_water_balance(_json, ee_data, frac_fig, watersheds=watersheds_shp, metadata_out=cc_frac_json)
 
-    o_json = '/media/research/IrrigationGIS/gages/station_metadata/irr_impacted_gt8000.json'
+    o_json = '/media/research/IrrigationGIS/gages/station_metadata/irr_impacted_all.json'
 
     coords = '/media/research/IrrigationGIS/gages/basin_areas.json'
-    impact_time_series_heat(o_json, cc_frac_json)
-    # scatter_from_json(s_json, fig_dir=figs)
+    heat_figs = os.path.join(figs, 'heat_bars_largeSystems_singlemonth')
+    impact_time_series_heat(o_json, cc_frac_json, figures=heat_figs, multimonth=False)
+
+    # i_json = '/media/research/IrrigationGIS/gages/station_metadata/irr_impacted_all.json'
+    # c_json = '/media/research/IrrigationGIS/gages/station_metadata/basin_climate_response_irr.json'
+    # scatter_figs = os.path.join(figs, 'scatter_area_v_climate_response')
+    # response_time_to_area(c_json, fig_dir=figs)
 # ========================= EOF ====================================================================
