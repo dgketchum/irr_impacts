@@ -71,13 +71,14 @@ def fraction_cc_water_balance(metadata, ee_series, fig, watersheds=None, metadat
         q = np.array([cdf['q'][d[0]: d[1]].sum() for d in clim_dates])
         ppt = np.array([cdf['ppt'][d[0]: d[1]].sum() for d in clim_dates])
         cc = np.array([cdf['cc'][d[0]: d[1]].sum() for d in cc_dates])
-        f = q.sum() / ppt.sum()
+        f = cc.sum() / q.sum()
         if f > 0.15:
             suspect.append(sid)
             print('\nsuspect {:.3f}'.format(f), v['STANAME'], sid, '\n')
         else:
             print('{:.3f}'.format(f), v['STANAME'], sid)
-        frac.append((sid, f))
+        if np.all(cc > 0.):
+            frac.append((sid, f))
     frac_dict = {k: v for k, v in frac}
     stations_ = [f[0] for f in frac]
     frac = [f[1] for f in frac]
@@ -87,7 +88,7 @@ def fraction_cc_water_balance(metadata, ee_series, fig, watersheds=None, metadat
     bins = np.linspace(0, lim_, 10)
     plt.xlim(0, lim_)
     plt.hist(frac, bins=bins, histtype='barstacked', rwidth=0.95)
-    plt.title('Flow to Precipitation Ratio\n{} Basins'.format(len(frac)))
+    plt.title('cc_ratio_q\n{} Basins'.format(len(frac)))
     plt.xlabel('Crop Consumption Fraction')
     plt.ylabel('Count')
     plt.savefig(fig)
@@ -109,7 +110,8 @@ def fraction_cc_water_balance(metadata, ee_series, fig, watersheds=None, metadat
                     dst.write(f)
 
 
-def impact_time_series_heat(sig_stations, sorting_data, figures, multimonth=True):
+def impact_time_series_bars(sig_stations, sorting_data, figures, multimonth=True, min_area=None,
+                            fill_gaps=False):
     cmap = cm.get_cmap('RdYlGn')
 
     with open(sig_stations, 'r') as f:
@@ -120,6 +122,8 @@ def impact_time_series_heat(sig_stations, sorting_data, figures, multimonth=True
     sort_key = 'cc_frac'
 
     [stations[k].update({sort_key: sorting_data[k]}) for k, v in stations.items() if k in sorting_data.keys()]
+    if min_area:
+        stations_l = [k for k, v in stations.items() if v['AREA'] > min_area]
 
     all_slope = []
     min_slope, max_slope = -0.584, 0.582
@@ -139,31 +143,30 @@ def impact_time_series_heat(sig_stations, sorting_data, figures, multimonth=True
         slopes = [dct[k]['slope'] for k in dct.keys() if k in impact_keys]
         [all_slope.append(s) for s in slopes]
 
-        if not multimonth:
-            single_month_resp = [x[1] - x[0] == 0 for x in periods]
-            periods = [p for p, s in zip(periods, single_month_resp) if s]
-            durations = [d for d, s in zip(durations, single_month_resp) if s]
-            slopes = [sl for sl, s in zip(slopes, single_month_resp) if s]
+        single_month_resp = [x[1] - x[0] == 0 for x in periods]
+        periods = [p[0] for p, s in zip(periods, single_month_resp) if s]
+        slopes = [sl for sl, s in zip(slopes, single_month_resp) if s]
 
-        for j, (s, p, d) in enumerate(zip(slopes, periods, durations)):
-            slope_scale = (s - min_slope) / (max_slope - min_slope)
-            color = cmap(slope_scale)
-            if d == 1:
-                pass
+        for m in [x for x in range(5, 11)]:
+            if m in periods:
+                s = slopes[periods.index(m)]
+                slope_scale = (s - min_slope) / (max_slope - min_slope)
+                color = cmap(slope_scale)
+                axes.barh(v_position, left=m, width=1, height=vert_increment, color=color,
+                          edgecolor=color, align='edge', alpha=0.5)
             else:
-                v_position += vert_increment
-            axes.barh(v_position, left=p[0], width=d, height=vert_increment, color=color,
-                      edgecolor=color, align='edge', alpha=0.5)
+                axes.barh(v_position, left=m, width=1, height=vert_increment, color='none',
+                          edgecolor='k', align='edge', alpha=0.3)
 
         v_position += vert_increment
 
-    fig_file = os.path.join(figures, 'slope_bar_ALL_8DEC2021.png')
+    fig_file = os.path.join(figures, 'slope_bar_ALL_9DEC2021.png')
     plt.xlim([4, 12])
     plt.ylim([0, v_position])
     plt.suptitle('Irrigation Impact on Gages')
-    # plt.show()
-    plt.savefig(fig_file)
-    plt.close()
+    plt.show()
+    # plt.savefig(fig_file)
+    # plt.close()
 
     print('\nall slopes min {:.3f}, max {:.3f}'.format(min(all_slope), max(all_slope)))
     print('colorbar slopes used min {:.3f}, max {:.3f}'.format(min_slope, max_slope))
@@ -205,17 +208,19 @@ if __name__ == '__main__':
     figs = '/media/research/IrrigationGIS/gages/figures'
 
     watersheds_shp = '/media/research/IrrigationGIS/gages/watersheds/selected_watersheds.shp'
-    frac_fig = os.path.join(figs, 'q_ratio_ppt.png')
-    _json = '/media/research/IrrigationGIS/gages/station_metadata/basin_climate_response_gt8000.json'
+    ratio = 'cc_ratio_q'
+    frac_fig = os.path.join(figs, '{}.png'.format(ratio))
+    _json = '/media/research/IrrigationGIS/gages/station_metadata/basin_climate_response_all.json'
     ee_data = '/media/research/IrrigationGIS/gages/merged_q_ee/monthly_ssebop_tc_q_sw_17NOV2021'
-    cc_frac_json = '/media/research/IrrigationGIS/gages/basin_cc_fraction_water_bal.json'
-    # fraction_cc_water_balance(_json, ee_data, frac_fig, watersheds=watersheds_shp, metadata_out=cc_frac_json)
+    cc_frac_json = '/media/research/IrrigationGIS/gages/basin_{}.json'.format(ratio)
+    # fraction_cc_water_balance(_json, ee_data, frac_fig, watersheds=None, metadata_out=cc_frac_json)
 
     o_json = '/media/research/IrrigationGIS/gages/station_metadata/irr_impacted_all.json'
 
     coords = '/media/research/IrrigationGIS/gages/basin_areas.json'
     heat_figs = os.path.join(figs, 'heat_bars_largeSystems_singlemonth')
-    impact_time_series_heat(o_json, cc_frac_json, figures=heat_figs, multimonth=False)
+    impact_time_series_bars(o_json, cc_frac_json, figures=heat_figs, multimonth=False, min_area=7000,
+                            fill_gaps=False)
 
     # i_json = '/media/research/IrrigationGIS/gages/station_metadata/irr_impacted_all.json'
     # c_json = '/media/research/IrrigationGIS/gages/station_metadata/basin_climate_response_irr.json'
