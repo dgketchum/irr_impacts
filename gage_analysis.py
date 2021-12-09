@@ -94,7 +94,7 @@ def water_balance_ratios(metadata, ee_series, watersheds=None, metadata_out=None
         dct[sid] = v
         dct[sid].update({'cc_ppt': cc.sum() / ppt.sum()})
         dct[sid].update({'cc_q': cc.sum() / q.sum()})
-        dct[sid].update({'cci': cci.sum()})
+        dct[sid].update({'cci': np.mean(cci)})
         dct[sid].update({'q_ppt': q.sum() / ppt.sum()})
 
     frac_dict = {k: v for k, v in frac}
@@ -351,7 +351,7 @@ if __name__ == '__main__':
         root = '/home/dgketchum/data/IrrigationGIS'
 
     watersheds_shp = '/media/research/IrrigationGIS/gages/watersheds/selected_watersheds.shp'
-    _json = '/media/research/IrrigationGIS/gages/station_metadata/basin_climate_response_all.json'
+    _json = '/media/research/IrrigationGIS/gages/station_metadata/irr_impacted_all.json'
     ee_data = '/media/research/IrrigationGIS/gages/merged_q_ee/monthly_ssebop_tc_q_sw_17NOV2021'
     cc_frac_json = '/media/research/IrrigationGIS/gages/basin_cc_ratios.json'
     water_balance_ratios(_json, ee_data, watersheds=None, metadata_out=cc_frac_json)

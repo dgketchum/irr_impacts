@@ -72,7 +72,7 @@ def fraction_cc_water_balance_fig(metadata, ee_series, fig):
     print(suspect)
 
 
-def impact_time_series_bars(sig_stations, figures, min_area=None):
+def impact_time_series_bars(sig_stations, figures, min_area=None, sort_key='cci'):
     cmap = cm.get_cmap('RdYlGn')
 
     with open(sig_stations, 'r') as f:
@@ -83,24 +83,28 @@ def impact_time_series_bars(sig_stations, figures, min_area=None):
     else:
         stations_l = SELECTED_SYSTEMS
 
-    sort_key = 'cci'
     sort_keys = sorted(stations_l, key=lambda x: stations[x][sort_key], reverse=False)
+    all_x = [stations[k][sort_key] for k in stations_l]
 
     all_slope = []
     min_slope, max_slope = -0.640, 0.530
 
     vert_increment = 1 / 7.
-    v_position = 0
-    fig, axes = plt.subplots(figsize=(12, 24))
+    v_position = 0.02
+    fig, axes = plt.subplots(figsize=(12, 18))
     fig.subplots_adjust(left=0.4)
     ytick, ylab = [], []
+    xmin, xmax, xstd, xmean = np.min(all_x), np.max(all_x), np.std(all_x), np.mean(all_x)
+    xrange = xmax - xmin
+    h_increment = xrange / 5.
+    width = h_increment / 6.
+
     for sid in sort_keys:
         dct = stations[sid]
         impact_keys = [p for p, v in dct.items() if isinstance(v, dict)]
 
         periods = [(int(p.split('-')[0]), int(p.split('-')[1])) for p in impact_keys]
         periods = sorted(periods, key=lambda x: x[1] - x[0])
-        period_arr = [[k for k in range(x[0], x[1] + 1)] for x in periods]
 
         slopes = [dct[k]['slope'] for k in dct.keys() if k in impact_keys]
         [all_slope.append(s) for s in slopes]
@@ -108,40 +112,40 @@ def impact_time_series_bars(sig_stations, figures, min_area=None):
         single_month_resp = [x[1] - x[0] == 0 for x in periods]
         periods = [p[0] for p, s in zip(periods, single_month_resp) if s]
         slopes = [sl for sl, s in zip(slopes, single_month_resp) if s]
-        if np.all(slopes == 0.0):
+        if np.all(slopes == 0.0) or not slopes:
             continue
-
-        for m in [x for x in range(5, 11)]:
+        center = dct[sort_key]
+        months, locations = [x for x in range(5, 11)], list(np.linspace(h_increment * 0.5, -h_increment * 0.5, 6))
+        for m, p in zip(months, locations):
             if m in periods:
                 s = slopes[periods.index(m)]
                 slope_scale = (s - min_slope) / (max_slope - min_slope)
                 color = cmap(slope_scale)
-                axes.barh(v_position, left=m, width=1, height=vert_increment, color=color,
+                axes.barh(v_position, left=(center - p), width=width, height=vert_increment, color=color,
                           edgecolor=color, align='edge', alpha=0.5)
             else:
-                axes.barh(v_position, left=m, width=1, height=vert_increment, color='none',
-                          edgecolor='k', align='edge', alpha=0.3)
+                axes.barh(v_position, left=(center - p), width=width, height=vert_increment, color='none',
+                          edgecolor='k', align='edge', alpha=0.2)
 
         tick_pos = v_position + (vert_increment * 0.5)
         ytick.append(tick_pos), ylab.append(dct['STANAME'])
-        v_position += vert_increment
+        v_position += vert_increment + 0.02
 
     plt.yticks(ytick, ylab)
-    x_tick = list(np.linspace(5.5, 11.5, 6))
-    x_tick_lab = [x for x in range(5, 11)]
-    plt.yticks(ytick, ylab)
-    plt.xticks(x_tick, x_tick_lab)
-    fig_file = os.path.join(figures, 'slope_bar_ALL_9DEC2021.png')
-    plt.xlim([5, 11])
+    # x_tick = list(np.linspace(5.5, 11.5, 6))
+    # x_tick_lab = [x for x in range(5, 11)]
+    # plt.yticks(ytick, ylab)
+    # plt.xticks(x_tick, x_tick_lab)
+    fig_file = os.path.join(figures, 'slope_bar_{}_9DEC2021.png'.format(sort_key))
+    plt.xlim([(xmin - xstd), (xmax + xstd * 2)])
     plt.ylim([0, v_position])
-    plt.suptitle('Irrigation Impact on Gages')
-    # plt.tight_layout()
-    plt.show()
-    # plt.savefig(fig_file)
-    # plt.close()
+    plt.suptitle('Irrigation Impact on Gages by {}'.format(sort_key))
+    # plt.show()
+    plt.savefig(fig_file)
+    plt.close()
 
     print('\nall slopes min {:.3f}, max {:.3f}'.format(min(all_slope), max(all_slope)))
-    print('colorbar slopes used min {:.3f}, max {:.3f}'.format(min_slope, max_slope))
+    print(' slope used min {:.3f}, max {:.3f}'.format(min_slope, max_slope))
 
 
 def response_time_to_area(climate_resp, fig_dir):
@@ -181,7 +185,8 @@ if __name__ == '__main__':
 
     cc_frac_json = '/media/research/IrrigationGIS/gages/basin_cc_ratios.json'
     heat_figs = os.path.join(figs, 'heat_bars_largeSystems_singlemonth')
-    impact_time_series_bars(cc_frac_json, heat_figs, min_area=20000.)
+    for k in ['cc_ppt', 'cc_q', 'cci', 'q_ppt']:
+        impact_time_series_bars(cc_frac_json, heat_figs, min_area=20000., sort_key=k)
 
     # i_json = '/media/research/IrrigationGIS/gages/station_metadata/irr_impacted_all.json'
     # c_json = '/media/research/IrrigationGIS/gages/station_metadata/basin_climate_response_irr.json'
