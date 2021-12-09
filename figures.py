@@ -119,11 +119,16 @@ def impact_time_series_bars(sig_stations, sorting_data, figures, multimonth=True
     with open(sorting_data, 'r') as f:
         sorting_data = json.load(f)
 
-    sort_key = 'cc_frac'
+    sort_key = 'cc_ratio_q'
 
     [stations[k].update({sort_key: sorting_data[k]}) for k, v in stations.items() if k in sorting_data.keys()]
+    stations = {k: v for k, v in stations.items() if sort_key in v.keys()}
     if min_area:
-        stations_l = [k for k, v in stations.items() if v['AREA'] > min_area]
+        stations_l = [k for k, v in stations.items() if v['AREA'] > 20000.]
+    else:
+        stations_l = SELECTED_SYSTEMS
+
+    sort_keys = sorted(stations_l, key=lambda x: stations[x]['AREA'], reverse=False)
 
     all_slope = []
     min_slope, max_slope = -0.584, 0.582
@@ -131,19 +136,20 @@ def impact_time_series_bars(sig_stations, sorting_data, figures, multimonth=True
     vert_increment = 1 / 7.
     v_position = 0
     fig, axes = plt.subplots(figsize=(12, 18))
-    for i, sid in enumerate(SELECTED_SYSTEMS):
+    fig.subplots_adjust(left=0.4)
+    ytick, ylab = [], []
+    for i, sid in enumerate(sort_keys):
         dct = stations[sid]
         impact_keys = [p for p, v in dct.items() if isinstance(v, dict)]
 
         periods = [(int(p.split('-')[0]), int(p.split('-')[1])) for p in impact_keys]
         periods = sorted(periods, key=lambda x: x[1] - x[0])
         period_arr = [[k for k in range(x[0], x[1] + 1)] for x in periods]
-        durations = [len(x) for x in period_arr]
 
         slopes = [dct[k]['slope'] for k in dct.keys() if k in impact_keys]
         [all_slope.append(s) for s in slopes]
 
-        single_month_resp = [x[1] - x[0] == 0 for x in periods]
+        single_month_resp = [x[1] - x[0] <= 1 for x in periods]
         periods = [p[0] for p, s in zip(periods, single_month_resp) if s]
         slopes = [sl for sl, s in zip(slopes, single_month_resp) if s]
 
@@ -158,12 +164,20 @@ def impact_time_series_bars(sig_stations, sorting_data, figures, multimonth=True
                 axes.barh(v_position, left=m, width=1, height=vert_increment, color='none',
                           edgecolor='k', align='edge', alpha=0.3)
 
+        tick_pos = v_position + (vert_increment * 0.5)
+        ytick.append(tick_pos), ylab.append(dct['STANAME'])
         v_position += vert_increment
 
+    plt.yticks(ytick, ylab)
+    x_tick = list(np.linspace(5.5, 11.5, 6))
+    x_tick_lab = [x for x in range(5, 11)]
+    plt.yticks(ytick, ylab)
+    plt.xticks(x_tick, x_tick_lab)
     fig_file = os.path.join(figures, 'slope_bar_ALL_9DEC2021.png')
-    plt.xlim([4, 12])
+    plt.xlim([5, 11])
     plt.ylim([0, v_position])
     plt.suptitle('Irrigation Impact on Gages')
+    # plt.tight_layout()
     plt.show()
     # plt.savefig(fig_file)
     # plt.close()
