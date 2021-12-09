@@ -52,36 +52,13 @@ def plot_clim_q_resid(q, ai, fit_clim, desc_str, years, cc, resid, fit_resid, fi
     plt.close('all')
 
 
-def fraction_cc_water_balance(metadata, ee_series, fig, watersheds=None, metadata_out=None):
+def fraction_cc_water_balance_fig(metadata, ee_series, fig):
     with open(metadata, 'r') as f:
         metadata = json.load(f)
 
     frac = []
     suspect = []
-    for sid, v in metadata.items():
-        # if v['irr_mean'] < 0.005:
-        #     continue
-        if sid in EXCLUDE_STATIONS:
-            continue
-        _file = os.path.join(ee_series, '{}.csv'.format(sid))
-        cdf = hydrograph(_file)
-        years = [x for x in range(1991, 2021)]
-        cc_dates = [(date(y, 5, 1), date(y, 10, 31)) for y in years]
-        clim_dates = [(date(y, 1, 1), date(y, 12, 31)) for y in years]
-        q = np.array([cdf['q'][d[0]: d[1]].sum() for d in clim_dates])
-        ppt = np.array([cdf['ppt'][d[0]: d[1]].sum() for d in clim_dates])
-        cc = np.array([cdf['cc'][d[0]: d[1]].sum() for d in cc_dates])
-        f = cc.sum() / q.sum()
-        if f > 0.15:
-            suspect.append(sid)
-            print('\nsuspect {:.3f}'.format(f), v['STANAME'], sid, '\n')
-        else:
-            print('{:.3f}'.format(f), v['STANAME'], sid)
-        if np.all(cc > 0.):
-            frac.append((sid, f))
-    frac_dict = {k: v for k, v in frac}
-    stations_ = [f[0] for f in frac]
-    frac = [f[1] for f in frac]
+    # TODO use json created in gage_analysis
     print(len(frac), 'irrigated basins')
     # print(min(frac), max(frac), np.mean(frac))
     lim_ = np.round(max(frac), decimals=2)
@@ -93,52 +70,31 @@ def fraction_cc_water_balance(metadata, ee_series, fig, watersheds=None, metadat
     plt.ylabel('Count')
     plt.savefig(fig)
     print(suspect)
-    if metadata_out:
-        with open(metadata_out, 'w') as fp:
-            json.dump(frac_dict, fp, indent=4, sort_keys=False)
-    if watersheds:
-        with fiona.open(watersheds, 'r') as src:
-            features = [f for f in src]
-            meta = src.meta
-        meta['schema']['properties']['cc_f'] = 'float:19.11'
-        out_shp = os.path.join(os.path.dirname(watersheds), os.path.basename(fig).replace('png', 'shp'))
-        with fiona.open(out_shp, 'w', **meta) as dst:
-            for f in features:
-                sid = f['properties']['STAID']
-                if sid in stations_:
-                    f['properties']['cc_f'] = frac_dict[sid]
-                    dst.write(f)
 
 
-def impact_time_series_bars(sig_stations, sorting_data, figures, multimonth=True, min_area=None,
-                            fill_gaps=False):
+def impact_time_series_bars(sig_stations, figures, min_area=None):
     cmap = cm.get_cmap('RdYlGn')
 
     with open(sig_stations, 'r') as f:
         stations = json.load(f)
-    with open(sorting_data, 'r') as f:
-        sorting_data = json.load(f)
 
-    sort_key = 'cc_ratio_q'
-
-    [stations[k].update({sort_key: sorting_data[k]}) for k, v in stations.items() if k in sorting_data.keys()]
-    stations = {k: v for k, v in stations.items() if sort_key in v.keys()}
     if min_area:
-        stations_l = [k for k, v in stations.items() if v['AREA'] > 20000.]
+        stations_l = [k for k, v in stations.items() if v['AREA'] > min_area]
     else:
         stations_l = SELECTED_SYSTEMS
 
-    sort_keys = sorted(stations_l, key=lambda x: stations[x]['AREA'], reverse=False)
+    sort_key = 'cci'
+    sort_keys = sorted(stations_l, key=lambda x: stations[x][sort_key], reverse=False)
 
     all_slope = []
-    min_slope, max_slope = -0.584, 0.582
+    min_slope, max_slope = -0.640, 0.530
 
     vert_increment = 1 / 7.
     v_position = 0
-    fig, axes = plt.subplots(figsize=(12, 18))
+    fig, axes = plt.subplots(figsize=(12, 24))
     fig.subplots_adjust(left=0.4)
     ytick, ylab = [], []
-    for i, sid in enumerate(sort_keys):
+    for sid in sort_keys:
         dct = stations[sid]
         impact_keys = [p for p, v in dct.items() if isinstance(v, dict)]
 
@@ -149,9 +105,11 @@ def impact_time_series_bars(sig_stations, sorting_data, figures, multimonth=True
         slopes = [dct[k]['slope'] for k in dct.keys() if k in impact_keys]
         [all_slope.append(s) for s in slopes]
 
-        single_month_resp = [x[1] - x[0] <= 1 for x in periods]
+        single_month_resp = [x[1] - x[0] == 0 for x in periods]
         periods = [p[0] for p, s in zip(periods, single_month_resp) if s]
         slopes = [sl for sl, s in zip(slopes, single_month_resp) if s]
+        if np.all(slopes == 0.0):
+            continue
 
         for m in [x for x in range(5, 11)]:
             if m in periods:
@@ -221,20 +179,9 @@ if __name__ == '__main__':
     matplotlib.use('TkAgg')
     figs = '/media/research/IrrigationGIS/gages/figures'
 
-    watersheds_shp = '/media/research/IrrigationGIS/gages/watersheds/selected_watersheds.shp'
-    ratio = 'cc_ratio_q'
-    frac_fig = os.path.join(figs, '{}.png'.format(ratio))
-    _json = '/media/research/IrrigationGIS/gages/station_metadata/basin_climate_response_all.json'
-    ee_data = '/media/research/IrrigationGIS/gages/merged_q_ee/monthly_ssebop_tc_q_sw_17NOV2021'
-    cc_frac_json = '/media/research/IrrigationGIS/gages/basin_{}.json'.format(ratio)
-    # fraction_cc_water_balance(_json, ee_data, frac_fig, watersheds=None, metadata_out=cc_frac_json)
-
-    o_json = '/media/research/IrrigationGIS/gages/station_metadata/irr_impacted_all.json'
-
-    coords = '/media/research/IrrigationGIS/gages/basin_areas.json'
+    cc_frac_json = '/media/research/IrrigationGIS/gages/basin_cc_ratios.json'
     heat_figs = os.path.join(figs, 'heat_bars_largeSystems_singlemonth')
-    impact_time_series_bars(o_json, cc_frac_json, figures=heat_figs, multimonth=False, min_area=7000,
-                            fill_gaps=False)
+    impact_time_series_bars(cc_frac_json, heat_figs, min_area=20000.)
 
     # i_json = '/media/research/IrrigationGIS/gages/station_metadata/irr_impacted_all.json'
     # c_json = '/media/research/IrrigationGIS/gages/station_metadata/basin_climate_response_irr.json'
