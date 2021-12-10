@@ -7,13 +7,23 @@ from collections import OrderedDict
 from hydrograph import hydrograph
 
 
+def station_basin_designations(in_shp, out_meta):
+    dct = {}
+    with fiona.open(in_shp, 'r') as src:
+        for f in src:
+            dct[f['properties']['STAID']] = f['properties']['BASIN']
+    with open(out_meta, 'w') as fp:
+        json.dump(dct, fp, indent=4)
+
+
 def get_station_watersheds(stations_source, watersheds_source, out_stations, out_watersheds, station_json=None):
     sta_dct = {}
     with fiona.open(stations_source, 'r') as src:
         point_meta = src.meta
         all_stations = [f for f in src]
         station_ids = [f['properties']['STAID'] for f in src]
-        station_meta = [(f['properties']['STANAME'].replace(',', ''), f['properties']['start'], f['properties']['end']) for f in src]
+        station_meta = [(f['properties']['STANAME'].replace(',', ''), f['properties']['start'], f['properties']['end'])
+                        for f in src]
 
     selected_shapes = []
     selected_points = []
@@ -141,29 +151,33 @@ def get_station_daterange_data(year_start, daily_q_dir, aggregate_q_dir, start_m
 
 
 if __name__ == '__main__':
-    por_stations = '/media/research/IrrigationGIS/gages/gage_loc_usgs/por_gages_nhd.shp'
-    watershed_source = '/media/research/IrrigationGIS/gages/watersheds/combined_station_watersheds.shp'
-    selected_stations = '/media/research/IrrigationGIS/gages/gage_loc_usgs/selected_gages.shp'
-    selected_watersheds = '/media/research/IrrigationGIS/gages/watersheds/selected_watersheds.shp'
-    station_json = '/media/research/IrrigationGIS/gages/station_metadata/station_metadata.json'
-    get_station_watersheds(stations_source=por_stations,
-                           watersheds_source=watershed_source,
-                           out_stations=selected_stations,
-                           out_watersheds=selected_watersheds,
-                           station_json=station_json)
+    root = '/media/research/IrrigationGIS/gages'
+    if not os.path.exists(root):
+        root = '/home/dgketchum/data/IrrigationGIS/gages'
 
-    # shp = '/media/research/IrrigationGIS/gages/gage_loc_usgs/selected_gages.shp'
-    # shp = '/media/research/IrrigationGIS/gages/gage_loc_usgs/selected_gages.shp'
-    # dst = '/media/research/IrrigationGIS/gages/hydrographs/daily_q_update'
+    _shp = os.path.join(root, 'gage_loc_usgs', 'selected_gages_sortBasin.shp')
+    _basin_json = os.path.join(root, 'station_metadata', 'basin_sort.json')
+    station_basin_designations(_shp, _basin_json)
+
+    # por_stations = os.path.join(root, 'gage_loc_usgs/por_gages_nhd.shp')
+    # watershed_source = os.path.join(root, 'watersheds/combined_station_watersheds.shp')
+    # selected_stations = os.path.join(root, 'gage_loc_usgs/selected_gages.shp')
+    # selected_watersheds = os.path.join(root, 'watersheds/selected_watersheds.shp')
+    # station_json = os.path.join(root, 'station_metadata/station_metadata.json')
+    # get_station_watersheds(stations_source=por_stations,
+    #                        watersheds_source=watershed_source,
+    #                        out_stations=selected_stations,
+    #                        out_watersheds=selected_watersheds,
+    #                        station_json=station_json)
+
+    # shp = os.path.join(root, '/gage_loc_usgs/selected_gages.shp')
+    # shp = os.path.join(root, '/gage_loc_usgs/selected_gages.shp')
+    # dst = os.path.join(root, '/hydrographs/daily_q_update')
     # get_station_daily_data('discharge', '1988-01-01', '2020-12-31',
     #                        shp, dst, freq='dv')
 
-    # src = '/media/research/IrrigationGIS/gages/hydrographs/daily_q'
-    # dst = '/media/research/IrrigationGIS/gages/hydrographs/q_monthly'
+    # src = os.path.join(root, '/hydrographs/daily_q')
+    # dst = os.path.join(root, '/hydrographs/q_monthly')
     # get_station_daterange_data(1988, src, dst, resample_freq='M')
 
-    # dst = '/media/research/IrrigationGIS/Montana/water_rights/hydrographs/insta_q'
-    # for year in [x for x in range(1987, 2021)]:
-    #     get_station_daily_data('discharge', '{}-01-01'.format(year), '{}-12-31'.format(year),
-    #                            shp, dst, freq='iv')
 # ========================= EOF ====================================================================
