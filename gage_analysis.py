@@ -84,6 +84,7 @@ def water_balance_ratios(metadata, ee_series, watersheds=None, metadata_out=None
         clim_dates = [(date(y, 1, 1), date(y, 12, 31)) for y in years]
         q = np.array([cdf['q'][d[0]: d[1]].sum() for d in clim_dates])
         ppt = np.array([cdf['ppt'][d[0]: d[1]].sum() for d in clim_dates])
+        etr = np.array([cdf['etr'][d[0]: d[1]].sum() for d in clim_dates])
         cc = np.array([cdf['cc'][d[0]: d[1]].sum() for d in cc_dates])
         irr = np.array([cdf['irr'][d[0]: d[1]].sum() for d in cc_dates])
         cci = np.array([cdf['cci'][d[0]: d[1]].sum() for d in cc_dates])
@@ -92,17 +93,19 @@ def water_balance_ratios(metadata, ee_series, watersheds=None, metadata_out=None
         print('cci: {:.3f}, {}'.format(np.mean(cci), v['STANAME']))
 
         dct[sid] = v
-        dct[sid].update({'cc_ppt': cc.sum() / ppt.sum()})
+        dct[sid].update({'IAREA': np.mean(irr)})
         dct[sid].update({'cc_q': cc.sum() / q.sum()})
         dct[sid].update({'cci': np.mean(cci)})
         dct[sid].update({'q_ppt': q.sum() / ppt.sum()})
+        dct[sid].update({'ai': etr.sum() / ppt.sum()})
 
     frac_dict = {k: v for k, v in frac}
     stations_ = [f[0] for f in frac]
 
     if metadata_out:
-        with open(metadata_out, 'w') as fp:
-            json.dump(dct, fp, indent=4, sort_keys=False)
+        pass
+        # with open(metadata_out, 'w') as fp:
+        #     json.dump(dct, fp, indent=4, sort_keys=False)
     if watersheds:
         with fiona.open(watersheds, 'r') as src:
             features = [f for f in src]
@@ -353,7 +356,7 @@ if __name__ == '__main__':
     watersheds_shp = '/media/research/IrrigationGIS/gages/watersheds/selected_watersheds.shp'
     _json = '/media/research/IrrigationGIS/gages/station_metadata/irr_impacted_all.json'
     ee_data = '/media/research/IrrigationGIS/gages/merged_q_ee/monthly_ssebop_tc_q_sw_17NOV2021'
-    cc_frac_json = '/media/research/IrrigationGIS/gages/basin_cc_ratios.json'
+    cc_frac_json = '/media/research/IrrigationGIS/gages/station_metadata/basin_cc_ratios.json'
     water_balance_ratios(_json, ee_data, watersheds=None, metadata_out=cc_frac_json)
 
     # clim_dir = os.path.join(root, 'gages/merged_q_ee/monthly_ssebop_tc_q_sw_17NOV2021')

@@ -11,7 +11,10 @@ def station_basin_designations(in_shp, out_meta):
     dct = {}
     with fiona.open(in_shp, 'r') as src:
         for f in src:
-            dct[f['properties']['STAID']] = f['properties']['BASIN']
+            if f['properties']['BASIN'] not in dct.keys():
+                dct[f['properties']['BASIN']] = [f['properties']['STAID']]
+                continue
+            dct[f['properties']['BASIN']].append(f['properties']['STAID'])
     with open(out_meta, 'w') as fp:
         json.dump(dct, fp, indent=4)
 
