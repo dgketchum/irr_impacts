@@ -15,7 +15,7 @@ is_authorized()
 sys.path.insert(0, os.path.abspath('..'))
 sys.setrecursionlimit(5000)
 
-RF_ASSET = 'users/dgketchum/IrrMapper/IrrMapper_sw'
+RF_ASSET = 'projects/ee-dgketchum/assets/IrrMapper/IrrMapperComp'
 BASINS = 'users/dgketchum/gages/gage_basins'
 UMRB_CLIP = 'users/dgketchum/boundaries/umrb_ylstn_clip'
 CMBRB_CLIP = 'users/dgketchum/boundaries/CMB_RB_CLIP'
@@ -242,6 +242,6 @@ def extract_flux_stations(shp):
 
 
 if __name__ == '__main__':
-    extract_gridded_data(BASINS, years=[i for i in range(1991, 2021)], description='sw_17NOV2021', min_years=5)
+    extract_gridded_data(BASINS, years=[i for i in range(1986, 2021)], description='Comp_13DEC2021', min_years=0)
     # extract_flux_stations(FLUX_SHP)
 # ========================= EOF ================================================================================
