@@ -9,9 +9,6 @@ from matplotlib import cm
 from matplotlib import pyplot as plt
 from pylab import rcParams
 
-from hydrograph import hydrograph
-from gage_list import EXCLUDE_STATIONS
-
 SYSTEM_STATIONS = ['06109500', '06329500', '09180500', '09315000',
                    '09379500', '12396500', '13269000', '13317000']
 
@@ -50,6 +47,34 @@ def response_time_to_area(climate_resp, fig_dir):
     plt.show()
     plt.savefig(os.path.join(fig_dir, 'slope_irr.png'))
     plt.close()
+
+
+def plot_water_balance_trends(q, q_line, cc, cc_line, years, desc_str, fig_d, cci_per, flow_per):
+
+    rcParams['figure.figsize'] = 16, 10
+    fig, (ax1, ax2) = plt.subplots(1, 2)
+
+    color = 'tab:green'
+    ax1.set_xlabel('Year')
+    ax1.scatter(years, q, color=color)
+    ax1.plot(years, q_line, color=color)
+    ax1.set_ylabel('q', color=color)
+    ax1.tick_params(axis='y', labelcolor=color)
+
+    color = 'tab:red'
+    ax2.set_ylabel('cc', color=color)
+    ax2.scatter(years, cc, color=color)
+    ax2.plot(years, cc_line, color=color)
+    ax2.tick_params(axis='y', labelcolor=color)
+
+    desc_split = desc_str.strip().split('\n')
+    file_name = desc_split[0].replace(' ', '_')
+
+    fig_name = os.path.join(fig_d, '{}_cc_{}-{}_q_{}-{}.png'.format(file_name, cci_per[0], cci_per[1],
+                                                                    flow_per[0], flow_per[1]))
+
+    plt.savefig(fig_name)
+    plt.close('all')
 
 
 def plot_clim_q_resid(q, ai, fit_clim, desc_str, years, cc, resid, fit_resid, fig_d, cci_per, flow_per):

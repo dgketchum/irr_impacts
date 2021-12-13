@@ -13,7 +13,7 @@ from dateutil.relativedelta import relativedelta as rdlt
 import fiona
 import statsmodels.api as sm
 
-from figures import plot_clim_q_resid, SYSTEM_STATIONS, SELECTED_SYSTEMS
+from figures import plot_clim_q_resid, plot_water_balance_trends
 from hydrograph import hydrograph
 
 os.environ['R_HOME'] = '/home/dgketchum/miniconda3/envs/renv/lib/R'
@@ -103,9 +103,8 @@ def water_balance_ratios(metadata, ee_series, watersheds=None, metadata_out=None
     stations_ = [f[0] for f in frac]
 
     if metadata_out:
-        pass
-        # with open(metadata_out, 'w') as fp:
-        #     json.dump(dct, fp, indent=4, sort_keys=False)
+        with open(metadata_out, 'w') as fp:
+            json.dump(dct, fp, indent=4, sort_keys=False)
     if watersheds:
         with fiona.open(watersheds, 'r') as src:
             features = [f for f in src]
@@ -348,16 +347,107 @@ def get_sig_irr_impact(metadata, ee_series, out_jsn=None, fig_dir=None):
     pprint(impacted_gages)
 
 
+def basin_trends(metadata, ee_series, out_jsn=None, fig_dir=None):
+    ct, irr_ct, irr_sig_ct, ct_tot = 0, 0, 0, 0
+    slp_pos, slp_neg = 0, 0
+    sig_stations = {}
+    trend_stations = []
+    with open(metadata, 'r') as f:
+        metadata = json.load(f)
+    for sid, v in metadata.items():
+        # if sid != '13269000':
+        #     continue
+        s_meta = metadata[sid]
+        if s_meta['AREA'] < 7000:
+            continue
+        _file = os.path.join(ee_series, '{}.csv'.format(sid))
+        cdf = hydrograph(_file)
+
+        cdf['cci'] = cdf['cc'] / cdf['irr']
+
+        years = [x for x in range(1991, 2021)]
+
+        q_start, q_end = 1, 12
+        q_dates = [(date(y, q_start, 1), date(y, q_end, 31)) for y in years]
+
+        cc_start, cc_end = 5, 10
+        cc_dates = [(date(y, cc_start, 1), date(y, cc_end, 31)) for y in years]
+
+        q = np.array([cdf['q'][d[0]: d[1]].sum() for d in q_dates])
+        ppt = np.array([cdf['ppt'][d[0]: d[1]].sum() for d in q_dates])
+        etr = np.array([cdf['etr'][d[0]: d[1]].sum() for d in q_dates])
+        cc = np.array([cdf['cc'][d[0]: d[1]].sum() for d in cc_dates])
+        irr = np.array([cdf['irr'][d[0]: d[1]].sum() for d in cc_dates])
+        cci = np.array([cdf['cci'][d[0]: d[1]].sum() for d in cc_dates])
+        ai = etr / ppt
+
+        ct_tot += 1
+
+        cc_q = cc / q
+        print('{} mean cc / q: {}'.format(sid, np.mean(cc_q)))
+        years_c = sm.add_constant(years)
+
+        _years = np.array(years)
+        try:
+            ols_ai = sm.OLS(ai, years_c)
+            ols_cc = sm.OLS(cci, years_c)
+        except Exception as e:
+            print(sid, e, cdf['q'].dropna().index[0])
+            continue
+
+        ols_ai_fit = ols_ai.fit()
+        ols_cc_fit = ols_cc.fit()
+
+        if ols_cc_fit.pvalues[1] < 0.05:
+
+            ols_ai_line = ols_ai_fit.params[1] * _years + ols_ai_fit.params[0]
+            ols_cc_line = ols_cc_fit.params[1] * _years + ols_cc_fit.params[0]
+
+            irr_ct += 1
+
+            desc_str = '{} {}\n' \
+                       'crop consumption {} to {}\n' \
+                       'irr = {:.3f}\n        '.format(sid, s_meta['STANAME'],
+                                                       5, 10,
+                                                       v['IAREA'] / 1e6 * v['AREA'])
+
+            print(desc_str)
+            irr_sig_ct += 1
+            if fig_dir:
+                plot_water_balance_trends(q=q, q_line=ols_ai_line, cc=cci, cc_line=ols_cc_line,
+                                          years=years, desc_str=desc_str, fig_d=fig_dir,
+                                          cci_per=(cc_start, cc_end), flow_per=(q_start, q_end))
+
+            if sid not in sig_stations.keys():
+                sig_stations[sid] = {k: v for k, v in s_meta.items() if not isinstance(v, dict)}
+                sig_stations[sid].update({'{}-{}'.format(cc_start, cc_end): {
+                    'q_window': [q_start, q_end]}})
+            else:
+                sig_stations[sid].update({'{}-{}'.format(cc_start, cc_end): {
+
+                    'q_window': [q_start, q_end]}})
+
+    if out_jsn:
+        with open(out_jsn, 'w') as f:
+            json.dump(sig_stations, f, indent=4, sort_keys=False)
+    pprint(list(sig_stations.keys()))
+    print('{} climate-sig, {} irrigated, {} irr imapacted, {} total'.format(ct, irr_ct, irr_sig_ct,
+                                                                            ct_tot))
+    print('{} positive slope, {} negative'.format(slp_pos, slp_neg))
+    print('total impacted gages: {}'.format(len(trend_stations)))
+    pprint(trend_stations)
+
+
 if __name__ == '__main__':
     root = '/media/research/IrrigationGIS'
     if not os.path.exists(root):
         root = '/home/dgketchum/data/IrrigationGIS'
 
-    watersheds_shp = '/media/research/IrrigationGIS/gages/watersheds/selected_watersheds.shp'
-    _json = '/media/research/IrrigationGIS/gages/station_metadata/irr_impacted_all.json'
-    ee_data = '/media/research/IrrigationGIS/gages/merged_q_ee/monthly_ssebop_tc_q_sw_17NOV2021'
-    cc_frac_json = '/media/research/IrrigationGIS/gages/station_metadata/basin_cc_ratios.json'
-    water_balance_ratios(_json, ee_data, watersheds=None, metadata_out=cc_frac_json)
+    # watersheds_shp = '/media/research/IrrigationGIS/gages/watersheds/selected_watersheds.shp'
+    # _json = '/media/research/IrrigationGIS/gages/station_metadata/irr_impacted_all.json'
+    # ee_data = '/media/research/IrrigationGIS/gages/merged_q_ee/monthly_ssebop_tc_q_sw_17NOV2021'
+    # cc_frac_json = '/media/research/IrrigationGIS/gages/station_metadata/basin_cc_ratios.json'
+    # water_balance_ratios(_json, ee_data, watersheds=None, metadata_out=cc_frac_json)
 
     # clim_dir = os.path.join(root, 'gages/merged_q_ee/monthly_ssebop_tc_q_sw_17NOV2021')
     # i_json = os.path.join(root, 'gages/station_metadata/station_metadata.json')
@@ -370,5 +460,11 @@ if __name__ == '__main__':
     # irr_resp = os.path.join(root, 'gages/station_metadata/irr_impacted_gt30000.json')
     # ee_data = os.path.join(root, 'gages/merged_q_ee/monthly_ssebop_tc_q_sw_17NOV2021')
     # get_sig_irr_impact(clim_resp, ee_data, out_jsn=None, fig_dir=fig_dir)
+
+    irr_impacted = os.path.join(root, 'gages/station_metadata/basin_cc_ratios.json')
+    ee_data = os.path.join(root, 'gages/merged_q_ee/monthly_ssebop_tc_q_sw_17NOV2021')
+    fig_dir = os.path.join(root, 'gages/figures/irr_impact_trends')
+    trend_json = os.path.join(root, 'gages/water_balance_time_series/cc_q_trends.json')
+    basin_trends(irr_impacted, ee_data, out_jsn=trend_json, fig_dir=fig_dir)
 
 # ========================= EOF ====================================================================
