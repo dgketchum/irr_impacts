@@ -43,6 +43,8 @@ def merge_ssebop_tc_q(extracts, flow_dir, out_dir, glob='glob'):
     for d in dfd:
         try:
             sta = d['STAID_STR']
+            # if sta not in ['06177000']:
+            #     continue
 
             # handle pre-1991 and off-growing season KeyError
             irr, cc, et = [], [], []
@@ -88,8 +90,8 @@ def merge_ssebop_tc_q(extracts, flow_dir, out_dir, glob='glob'):
 
 if __name__ == '__main__':
     gage_src = '/media/research/IrrigationGIS/gages/hydrographs/q_monthly'
-    extract_ = '/media/research/IrrigationGIS/gages/ee_exports/monthly/IrrMapper_sw'
-    out_dir = '/media/research/IrrigationGIS/gages/merged_q_ee/monthly_ssebop_tc_q_sw_17NOV2021'
-    g = 'sw_17NOV2021'
+    extract_ = '/media/research/IrrigationGIS/gages/ee_exports/monthly/IrrMapperComp'
+    out_dir = '/media/research/IrrigationGIS/gages/merged_q_ee/monthly_ssebop_tc_q_Comp_14DEC2021'
+    g = 'Comp_13DEC2021'
     merge_ssebop_tc_q(extract_, gage_src, out_dir, glob=g)
 # ========================= EOF ====================================================================

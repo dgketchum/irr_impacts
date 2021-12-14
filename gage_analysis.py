@@ -347,95 +347,64 @@ def get_sig_irr_impact(metadata, ee_series, out_jsn=None, fig_dir=None):
     pprint(impacted_gages)
 
 
-def basin_trends(metadata, ee_series, out_jsn=None, fig_dir=None):
+def basin_trends(key, metadata, ee_series, start_mo, end_mo, out_jsn=None, fig_dir=None):
     ct, irr_ct, irr_sig_ct, ct_tot = 0, 0, 0, 0
-    slp_pos, slp_neg = 0, 0
     sig_stations = {}
-    trend_stations = []
     with open(metadata, 'r') as f:
         metadata = json.load(f)
     for sid, v in metadata.items():
-        # if sid != '13269000':
+        # if sid not in ['06177000']:
         #     continue
         s_meta = metadata[sid]
         if s_meta['AREA'] < 7000:
             continue
         _file = os.path.join(ee_series, '{}.csv'.format(sid))
-        cdf = hydrograph(_file)
+        try:
+            cdf = hydrograph(_file)
+        except FileNotFoundError:
+            continue
 
         cdf['cci'] = cdf['cc'] / cdf['irr']
-
+        cdf['ai'] = cdf['etr'] / cdf['ppt']
         years = [x for x in range(1991, 2021)]
 
-        q_start, q_end = 1, 12
-        q_dates = [(date(y, q_start, 1), date(y, q_end, 31)) for y in years]
+        dates = [(date(y, start_mo, 1), date(y, end_mo, 31)) for y in years]
 
-        cc_start, cc_end = 5, 10
-        cc_dates = [(date(y, cc_start, 1), date(y, cc_end, 31)) for y in years]
-
-        q = np.array([cdf['q'][d[0]: d[1]].sum() for d in q_dates])
-        ppt = np.array([cdf['ppt'][d[0]: d[1]].sum() for d in q_dates])
-        etr = np.array([cdf['etr'][d[0]: d[1]].sum() for d in q_dates])
-        cc = np.array([cdf['cc'][d[0]: d[1]].sum() for d in cc_dates])
-        irr = np.array([cdf['irr'][d[0]: d[1]].sum() for d in cc_dates])
-        cci = np.array([cdf['cci'][d[0]: d[1]].sum() for d in cc_dates])
-        ai = etr / ppt
+        data = np.array([cdf[key][d[0]: d[1]].sum() for d in dates])
 
         ct_tot += 1
-
-        cc_q = cc / q
-        print('{} mean cc / q: {}'.format(sid, np.mean(cc_q)))
         years_c = sm.add_constant(years)
 
         _years = np.array(years)
         try:
-            ols_ai = sm.OLS(ai, years_c)
-            ols_cc = sm.OLS(cci, years_c)
+            ols = sm.OLS(data, years_c)
         except Exception as e:
             print(sid, e, cdf['q'].dropna().index[0])
             continue
 
-        ols_ai_fit = ols_ai.fit()
-        ols_cc_fit = ols_cc.fit()
+        ols_fit = ols.fit()
 
-        if ols_cc_fit.pvalues[1] < 0.05:
+        # if ols_fit.pvalues[1] < 0.05:
 
-            ols_ai_line = ols_ai_fit.params[1] * _years + ols_ai_fit.params[0]
-            ols_cc_line = ols_cc_fit.params[1] * _years + ols_cc_fit.params[0]
+        ols_line = ols_fit.params[1] * _years + ols_fit.params[0]
 
-            irr_ct += 1
+        irr_ct += 1
 
-            desc_str = '{} {}\n' \
-                       'crop consumption {} to {}\n' \
-                       'irr = {:.3f}\n        '.format(sid, s_meta['STANAME'],
-                                                       5, 10,
-                                                       v['IAREA'] / 1e6 * v['AREA'])
+        desc_str = '{} {}\n' \
+                   'crop consumption {} to {}\n' \
+                   'irr = {:.3f}\n        '.format(sid, s_meta['STANAME'],
+                                                   5, 10,
+                                                   v['IAREA'] / 1e6 * v['AREA'])
 
-            print(desc_str)
-            irr_sig_ct += 1
-            if fig_dir:
-                plot_water_balance_trends(q=q, q_line=ols_ai_line, cc=cci, cc_line=ols_cc_line,
-                                          years=years, desc_str=desc_str, fig_d=fig_dir,
-                                          cci_per=(cc_start, cc_end), flow_per=(q_start, q_end))
-
-            if sid not in sig_stations.keys():
-                sig_stations[sid] = {k: v for k, v in s_meta.items() if not isinstance(v, dict)}
-                sig_stations[sid].update({'{}-{}'.format(cc_start, cc_end): {
-                    'q_window': [q_start, q_end]}})
-            else:
-                sig_stations[sid].update({'{}-{}'.format(cc_start, cc_end): {
-
-                    'q_window': [q_start, q_end]}})
+        print(desc_str)
+        irr_sig_ct += 1
+        if fig_dir:
+            plot_water_balance_trends(data=data, data_line=ols_line, data_str=key,
+                                      years=years, desc_str=desc_str, fig_d=fig_dir)
 
     if out_jsn:
         with open(out_jsn, 'w') as f:
             json.dump(sig_stations, f, indent=4, sort_keys=False)
-    pprint(list(sig_stations.keys()))
-    print('{} climate-sig, {} irrigated, {} irr imapacted, {} total'.format(ct, irr_ct, irr_sig_ct,
-                                                                            ct_tot))
-    print('{} positive slope, {} negative'.format(slp_pos, slp_neg))
-    print('total impacted gages: {}'.format(len(trend_stations)))
-    pprint(trend_stations)
 
 
 if __name__ == '__main__':
@@ -462,9 +431,14 @@ if __name__ == '__main__':
     # get_sig_irr_impact(clim_resp, ee_data, out_jsn=None, fig_dir=fig_dir)
 
     irr_impacted = os.path.join(root, 'gages/station_metadata/basin_cc_ratios.json')
-    ee_data = os.path.join(root, 'gages/merged_q_ee/monthly_ssebop_tc_q_sw_17NOV2021')
-    fig_dir = os.path.join(root, 'gages/figures/irr_impact_trends')
-    trend_json = os.path.join(root, 'gages/water_balance_time_series/cc_q_trends.json')
-    basin_trends(irr_impacted, ee_data, out_jsn=trend_json, fig_dir=fig_dir)
+    ee_data = os.path.join(root, 'gages/merged_q_ee/monthly_ssebop_tc_q_Comp_14DEC2021')
+    fig_dir = os.path.join(root, 'gages/figures/water_balance_time_series')
+    # trend_json = os.path.join(root, 'gages/water_balance_time_series/cc_q_trends.json')
+    for k in ['ppt', 'q', 'etr', 'ai', 'cc', 'cci', 'irr'][-1:]:
+        fig_ = os.path.join(fig_dir, k)
+        if not os.path.exists(fig_):
+            os.mkdir(fig_)
+        basin_trends(k, irr_impacted, ee_data, out_jsn=None, fig_dir=fig_,
+                     start_mo=1, end_mo=12)
 
 # ========================= EOF ====================================================================

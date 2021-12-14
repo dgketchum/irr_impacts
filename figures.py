@@ -49,29 +49,22 @@ def response_time_to_area(climate_resp, fig_dir):
     plt.close()
 
 
-def plot_water_balance_trends(q, q_line, cc, cc_line, years, desc_str, fig_d, cci_per, flow_per):
+def plot_water_balance_trends(data, data_line, data_str, years, desc_str, fig_d):
 
     rcParams['figure.figsize'] = 16, 10
-    fig, (ax1, ax2) = plt.subplots(1, 2)
+    fig, ax1 = plt.subplots(1, 1)
 
     color = 'tab:green'
     ax1.set_xlabel('Year')
-    ax1.scatter(years, q, color=color)
-    ax1.plot(years, q_line, color=color)
-    ax1.set_ylabel('q', color=color)
+    ax1.scatter(years, data, color=color)
+    ax1.plot(years, data_line, color=color)
+    ax1.set_ylabel(data_str, color=color)
     ax1.tick_params(axis='y', labelcolor=color)
-
-    color = 'tab:red'
-    ax2.set_ylabel('cc', color=color)
-    ax2.scatter(years, cc, color=color)
-    ax2.plot(years, cc_line, color=color)
-    ax2.tick_params(axis='y', labelcolor=color)
 
     desc_split = desc_str.strip().split('\n')
     file_name = desc_split[0].replace(' ', '_')
 
-    fig_name = os.path.join(fig_d, '{}_cc_{}-{}_q_{}-{}.png'.format(file_name, cci_per[0], cci_per[1],
-                                                                    flow_per[0], flow_per[1]))
+    fig_name = os.path.join(fig_d, '{}_{}.png'.format(file_name, data_str))
 
     plt.savefig(fig_name)
     plt.close('all')

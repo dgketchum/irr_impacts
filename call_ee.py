@@ -83,7 +83,7 @@ def extract_gridded_data(tables, years=None, description=None, min_years=0):
     irr_coll = ee.ImageCollection(RF_ASSET)
     coll = irr_coll.filterDate('1991-01-01', '2020-12-31').select('classification')
     remap = coll.map(lambda img: img.lt(1))
-    irr_mask = remap.sum().gt(min_years)
+    irr_min_yr_mask = remap.sum().gt(min_years)
     # sum = remap.sum().mask(irr_mask)
 
     for yr in years:
@@ -93,7 +93,7 @@ def extract_gridded_data(tables, years=None, description=None, min_years=0):
             e = '{}-{}-{}'.format(yr, str(month).rjust(2, '0'), end_day)
 
             irr = irr_coll.filterDate('{}-01-01'.format(yr), '{}-12-31'.format(yr)).select('classification').mosaic()
-            irr_mask = irr_mask.updateMask(irr.lt(1))
+            irr_mask = irr_min_yr_mask.updateMask(irr.lt(1))
 
             annual_coll = ee.ImageCollection('users/dgketchum/ssebop/cmbrb').merge(
                 ee.ImageCollection('users/hoylmanecohydro2/ssebop/cmbrb'))
@@ -242,6 +242,6 @@ def extract_flux_stations(shp):
 
 
 if __name__ == '__main__':
-    extract_gridded_data(BASINS, years=[i for i in range(1986, 2021)], description='Comp_13DEC2021', min_years=0)
+    extract_gridded_data(BASINS, years=[i for i in range(1986, 2021)], description='Comp_14DEC2021', min_years=0)
     # extract_flux_stations(FLUX_SHP)
 # ========================= EOF ================================================================================
