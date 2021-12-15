@@ -91,7 +91,7 @@ def merge_ssebop_tc_q(extracts, flow_dir, out_dir, glob='glob'):
 if __name__ == '__main__':
     gage_src = '/media/research/IrrigationGIS/gages/hydrographs/q_monthly'
     extract_ = '/media/research/IrrigationGIS/gages/ee_exports/monthly/IrrMapperComp'
-    out_dir = '/media/research/IrrigationGIS/gages/merged_q_ee/monthly_ssebop_tc_q_Comp_14DEC2021'
-    g = 'Comp_13DEC2021'
+    out_dir = '/media/research/IrrigationGIS/gages/merged_q_ee/monthly_ssebop_tc_q_Comp_16DEC2021'
+    g = 'Comp_14DEC2021'
     merge_ssebop_tc_q(extract_, gage_src, out_dir, glob=g)
 # ========================= EOF ====================================================================
