@@ -184,11 +184,30 @@ def trends_panel(q_clime, irr_impact, cc_trend, ts_data, example_gage='06054500'
     ex_clim_resp = q_clime_d[example_gage]
     ex_irr_imp = irr_impact_d[example_gage]
     ex_cc_trend = cc_trend_d[example_gage]
-    ex_time_series = hydrograph(os.path.join(ts_data, '{}.csv'.format(example_gage)))
-
     ex_irr_resid_ts = get_sig_irr_impact(q_clime, ts_data, out_jsn=None,
                                          fig_dir=None, gage_example=example_gage)
-    pass
+    gage_data = ex_irr_resid_ts[example_gage]['7-7']
+    q, ai, clim_line = gage_data['q_data'], gage_data['ai_data'], gage_data['q_ai_line']
+    fig, ax = plt.subplots(1, 3)
+    ax[0].scatter(ai, q)
+    ax[0].plot(ai, clim_line)
+    ax[0].set(xlabel='ETr / PPT [-]')
+    ax[0].set(ylabel='q [m^3]')
+
+    cci, resid, resid_line = gage_data['q_data'], gage_data['ai_data'], gage_data['q_ai_line']
+    ax[1].set(xlabel='cci [m]')
+    ax[1].set(ylabel='q epsilon [m^3]')
+    ax[1].scatter(cci, resid)
+    ax[1].plot(cci, resid_line)
+
+    years = [x for x in range(1991, 2021)]
+    cc, cc_line = ex_cc_trend['cc_data'], ex_cc_trend['cc_line']
+    ax[2].set(xlabel='Year')
+    ax[2].set(ylabel='cc [m]')
+    ax[2].scatter(cci, years)
+    ax[2].plot(years, cc_line)
+
+    plt.show()
 
 
 if __name__ == '__main__':

@@ -336,11 +336,10 @@ def get_sig_irr_impact(metadata, ee_series, out_jsn=None, fig_dir=None, gage_exa
                                                                                      'q_window': k,
                                                                                      'q_data': list(q),
                                                                                      'ai_data': list(ai),
-                                                                                     'q_ai_line': list(clim_line)}})
-                        if gage_example:
-                            sig_stations[sid].update({'{}-{}'.format(cc_start, cc_end): {'q_data': list(q),
-                                                                                         'ai_data': list(ai),
-                                                                                         'q_ai_line': list(clim_line)}})
+                                                                                     'q_ai_line': list(clim_line),
+                                                                                     'cci_data': list(cc),
+                                                                                     'q_resid': list(resid),
+                                                                                     'q_resid_line': list(resid_line)}})
 
                     else:
                         sig_stations[sid].update({'{}-{}'.format(cc_start, cc_end): {'sig': fit_resid.pvalues[1],
@@ -351,12 +350,12 @@ def get_sig_irr_impact(metadata, ee_series, out_jsn=None, fig_dir=None, gage_exa
                                                                                      'q_window': k,
                                                                                      'q_data': list(q),
                                                                                      'ai_data': list(ai),
-                                                                                     'q_ai_line': list(clim_line)
+                                                                                     'q_ai_line': list(clim_line),
+                                                                                     'cci_data': list(cc),
+                                                                                     'q_resid': list(resid),
+                                                                                     'q_resid_line': list(resid_line)
                                                                                      }})
-                        if gage_example:
-                            sig_stations[sid].update({'{}-{}'.format(cc_start, cc_end): {'q_data': list(q),
-                                                                                         'ai_data': list(ai),
-                                                                                         'q_ai_line': list(clim_line)}})
+
     if gage_example:
         return sig_stations
 
