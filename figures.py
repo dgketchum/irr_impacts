@@ -1,13 +1,14 @@
 import os
 import json
-from datetime import date
 
-import fiona
 import numpy as np
 import matplotlib
 from matplotlib import cm
 from matplotlib import pyplot as plt
-from pylab import rcParams
+
+from gage_list import EXCLUDE_STATIONS
+from hydrograph import hydrograph
+from gage_analysis import climate_flow_correlation, get_sig_irr_impact
 
 SYSTEM_STATIONS = ['06109500', '06329500', '09180500', '09315000',
                    '09379500', '12396500', '13269000', '13317000']
@@ -47,58 +48,6 @@ def response_time_to_area(climate_resp, fig_dir):
     plt.show()
     plt.savefig(os.path.join(fig_dir, 'slope_irr.png'))
     plt.close()
-
-
-def plot_water_balance_trends(data, data_line, data_str, years, desc_str, fig_d):
-
-    rcParams['figure.figsize'] = 16, 10
-    fig, ax1 = plt.subplots(1, 1)
-
-    color = 'tab:green'
-    ax1.set_xlabel('Year')
-    ax1.scatter(years, data, color=color)
-    ax1.plot(years, data_line, color=color)
-    ax1.set_ylabel(data_str, color=color)
-    ax1.tick_params(axis='y', labelcolor=color)
-
-    desc_split = desc_str.strip().split('\n')
-    file_name = desc_split[0].replace(' ', '_')
-
-    fig_name = os.path.join(fig_d, '{}_{}.png'.format(file_name, data_str))
-
-    plt.savefig(fig_name)
-    plt.close('all')
-
-
-def plot_clim_q_resid(q, ai, fit_clim, desc_str, years, cc, resid, fit_resid, fig_d, cci_per, flow_per):
-    resid_line = fit_resid.params[1] * cc + fit_resid.params[0]
-    clim_line = fit_clim.params[1] * ai + fit_clim.params[0]
-    rcParams['figure.figsize'] = 16, 10
-    fig, (ax1, ax2) = plt.subplots(1, 2)
-    ax1.scatter(ai, q)
-    ax1.plot(ai, clim_line)
-    ax1.set(xlabel='ETr / PPT [-]')
-    ax1.set(ylabel='q [m^3]')
-
-    for i, y in enumerate(years):
-        ax1.annotate(y, (ai[i], q[i]))
-        plt.suptitle(desc_str)
-
-    ax2.set(xlabel='cc [m]')
-    ax2.set(ylabel='q epsilon [m^3]')
-    ax2.scatter(cc, resid)
-    ax2.plot(cc, resid_line)
-    for i, y in enumerate(years):
-        ax2.annotate(y, (cc[i], resid[i]))
-
-    desc_split = desc_str.strip().split('\n')
-    file_name = desc_split[0].replace(' ', '_')
-
-    fig_name = os.path.join(fig_d, '{}_cc_{}-{}_q_{}-{}.png'.format(file_name, cci_per[0], cci_per[1],
-                                                                    flow_per[0], flow_per[1]))
-
-    plt.savefig(fig_name)
-    plt.close('all')
 
 
 def fraction_cc_water_balance_fig(metadata, ee_series, fig):
@@ -168,6 +117,8 @@ def impact_time_series_bars(sig_stations, basin_designations, figures, min_area=
         width = h_increment / 6.
 
         for sid in sort_keys:
+            if sid in EXCLUDE_STATIONS:
+                continue
             dct = stations[sid]
             impact_keys = [p for p, v in dct.items() if isinstance(v, dict)]
 
@@ -221,6 +172,25 @@ def impact_time_series_bars(sig_stations, basin_designations, figures, min_area=
         print(' slope used min {:.3f}, max {:.3f}'.format(min_slope, max_slope))
 
 
+def trends_panel(q_clime, irr_impact, cc_trend, ts_data, example_gage='06054500'):
+
+    with open(q_clime, 'r') as f:
+        q_clime_d = json.load(f)
+    with open(irr_impact, 'r') as f:
+        irr_impact_d = json.load(f)
+    with open(cc_trend, 'r') as f:
+        cc_trend_d = json.load(f)
+
+    ex_clim_resp = q_clime_d[example_gage]
+    ex_irr_imp = irr_impact_d[example_gage]
+    ex_cc_trend = cc_trend_d[example_gage]
+    ex_time_series = hydrograph(os.path.join(ts_data, '{}.csv'.format(example_gage)))
+
+    ex_irr_resid_ts = get_sig_irr_impact(q_clime, ts_data, out_jsn=None,
+                                         fig_dir=None, gage_example=example_gage)
+    pass
+
+
 if __name__ == '__main__':
     matplotlib.use('TkAgg')
     root = '/media/research/IrrigationGIS/gages'
@@ -232,12 +202,20 @@ if __name__ == '__main__':
     cc_frac_json = os.path.join(root, 'station_metadata/basin_cc_ratios.json')
     basin_json = os.path.join(root, 'station_metadata/basin_sort.json')
     heat_figs = os.path.join(figs, 'heat_bars_largeSystems_singlemonth')
-    for sk in ['IAREA', 'ai', 'AREA']:  # 'cc_ppt', 'cc_q', 'cci', 'q_ppt']
-        impact_time_series_bars(cc_frac_json, basin_json,
-                                heat_figs, min_area=7000., sort_key=sk, x_key='cci')
+    # for sk in ['IAREA', 'ai', 'AREA']:  # 'cc_ppt', 'cc_q', 'cci', 'q_ppt']
+    #     impact_time_series_bars(cc_frac_json, basin_json,
+    #                             heat_figs, min_area=2000., sort_key=sk, x_key='cci')
 
     # i_json = '/media/research/IrrigationGIS/gages/station_metadata/irr_impacted_all.json'
     # c_json = '/media/research/IrrigationGIS/gages/station_metadata/basin_climate_response_irr.json'
     # scatter_figs = os.path.join(figs, 'scatter_area_v_climate_response')
     # response_time_to_area(c_json, fig_dir=figs)
+
+    clim_resp = os.path.join(root, 'station_metadata/basin_climate_response_all.json')
+    trend_metatdata_dir = os.path.join(root, 'station_metadata/significant_gt_2000sqkm')
+    cc_trends = os.path.join(trend_metatdata_dir, 'sig_trends_cc.json')
+    irr_resp = os.path.join(root, 'station_metadata/irr_impacted_all.json')
+    clim_dir = os.path.join(root, 'merged_q_ee/monthly_ssebop_tc_q_Comp_16DEC2021')
+    trends_panel(q_clime=clim_resp, irr_impact=irr_resp, cc_trend=cc_trends, ts_data=clim_dir)
+
 # ========================= EOF ====================================================================

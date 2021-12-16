@@ -141,7 +141,7 @@ def extract_gridded_data(tables, years=None, description=None,
             if basins:
                 selector = ['STAID']
             else:
-                selector = ['GEOID']
+                selector = ['GEOID', 'STUDYINT']
 
             if yr > 1990 and month in [x for x in range(4, 11)]:
                 bands = irr.addBands([et, cc, ppt, etr, swb_aet])

@@ -3,9 +3,7 @@ import os
 from matplotlib import rcParams, pyplot as plt
 
 
-def plot_clim_q_resid(q, ai, fit_clim, desc_str, years, cc, resid, fit_resid, fig_d, cci_per, flow_per):
-    resid_line = fit_resid.params[1] * cc + fit_resid.params[0]
-    clim_line = fit_clim.params[1] * ai + fit_clim.params[0]
+def plot_clim_q_resid(q, ai, clim_line, desc_str, years, cc, resid, resid_line, fig_d, cci_per, flow_per):
     rcParams['figure.figsize'] = 16, 10
     fig, (ax1, ax2) = plt.subplots(1, 2)
     ax1.scatter(ai, q)

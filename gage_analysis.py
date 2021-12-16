@@ -13,7 +13,7 @@ from dateutil.relativedelta import relativedelta as rdlt
 import fiona
 import statsmodels.api as sm
 
-from figures import plot_clim_q_resid, plot_water_balance_trends
+from bulk_analysis_figs import plot_clim_q_resid, plot_water_balance_trends
 from hydrograph import hydrograph
 
 os.environ['R_HOME'] = '/home/dgketchum/miniconda3/envs/renv/lib/R'
@@ -129,17 +129,12 @@ def climate_flow_correlation(climate_dir, in_json, out_json, plot_r=None):
     with open(in_json, 'r') as f:
         metadata = json.load(f)
     for csv in l:
-        # try:
         sid = os.path.basename(csv).strip('.csv')
         s_meta = metadata[sid]
-        # if s_meta['AREA'] < 30000.:
-        #     continue
 
         df = hydrograph(csv)
         mean_irr = np.nanmean(df['irr'].values)
         irr_pct = mean_irr * (1. / 1e6) / s_meta['AREA']
-        # if irr_pct == 0.0:
-        #     continue
 
         years = [x for x in range(1991, 2021)]
 
@@ -210,7 +205,7 @@ def climate_flow_correlation(climate_dir, in_json, out_json, plot_r=None):
         json.dump(windows, f, indent=4)
 
 
-def get_sig_irr_impact(metadata, ee_series, out_jsn=None, fig_dir=None):
+def get_sig_irr_impact(metadata, ee_series, out_jsn=None, fig_dir=None, gage_example=None):
     ct, irr_ct, irr_sig_ct, ct_tot = 0, 0, 0, 0
     slp_pos, slp_neg = 0, 0
     sig_stations = {}
@@ -218,6 +213,10 @@ def get_sig_irr_impact(metadata, ee_series, out_jsn=None, fig_dir=None):
     with open(metadata, 'r') as f:
         metadata = json.load(f)
     for sid, v in metadata.items():
+
+        if gage_example and sid != gage_example:
+            continue
+
         s_meta = metadata[sid]
         _file = os.path.join(ee_series, '{}.csv'.format(sid))
         cdf = hydrograph(_file)
@@ -303,7 +302,12 @@ def get_sig_irr_impact(metadata, ee_series, out_jsn=None, fig_dir=None):
                     else:
                         slp_neg += 1
 
+                    lr = linregress(resid, cc)
+                    res_r, res_p = lr.rvalue ** 2, lr.pvalue
+
                     slope = fit_resid.params[1] * (np.std(cc) / np.std(resid))
+                    resid_line = fit_resid.params[1] * cc + fit_resid.params[0]
+                    clim_line = fit_clim.params[1] * ai + fit_clim.params[0]
                     desc_str = '{} {}\n' \
                                '{} months climate, flow months {}-{}\n' \
                                'crop consumption {} to {}\n' \
@@ -317,21 +321,37 @@ def get_sig_irr_impact(metadata, ee_series, out_jsn=None, fig_dir=None):
                     print(desc_str)
                     irr_sig_ct += 1
                     if fig_dir:
-                        plot_clim_q_resid(q=q, ai=ai, fit_clim=fit_clim, desc_str=desc_str, years=years, cc=cc,
-                                          resid=resid, fit_resid=fit_resid, fig_d=fig_dir, cci_per=cc_period,
+                        plot_clim_q_resid(q=q, ai=ai, clim_line=clim_line, desc_str=desc_str, years=years, cc=cc,
+                                          resid=resid, resid_line=resid_line, fig_d=fig_dir, cci_per=cc_period,
                                           flow_per=(q_start, q_end))
 
                     if sid not in sig_stations.keys():
+
                         sig_stations[sid] = {k: v for k, v in s_meta.items() if not isinstance(v, dict)}
                         sig_stations[sid].update({'{}-{}'.format(cc_start, cc_end): {'sig': fit_resid.pvalues[1],
                                                                                      'slope': slope,
+                                                                                     'clim_rsq': r,
+                                                                                     'resid_rsq': res_r,
                                                                                      'lag': lag,
                                                                                      'q_window': k}})
+                        if gage_example:
+                            sig_stations[sid].update({'{}-{}'.format(cc_start, cc_end): {'q_data': list(q),
+                                                                                         'ai_data': list(ai),
+                                                                                         'q_ai_line': list(clim_line)}})
+
                     else:
                         sig_stations[sid].update({'{}-{}'.format(cc_start, cc_end): {'sig': fit_resid.pvalues[1],
                                                                                      'slope': slope,
+                                                                                     'clim_rsq': r,
+                                                                                     'resid_rsq': res_r,
                                                                                      'lag': lag,
                                                                                      'q_window': k}})
+                        if gage_example:
+                            sig_stations[sid].update({'{}-{}'.format(cc_start, cc_end): {'q_data': list(q),
+                                                                                         'ai_data': list(ai),
+                                                                                         'q_ai_line': list(clim_line)}})
+    if gage_example:
+        return sig_stations
 
     impacted_gages = list(set(impacted_gages))
     if out_jsn:
@@ -399,10 +419,13 @@ def basin_trends(key, metadata, ee_series, start_mo, end_mo, out_jsn=None, fig_d
             if fig_dir:
                 plot_water_balance_trends(data=data, data_line=ols_line, data_str=key,
                                           years=years, desc_str=desc_str, fig_d=fig_dir)
+            sig_stations[sid] = {'{}_data'.format(key): list(data),
+                                 '{}_line'.format(key): list(ols_line)}
 
     if out_jsn:
         with open(out_jsn, 'w') as f:
             json.dump(sig_stations, f, indent=4, sort_keys=False)
+            print('write {} sig {} to file'.format(len(sig_stations.keys()), key))
 
 
 if __name__ == '__main__':
@@ -411,17 +434,17 @@ if __name__ == '__main__':
         root = '/home/dgketchum/data/IrrigationGIS'
 
     ee_data = os.path.join(root, 'gages/merged_q_ee/monthly_ssebop_tc_q_Comp_16DEC2021')
-    clim_resp = os.path.join(root, 'gages/station_metadata/basin_climate_response_irr.json')
+    clim_resp = os.path.join(root, 'gages/station_metadata/basin_climate_response_all.json')
 
     clim_dir = os.path.join(root, 'gages/merged_q_ee/monthly_ssebop_tc_q_Comp_16DEC2021')
     i_json = os.path.join(root, 'gages/station_metadata/station_metadata.json')
-    # fig_dir_ = os.path.join(root, 'gages/figures/clim_q_correlations')
+    fig_dir_ = os.path.join(root, 'gages/figures/clim_q_correlations')
     # climate_flow_correlation(climate_dir=clim_dir, in_json=i_json,
-    #                         out_json=clim_resp, plot_r=fig_dir_)
+    #                          out_json=clim_resp, plot_r=fig_dir_)
 
-    # fig_dir = os.path.join(root, 'gages/figures/irr_impact_q_clim_delQ_cci_all')
-    irr_resp = os.path.join(root, 'gages/station_metadata/irr_impacted_irr.json')
-    # get_sig_irr_impact(clim_resp, ee_data, out_jsn=irr_resp, fig_dir=fig_dir)
+    fig_dir = os.path.join(root, 'gages/figures/irr_impact_q_clim_delQ_cci_all')
+    irr_resp = os.path.join(root, 'gages/station_metadata/irr_impacted_all_w_rsq.json')
+    get_sig_irr_impact(clim_resp, ee_data, out_jsn=irr_resp, fig_dir=fig_dir)
 
     watersheds_shp = '/media/research/IrrigationGIS/gages/watersheds/selected_watersheds.shp'
     _json = '/media/research/IrrigationGIS/gages/station_metadata/irr_impacted_all.json'
@@ -430,13 +453,15 @@ if __name__ == '__main__':
 
     irr_impacted = os.path.join(root, 'gages/station_metadata/basin_cc_ratios.json')
     fig_dir = os.path.join(root, 'gages/figures/water_balance_time_series/significant_gt_2000sqkm')
+    trend_metatdata_dir = os.path.join(root, 'gages/station_metadata/significant_gt_2000sqkm')
     trend_json = os.path.join(root, 'gages/water_balance_time_series/cc_q_trends.json')
 
-    for k in ['ppt', 'q', 'etr', 'ai', 'cc', 'cci', 'irr']:
-        fig_ = os.path.join(fig_dir, k)
-        if not os.path.exists(fig_):
-            os.mkdir(fig_)
-        basin_trends(k, irr_impacted, ee_data, out_jsn=None, fig_dir=fig_,
-                     start_mo=1, end_mo=12, significant=True)
+    # for k in ['ppt', 'q', 'etr', 'ai', 'cc', 'cci', 'irr']:
+    #     fig_ = os.path.join(fig_dir, k)
+    #     if not os.path.exists(fig_):
+    #         os.mkdir(fig_)
+    #     out_json = os.path.join(trend_metatdata_dir, 'sig_trends_{}.json'.format(k))
+    #     basin_trends(k, irr_impacted, ee_data, out_jsn=out_json, fig_dir=fig_,
+    #                  start_mo=1, end_mo=12, significant=True)
 
 # ========================= EOF ====================================================================
