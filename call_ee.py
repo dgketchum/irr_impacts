@@ -17,6 +17,7 @@ sys.setrecursionlimit(5000)
 
 RF_ASSET = 'projects/ee-dgketchum/assets/IrrMapper/IrrMapperComp'
 BASINS = 'users/dgketchum/gages/gage_basins'
+COUNTIES = 'users/dgketchum/boundaries/western_11_co_study'
 UMRB_CLIP = 'users/dgketchum/boundaries/umrb_ylstn_clip'
 CMBRB_CLIP = 'users/dgketchum/boundaries/CMB_RB_CLIP'
 CORB_CLIP = 'users/dgketchum/boundaries/CO_RB'
@@ -60,7 +61,8 @@ def extract_terraclimate_monthly(tables, years, description):
             print(out_desc)
 
 
-def extract_gridded_data(tables, years=None, description=None, min_years=0):
+def extract_gridded_data(tables, years=None, description=None,
+                         min_years=0, basins=True):
     """
     Reduce Regions, i.e. zonal stats: takes a statistic from a raster within the bounds of a vector.
     Use this to get e.g. irrigated area within a county, HUC, or state. This can mask based on Crop Data Layer,
@@ -136,12 +138,17 @@ def extract_gridded_data(tables, years=None, description=None, min_years=0):
             etr = etr.multiply(area).rename('etr')
             swb_aet = swb_aet.multiply(area).rename('swb_aet')
 
+            if basins:
+                selector = ['STAID']
+            else:
+                selector = ['GEOID']
+
             if yr > 1990 and month in [x for x in range(4, 11)]:
                 bands = irr.addBands([et, cc, ppt, etr, swb_aet])
-                select_ = ['STAID', 'irr', 'et', 'cc', 'ppt', 'etr', 'swb_aet']
+                select_ = selector + ['irr', 'et', 'cc', 'ppt', 'etr', 'swb_aet']
             else:
                 bands = irr.addBands([ppt, etr, swb_aet])
-                select_ = ['STAID', 'ppt', 'etr', 'swb_aet']
+                select_ = selector + ['ppt', 'etr', 'swb_aet']
 
             data = bands.reduceRegions(collection=fc,
                                        reducer=ee.Reducer.sum(),
@@ -149,6 +156,7 @@ def extract_gridded_data(tables, years=None, description=None, min_years=0):
 
             # fields = data.first().propertyNames().remove('.geo')
             # p = data.first().getInfo()['properties']
+
             out_desc = '{}_{}_{}'.format(description, yr, month)
             task = ee.batch.Export.table.toCloudStorage(
                 data,
@@ -242,6 +250,8 @@ def extract_flux_stations(shp):
 
 
 if __name__ == '__main__':
-    extract_gridded_data(BASINS, years=[i for i in range(1986, 2021)], description='Comp_14DEC2021', min_years=0)
+    extract_gridded_data(COUNTIES, years=[i for i in range(1986, 1991)],
+                         description='County_Comp_14DEC2021', min_years=0,
+                         basins=False)
     # extract_flux_stations(FLUX_SHP)
 # ========================= EOF ================================================================================
