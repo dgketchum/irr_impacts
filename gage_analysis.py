@@ -305,9 +305,12 @@ def get_sig_irr_impact(metadata, ee_series, out_jsn=None, fig_dir=None, gage_exa
                     lr = linregress(resid, cc)
                     res_r, res_p = lr.rvalue, lr.pvalue
 
-                    slope = fit_resid.params[1] * (np.std(cc) / np.std(resid))
+                    slope_resid = fit_resid.params[1] * (np.std(cc) / np.std(resid))
                     resid_line = fit_resid.params[1] * cc + fit_resid.params[0]
+
                     clim_line = fit_clim.params[1] * ai + fit_clim.params[0]
+                    slope_clime = fit_clim.params[1] * (np.std(q) / np.std(ai))
+
                     desc_str = '{} {}\n' \
                                '{} months climate, flow months {}-{}\n' \
                                'crop consumption {} to {}\n' \
@@ -316,7 +319,7 @@ def get_sig_irr_impact(metadata, ee_series, out_jsn=None, fig_dir=None, gage_exa
                                                                                        cc_start, cc_end,
                                                                                        fit_resid.pvalues[1],
                                                                                        v['irr_pct'],
-                                                                                       slope)
+                                                                                       slope_resid)
 
                     print(desc_str)
                     irr_sig_ct += 1
@@ -327,27 +330,28 @@ def get_sig_irr_impact(metadata, ee_series, out_jsn=None, fig_dir=None, gage_exa
 
                     if sid not in sig_stations.keys():
                         sig_stations[sid] = {k: v for k, v in s_meta.items() if not isinstance(v, dict)}
-                    else:
-                        sig_stations[sid].update({'{}-{}'.format(cc_start, cc_end): {'sig': fit_resid.pvalues[1],
-                                                                                     'slope': slope,
-                                                                                     'clim_rsq': r,
-                                                                                     'resid_rsq': res_r,
-                                                                                     'lag': lag,
-                                                                                     'q_window': k,
-                                                                                     'q_data': list(q),
-                                                                                     'ai_data': list(ai),
-                                                                                     'q_ai_line': list(clim_line),
-                                                                                     'cci_data': list(cc),
-                                                                                     'q_resid': list(resid),
-                                                                                     'q_resid_line': list(resid_line)
-                                                                                     }})
-                        years_c = sm.add_constant(years)
-                        ols = sm.OLS(resid, years_c)
-                        fit_resid_q = ols.fit()
-                        resid_p_q = fit_resid_q.pvalues[1]
-                        resid_line_q = fit_resid_q.params[1] * np.array(years) + fit_resid_q.params[0]
-                        sig_stations[sid]['{}-{}'.format(cc_start, cc_end)].update({'q_time_sig': resid_p_q,
-                                                                                    'resid_q_time_line': resid_line_q})
+                    sig_stations[sid].update({'{}-{}'.format(cc_start, cc_end): {'res_sig': fit_resid.pvalues[1],
+                                                                                 'slope_resid': slope_resid,
+                                                                                 'clim_rsq': r,
+                                                                                 'clim_sig': clim_p,
+                                                                                 'clim_slope': slope_clime,
+                                                                                 'resid_rsq': res_r,
+                                                                                 'lag': lag,
+                                                                                 'q_window': k,
+                                                                                 'q_data': list(q),
+                                                                                 'ai_data': list(ai),
+                                                                                 'q_ai_line': list(clim_line),
+                                                                                 'cci_data': list(cc),
+                                                                                 'q_resid': list(resid),
+                                                                                 'q_resid_line': list(resid_line)
+                                                                                 }})
+                    years_c = sm.add_constant(years)
+                    ols = sm.OLS(resid, years_c)
+                    fit_resid_q = ols.fit()
+                    resid_p_q = fit_resid_q.pvalues[1]
+                    resid_line_q = fit_resid_q.params[1] * np.array(years) + fit_resid_q.params[0]
+                    sig_stations[sid]['{}-{}'.format(cc_start, cc_end)].update({'q_time_sig': resid_p_q,
+                                                                                'resid_q_time_line': resid_line_q})
 
     if gage_example:
         return sig_stations

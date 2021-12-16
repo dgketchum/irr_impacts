@@ -181,6 +181,16 @@ def trends_panel(q_clime, irr_impact, cc_trend, ts_data, png, example_gage='0605
 
     ex_irr_imp = irr_impact_d[example_gage]
 
+    slopes, clim_r, irr_r = [], [], []
+    for s, v in irr_impact_d.items():
+        if s in EXCLUDE_STATIONS:
+            continue
+        # TODO: need climate/irr/cc-time/q-resid-time slope and r values
+        impact_keys = [p for p, v in v.items() if isinstance(v, dict)]
+        [slopes.append(ex_irr_imp[s][k]['slope']) for k in v.keys() if k in impact_keys]
+        [clim_r.append(ex_irr_imp[s][k]['clim_rsq']) for k in v.keys() if k in impact_keys]
+        [irr_r.append(ex_irr_imp[s][k]['resid_rsq']) for k in v.keys() if k in impact_keys]
+
     ex_cc_trend = cc_trend_d[example_gage]
     ex_irr_resid_ts = get_sig_irr_impact(q_clime, ts_data, out_jsn=None,
                                          fig_dir=None, gage_example=example_gage)
