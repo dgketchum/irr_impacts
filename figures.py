@@ -180,37 +180,40 @@ def trends_panel(q_clime, irr_impact, cc_trend, ts_data, png, example_gage='0605
         cc_trend_d = json.load(f)
 
     ex_irr_imp = irr_impact_d[example_gage]
+
     ex_cc_trend = cc_trend_d[example_gage]
     ex_irr_resid_ts = get_sig_irr_impact(q_clime, ts_data, out_jsn=None,
                                          fig_dir=None, gage_example=example_gage)
     gage_data = ex_irr_resid_ts[example_gage]['7-7']
     q, ai, clim_line = gage_data['q_data'], gage_data['ai_data'], gage_data['q_ai_line']
-    fig, ax = plt.subplots(1, 4)
+    fig, ax = plt.subplots(2, 4)
     fig.set_figheight(16)
     fig.set_figwidth(36)
-    ax[0].scatter(ai, q)
-    ax[0].plot(ai, clim_line)
-    ax[0].set(xlabel='ETr / PPT [-]')
-    ax[0].set(ylabel='q [m^3]')
+    ax[0, 0].scatter(ai, q)
+    ax[0, 0].plot(ai, clim_line)
+    ax[0, 0].set(xlabel='ETr / PPT [-]')
+    ax[0, 0].set(ylabel='q [m^3]')
 
     cci, resid, resid_line = gage_data['cci_data'], gage_data['q_resid'], gage_data['q_resid_line']
-    ax[1].set(xlabel='cci [m]')
-    ax[1].set(ylabel='q residual [m^3]')
-    ax[1].scatter(cci, resid)
-    ax[1].plot(cci, resid_line)
+    ax[0, 1].set(xlabel='cci [m]')
+    ax[0, 1].set(ylabel='q residual [m^3]')
+    ax[0, 1].scatter(cci, resid)
+    ax[0, 1].plot(cci, resid_line)
 
     years = [x for x in range(1991, 2021)]
     cc, cc_line = ex_cc_trend['cc_data'], ex_cc_trend['cc_line']
-    ax[2].set(xlabel='Year')
-    ax[2].set(ylabel='cc [m^3]')
-    ax[2].scatter(years, cc)
-    ax[2].plot(years, cc_line)
+    ax[0, 2].set(xlabel='Year')
+    ax[0, 2].set(ylabel='cc [m^3]')
+    ax[0, 2].scatter(years, cc)
+    ax[0, 2].plot(years, cc_line)
 
     resid_q_time_line = gage_data['resid_q_time_line']
-    ax[3].set(xlabel='Year')
-    ax[3].set(ylabel='q residual [m^3]')
-    ax[3].scatter(years, resid)
-    ax[3].plot(years, resid_q_time_line)
+    ax[0, 3].set(xlabel='Year')
+    ax[0, 3].set(ylabel='q residual [m^3]')
+    ax[0, 3].scatter(years, resid)
+    ax[0, 3].plot(years, resid_q_time_line)
+
+
 
     plt.savefig(png)
 
@@ -238,7 +241,7 @@ if __name__ == '__main__':
     clim_resp = os.path.join(root, 'station_metadata/basin_climate_response_all.json')
     trend_metatdata_dir = os.path.join(root, 'station_metadata/significant_gt_2000sqkm')
     cc_trends = os.path.join(trend_metatdata_dir, 'sig_trends_cc.json')
-    irr_resp = os.path.join(root, 'station_metadata/irr_impacted_all.json')
+    irr_resp = os.path.join(root, 'station_metadata/irr_impacted_all_w_rsq_.json')
     clim_dir = os.path.join(root, 'merged_q_ee/monthly_ssebop_tc_q_Comp_16DEC2021')
     fig_name = os.path.join(figs, 'panel.png')
     trends_panel(q_clime=clim_resp, irr_impact=irr_resp, cc_trend=cc_trends,

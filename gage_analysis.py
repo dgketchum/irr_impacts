@@ -170,9 +170,9 @@ def climate_flow_correlation(climate_dir, in_json, out_json, plot_r=None):
                 ppt = np.array([df['ppt'][d[0]: d[1]].sum() for d in dates])
                 ind = etr / ppt
                 lr = linregress(ind, q)
-                r, p = lr.rvalue ** 2, lr.pvalue
+                r, p = lr.rvalue, lr.pvalue
                 r_dct[key_].append(r)
-                if r > corr[1] and p < 0.05:
+                if abs(r) > corr[1] and p < 0.05:
                     corr = (lag, abs(r))
 
                     response_d[key_] = {'q_window': q_win, 'lag': lag, 'r': r, 'pval': p, 'irr_pct': irr_pct,
@@ -303,7 +303,7 @@ def get_sig_irr_impact(metadata, ee_series, out_jsn=None, fig_dir=None, gage_exa
                         slp_neg += 1
 
                     lr = linregress(resid, cc)
-                    res_r, res_p = lr.rvalue ** 2, lr.pvalue
+                    res_r, res_p = lr.rvalue, lr.pvalue
 
                     slope = fit_resid.params[1] * (np.std(cc) / np.std(resid))
                     resid_line = fit_resid.params[1] * cc + fit_resid.params[0]
