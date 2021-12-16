@@ -326,21 +326,7 @@ def get_sig_irr_impact(metadata, ee_series, out_jsn=None, fig_dir=None, gage_exa
                                           flow_per=(q_start, q_end))
 
                     if sid not in sig_stations.keys():
-
                         sig_stations[sid] = {k: v for k, v in s_meta.items() if not isinstance(v, dict)}
-                        sig_stations[sid].update({'{}-{}'.format(cc_start, cc_end): {'sig': fit_resid.pvalues[1],
-                                                                                     'slope': slope,
-                                                                                     'clim_rsq': r,
-                                                                                     'resid_rsq': res_r,
-                                                                                     'lag': lag,
-                                                                                     'q_window': k,
-                                                                                     'q_data': list(q),
-                                                                                     'ai_data': list(ai),
-                                                                                     'q_ai_line': list(clim_line),
-                                                                                     'cci_data': list(cc),
-                                                                                     'q_resid': list(resid),
-                                                                                     'q_resid_line': list(resid_line)}})
-
                     else:
                         sig_stations[sid].update({'{}-{}'.format(cc_start, cc_end): {'sig': fit_resid.pvalues[1],
                                                                                      'slope': slope,
@@ -355,6 +341,13 @@ def get_sig_irr_impact(metadata, ee_series, out_jsn=None, fig_dir=None, gage_exa
                                                                                      'q_resid': list(resid),
                                                                                      'q_resid_line': list(resid_line)
                                                                                      }})
+                        years_c = sm.add_constant(years)
+                        ols = sm.OLS(resid, years_c)
+                        fit_resid_q = ols.fit()
+                        resid_p_q = fit_resid_q.pvalues[1]
+                        resid_line_q = fit_resid_q.params[1] * np.array(years) + fit_resid_q.params[0]
+                        sig_stations[sid]['{}-{}'.format(cc_start, cc_end)].update({'q_time_sig': resid_p_q,
+                                                                                    'resid_q_time_line': resid_line_q})
 
     if gage_example:
         return sig_stations
