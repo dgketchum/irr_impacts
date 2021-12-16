@@ -226,8 +226,6 @@ def get_sig_irr_impact(metadata, ee_series, out_jsn=None, fig_dir=None):
             continue
         if sid in EXCLUDE_STATIONS:
             continue
-        # if sid not in SELECTED_SYSTEMS:
-        #     continue
 
         ct_tot += 1
         years = [x for x in range(1991, 2021)]
@@ -347,16 +345,16 @@ def get_sig_irr_impact(metadata, ee_series, out_jsn=None, fig_dir=None):
     pprint(impacted_gages)
 
 
-def basin_trends(key, metadata, ee_series, start_mo, end_mo, out_jsn=None, fig_dir=None):
+def basin_trends(key, metadata, ee_series, start_mo, end_mo, out_jsn=None, fig_dir=None, significant=True):
     ct, irr_ct, irr_sig_ct, ct_tot = 0, 0, 0, 0
     sig_stations = {}
     with open(metadata, 'r') as f:
         metadata = json.load(f)
     for sid, v in metadata.items():
-        # if sid not in ['06177000']:
-        #     continue
+        if sid in EXCLUDE_STATIONS:
+            continue
         s_meta = metadata[sid]
-        if s_meta['AREA'] < 7000:
+        if s_meta['AREA'] < 2000:
             continue
         _file = os.path.join(ee_series, '{}.csv'.format(sid))
         try:
@@ -384,23 +382,23 @@ def basin_trends(key, metadata, ee_series, start_mo, end_mo, out_jsn=None, fig_d
 
         ols_fit = ols.fit()
 
-        # if ols_fit.pvalues[1] < 0.05:
+        if ols_fit.pvalues[1] > 0.05 and significant:
+            continue
+        else:
+            ols_line = ols_fit.params[1] * _years + ols_fit.params[0]
 
-        ols_line = ols_fit.params[1] * _years + ols_fit.params[0]
+            irr_ct += 1
 
-        irr_ct += 1
+            desc_str = '{} {}\n' \
+                       'crop consumption {} to {}\n' \
+                       'irr = {:.3f}\n        '.format(sid, s_meta['STANAME'],
+                                                       5, 10,
+                                                       v['IAREA'] / 1e6 * v['AREA'])
 
-        desc_str = '{} {}\n' \
-                   'crop consumption {} to {}\n' \
-                   'irr = {:.3f}\n        '.format(sid, s_meta['STANAME'],
-                                                   5, 10,
-                                                   v['IAREA'] / 1e6 * v['AREA'])
-
-        print(desc_str)
-        irr_sig_ct += 1
-        if fig_dir:
-            plot_water_balance_trends(data=data, data_line=ols_line, data_str=key,
-                                      years=years, desc_str=desc_str, fig_d=fig_dir)
+            irr_sig_ct += 1
+            if fig_dir:
+                plot_water_balance_trends(data=data, data_line=ols_line, data_str=key,
+                                          years=years, desc_str=desc_str, fig_d=fig_dir)
 
     if out_jsn:
         with open(out_jsn, 'w') as f:
@@ -412,33 +410,33 @@ if __name__ == '__main__':
     if not os.path.exists(root):
         root = '/home/dgketchum/data/IrrigationGIS'
 
-    # watersheds_shp = '/media/research/IrrigationGIS/gages/watersheds/selected_watersheds.shp'
-    # _json = '/media/research/IrrigationGIS/gages/station_metadata/irr_impacted_all.json'
-    # ee_data = '/media/research/IrrigationGIS/gages/merged_q_ee/monthly_ssebop_tc_q_sw_17NOV2021'
-    # cc_frac_json = '/media/research/IrrigationGIS/gages/station_metadata/basin_cc_ratios.json'
+    ee_data = os.path.join(root, 'gages/merged_q_ee/monthly_ssebop_tc_q_Comp_16DEC2021')
+    clim_resp = os.path.join(root, 'gages/station_metadata/basin_climate_response_irr.json')
+
+    clim_dir = os.path.join(root, 'gages/merged_q_ee/monthly_ssebop_tc_q_Comp_16DEC2021')
+    i_json = os.path.join(root, 'gages/station_metadata/station_metadata.json')
+    # fig_dir_ = os.path.join(root, 'gages/figures/clim_q_correlations')
+    # climate_flow_correlation(climate_dir=clim_dir, in_json=i_json,
+    #                         out_json=clim_resp, plot_r=fig_dir_)
+
+    # fig_dir = os.path.join(root, 'gages/figures/irr_impact_q_clim_delQ_cci_all')
+    irr_resp = os.path.join(root, 'gages/station_metadata/irr_impacted_irr.json')
+    # get_sig_irr_impact(clim_resp, ee_data, out_jsn=irr_resp, fig_dir=fig_dir)
+
+    watersheds_shp = '/media/research/IrrigationGIS/gages/watersheds/selected_watersheds.shp'
+    _json = '/media/research/IrrigationGIS/gages/station_metadata/irr_impacted_all.json'
+    cc_frac_json = '/media/research/IrrigationGIS/gages/station_metadata/basin_cc_ratios.json'
     # water_balance_ratios(_json, ee_data, watersheds=None, metadata_out=cc_frac_json)
 
-    # clim_dir = os.path.join(root, 'gages/merged_q_ee/monthly_ssebop_tc_q_sw_17NOV2021')
-    # i_json = os.path.join(root, 'gages/station_metadata/station_metadata.json')
-    # clim_resp = os.path.join(root, 'gages/station_metadata/basin_climate_response_all.json')
-    # fig_dir_ = os.path.join(root, 'gages/figures/clim_q_correlations')
-    # climate_flow_correlation(clim_dir, i_json, clim_resp, plot_r=None)
-
-    # clim_resp = os.path.join(root, 'gages/station_metadata/basin_climate_response_irr.json')
-    # fig_dir = os.path.join(root, 'gages/figures/irr_impact_q_clim_delQ_cci_gt30000')
-    # irr_resp = os.path.join(root, 'gages/station_metadata/irr_impacted_gt30000.json')
-    # ee_data = os.path.join(root, 'gages/merged_q_ee/monthly_ssebop_tc_q_sw_17NOV2021')
-    # get_sig_irr_impact(clim_resp, ee_data, out_jsn=None, fig_dir=fig_dir)
-
     irr_impacted = os.path.join(root, 'gages/station_metadata/basin_cc_ratios.json')
-    ee_data = os.path.join(root, 'gages/merged_q_ee/monthly_ssebop_tc_q_Comp_14DEC2021')
-    fig_dir = os.path.join(root, 'gages/figures/water_balance_time_series')
-    # trend_json = os.path.join(root, 'gages/water_balance_time_series/cc_q_trends.json')
-    for k in ['ppt', 'q', 'etr', 'ai', 'cc', 'cci', 'irr'][-1:]:
+    fig_dir = os.path.join(root, 'gages/figures/water_balance_time_series/significant_gt_2000sqkm')
+    trend_json = os.path.join(root, 'gages/water_balance_time_series/cc_q_trends.json')
+
+    for k in ['ppt', 'q', 'etr', 'ai', 'cc', 'cci', 'irr']:
         fig_ = os.path.join(fig_dir, k)
         if not os.path.exists(fig_):
             os.mkdir(fig_)
         basin_trends(k, irr_impacted, ee_data, out_jsn=None, fig_dir=fig_,
-                     start_mo=1, end_mo=12)
+                     start_mo=1, end_mo=12, significant=True)
 
 # ========================= EOF ====================================================================
