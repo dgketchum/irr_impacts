@@ -286,7 +286,8 @@ def get_sig_irr_impact(metadata, ee_series, out_jsn=None, fig_dir=None, gage_exa
                 fit_clim = ols.fit()
 
                 irr_ct += 1
-                clim_p = fit_clim.pvalues[1]
+                # obj.item() to python objects
+                clim_p = (fit_clim.pvalues[1]).item()
                 if clim_p > p and clim_p > 0.05:
                     print('\n', sid, v['STANAME'], '{:.3f} p {:.3f} clim p'.format(p, clim_p), '\n')
                 ct += 1
@@ -303,13 +304,13 @@ def get_sig_irr_impact(metadata, ee_series, out_jsn=None, fig_dir=None, gage_exa
                         slp_neg += 1
 
                     lr = linregress(resid, cc)
-                    res_r, res_p = lr.rvalue, lr.pvalue
+                    res_r, res_p = (lr.rvalue).item(), (lr.pvalue).item()
 
-                    slope_resid = fit_resid.params[1] * (np.std(cc) / np.std(resid))
+                    slope_resid = (fit_resid.params[1] * (np.std(cc) / np.std(resid))).item()
                     resid_line = fit_resid.params[1] * cc + fit_resid.params[0]
 
                     clim_line = fit_clim.params[1] * ai + fit_clim.params[0]
-                    slope_clime = fit_clim.params[1] * (np.std(q) / np.std(ai))
+                    slope_clime = (fit_clim.params[1] * (np.std(q) / np.std(ai))).item()
 
                     desc_str = '{} {}\n' \
                                '{} months climate, flow months {}-{}\n' \
@@ -330,8 +331,8 @@ def get_sig_irr_impact(metadata, ee_series, out_jsn=None, fig_dir=None, gage_exa
 
                     if sid not in sig_stations.keys():
                         sig_stations[sid] = {k: v for k, v in s_meta.items() if not isinstance(v, dict)}
-                    sig_stations[sid].update({'{}-{}'.format(cc_start, cc_end): {'res_sig': fit_resid.pvalues[1],
-                                                                                 'slope_resid': slope_resid,
+                    sig_stations[sid].update({'{}-{}'.format(cc_start, cc_end): {'res_sig': resid_p.item(),
+                                                                                 'resid_slope': slope_resid,
                                                                                  'clim_rsq': r,
                                                                                  'clim_sig': clim_p,
                                                                                  'clim_slope': slope_clime,
