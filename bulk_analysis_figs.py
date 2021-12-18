@@ -1,6 +1,13 @@
 import os
+from calendar import monthrange
+from datetime import date
 
 from matplotlib import rcParams, pyplot as plt
+from pandas import read_csv
+import numpy as np
+
+from hydrograph import hydrograph
+from county_list import included_counties
 
 
 def plot_clim_q_resid(q, ai, clim_line, desc_str, years, cc, resid, resid_line, fig_d, cci_per, flow_per):
@@ -52,6 +59,87 @@ def plot_water_balance_trends(data, data_line, data_str, years, desc_str, fig_d)
     plt.close('all')
 
 
+def nass_irrmapper_climate(irr_dir, nass_c, fig_dir):
+
+    study_counties = included_counties()
+
+    ndf = read_csv(nass_c)
+    ndf = ndf.dropna(how='any', axis=0, subset=['FIPS'])
+    ndf['GEOID'] = [str(int(x)).rjust(5, '0') for x in ndf['FIPS']]
+    ndf.index = ndf['GEOID']
+
+    m_start, m_end = 10, 9
+    years = [x for x in range(1986, 2021)]
+    clim_dates = [(date(y - 1, 10, 1),  date(y, 9, monthrange(y, m_end)[1])) for y in years]
+    cc_dates = [(date(y, 5, 1), date(y, 10, 31)) for y in years]
+    irr_dates = [(date(y, 7, 1), date(y, 7, 31)) for y in years]
+
+    l = [os.path.join(irr_dir, x) for x in os.listdir(irr_dir)]
+    for c in l:
+        co = os.path.basename(c).split('.')[0]
+        idf = hydrograph(c)
+        # idf['cci'] = idf['cc'] / idf['irr']
+
+        try:
+            co_desc = ndf.loc[co]['ST_CNTY_STR'].split('_')
+        except (KeyError, AttributeError):
+            print('\n{} not found\n'.format(co))
+
+        co_str, st_str = co_desc[1].title(), co_desc[0]
+        ppt = np.array([idf['ppt'][d[0]: d[1]].sum() for d in clim_dates])
+        etr = np.array([idf['etr'][d[0]: d[1]].sum() for d in clim_dates])
+        ai = etr / ppt
+        cc = np.array([idf['cc'][d[0]: d[1]].sum() for d in cc_dates])
+        cc[cc == 0.0] = np.nan
+        irr = np.array([idf['irr'][d[0]: d[1]].sum() for d in irr_dates]) / 4046.86
+        if np.any(irr < 10000):
+            continue
+        nrow = [(k[-4:], v) for k, v in ndf.loc[co].items() if 'VALUE' in k]
+        n_v, n_y = [x[1] for x in nrow], [int(x[0]) for x in nrow]
+        fig, ax = plt.subplots(4, 1)
+        fig.set_figheight(8)
+        fig.set_figwidth(12)
+        fig.tight_layout()
+
+        ax[0].plot(years, irr, color='purple', label='IrrMapper')
+        ax[0].plot(n_y, n_v, color='pink', label='NASS')
+        ax[0].legend()
+        ax[0].set(ylabel='Acres Irrigated')
+        ax[0].set_xlim(years[0], years[-1])
+        ax[1].plot(years, ppt, color='blue')
+        ax[1].set(ylabel='WY Precipitation [m^3]')
+        ax[1].set_xlim(years[0], years[-1])
+        ax[2].plot(years, cc, color='black')
+        ax[2].set(ylabel='Crop Consumption [m^3]')
+        ax[2].set_xlim(years[0], years[-1])
+        ax[3].plot(years, ai, color='red')
+        ax[3].set(ylabel='Aridity Index [-]')
+        ax[3].set_xlim(years[0], years[-1])
+
+        plt.suptitle('{} Co. {}'.format(co_str, st_str))
+        plt.xlim(1985, 2021)
+        plt.gcf().subplots_adjust(left=0.1)
+        plt.tight_layout()
+
+        fig_file = '{}_{}.png'.format(st_str, co_str)
+
+        if co in study_counties:
+            sub_dir = 'impacts_study'
+        else:
+            sub_dir = 'non_study'
+
+        plt.savefig(os.path.join(fig_dir, sub_dir, fig_file))
+        plt.close()
+        print(fig_file, sub_dir)
+        # plt.show()
+
+
 if __name__ == '__main__':
-    pass
+    root = '/media/research/IrrigationGIS'
+    if not os.path.exists(root):
+        root = '/home/dgketchum/data/IrrigationGIS'
+    nass = os.path.join(root, 'nass_data', 'nass_merged.csv')
+    co_irr = os.path.join(root, 'time_series/counties_IrrMapperComp_17DEC2021/county_monthly')
+    figs = os.path.join(root, 'time_series/counties_IrrMapperComp_17DEC2021/figures')
+    nass_irrmapper_climate(co_irr, nass, figs)
 # ========================= EOF ====================================================================
