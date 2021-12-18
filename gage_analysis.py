@@ -349,10 +349,11 @@ def get_sig_irr_impact(metadata, ee_series, out_jsn=None, fig_dir=None, gage_exa
                     years_c = sm.add_constant(years)
                     ols = sm.OLS(resid, years_c)
                     fit_resid_q = ols.fit()
-                    resid_p_q = fit_resid_q.pvalues[1]
+                    resid_p_q = (fit_resid_q.pvalues[1]).item()
                     resid_line_q = fit_resid_q.params[1] * np.array(years) + fit_resid_q.params[0]
                     sig_stations[sid]['{}-{}'.format(cc_start, cc_end)].update({'q_time_sig': resid_p_q,
-                                                                                'resid_q_time_line': resid_line_q})
+                                                                                'resid_q_time_line': list(
+                                                                                    resid_line_q)})
 
     if gage_example:
         return sig_stations
@@ -362,8 +363,8 @@ def get_sig_irr_impact(metadata, ee_series, out_jsn=None, fig_dir=None, gage_exa
         with open(out_jsn, 'w') as f:
             json.dump(sig_stations, f, indent=4, sort_keys=False)
     pprint(list(sig_stations.keys()))
-    print('{} climate-sig, {} irrigated, {} irr imapacted, {} total'.format(ct, irr_ct, irr_sig_ct,
-                                                                            ct_tot))
+    print('{} climate-sig, {} irrigated, {} irr imapacted periods, {} total'.format(ct, irr_ct, irr_sig_ct,
+                                                                                    ct_tot))
     print('{} positive slope, {} negative'.format(slp_pos, slp_neg))
     print('total impacted gages: {}'.format(len(impacted_gages)))
     pprint(impacted_gages)
@@ -447,18 +448,18 @@ if __name__ == '__main__':
     #                          out_json=clim_resp, plot_r=fig_dir_)
 
     fig_dir = os.path.join(root, 'gages/figures/irr_impact_q_clim_delQ_cci_all')
-    irr_resp = os.path.join(root, 'gages/station_metadata/irr_impacted_all_w_rsq.json')
+    irr_resp = os.path.join(root, 'gages/station_metadata/irr_impacted_all_w_rsq_test.json')
     get_sig_irr_impact(clim_resp, ee_data, out_jsn=irr_resp, fig_dir=fig_dir)
 
-    watersheds_shp = '/media/research/IrrigationGIS/gages/watersheds/selected_watersheds.shp'
-    _json = '/media/research/IrrigationGIS/gages/station_metadata/irr_impacted_all.json'
-    cc_frac_json = '/media/research/IrrigationGIS/gages/station_metadata/basin_cc_ratios.json'
+    # watersheds_shp = '/media/research/IrrigationGIS/gages/watersheds/selected_watersheds.shp'
+    # _json = '/media/research/IrrigationGIS/gages/station_metadata/irr_impacted_all.json'
+    # cc_frac_json = '/media/research/IrrigationGIS/gages/station_metadata/basin_cc_ratios.json'
     # water_balance_ratios(_json, ee_data, watersheds=None, metadata_out=cc_frac_json)
 
-    irr_impacted = os.path.join(root, 'gages/station_metadata/basin_cc_ratios.json')
-    fig_dir = os.path.join(root, 'gages/figures/water_balance_time_series/significant_gt_2000sqkm')
-    trend_metatdata_dir = os.path.join(root, 'gages/station_metadata/significant_gt_2000sqkm')
-    trend_json = os.path.join(root, 'gages/water_balance_time_series/cc_q_trends.json')
+    # irr_impacted = os.path.join(root, 'gages/station_metadata/basin_cc_ratios.json')
+    # fig_dir = os.path.join(root, 'gages/figures/water_balance_time_series/significant_gt_2000sqkm')
+    # trend_metatdata_dir = os.path.join(root, 'gages/station_metadata/significant_gt_2000sqkm')
+    # trend_json = os.path.join(root, 'gages/water_balance_time_series/cc_q_trends.json')
 
     # for k in ['ppt', 'q', 'etr', 'ai', 'cc', 'cci', 'irr']:
     #     fig_ = os.path.join(fig_dir, k)
