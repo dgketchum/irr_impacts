@@ -273,7 +273,7 @@ def get_sig_irr_impact(metadata, ee_series, out_jsn=None, fig_dir=None, gage_exa
 
                 q = np.array([cdf['q'][d[0]: d[1]].sum() for d in q_dates])
 
-                cc = np.array([cdf['cci'][d[0]: d[1]].sum() for d in cc_dates])
+                cci = np.array([cdf['cci'][d[0]: d[1]].sum() for d in cc_dates])
 
                 ai_c = sm.add_constant(ai)
 
@@ -292,7 +292,7 @@ def get_sig_irr_impact(metadata, ee_series, out_jsn=None, fig_dir=None, gage_exa
                     print('\n', sid, v['STANAME'], '{:.3f} p {:.3f} clim p'.format(p, clim_p), '\n')
                 ct += 1
                 resid = fit_clim.resid
-                _cc_c = sm.add_constant(cc)
+                _cc_c = sm.add_constant(cci)
                 ols = sm.OLS(resid, _cc_c)
                 fit_resid = ols.fit()
                 resid_p = fit_resid.pvalues[1]
@@ -303,11 +303,11 @@ def get_sig_irr_impact(metadata, ee_series, out_jsn=None, fig_dir=None, gage_exa
                     else:
                         slp_neg += 1
 
-                    lr = linregress(resid, cc)
+                    lr = linregress(resid, cci)
                     res_r, res_p = (lr.rvalue).item(), (lr.pvalue).item()
 
-                    slope_resid = (fit_resid.params[1] * (np.std(cc) / np.std(resid))).item()
-                    resid_line = fit_resid.params[1] * cc + fit_resid.params[0]
+                    slope_resid = (fit_resid.params[1] * (np.std(cci) / np.std(resid))).item()
+                    resid_line = fit_resid.params[1] * cci + fit_resid.params[0]
 
                     clim_line = fit_clim.params[1] * ai + fit_clim.params[0]
                     slope_clime = (fit_clim.params[1] * (np.std(q) / np.std(ai))).item()
@@ -325,7 +325,7 @@ def get_sig_irr_impact(metadata, ee_series, out_jsn=None, fig_dir=None, gage_exa
                     print(desc_str)
                     irr_sig_ct += 1
                     if fig_dir:
-                        plot_clim_q_resid(q=q, ai=ai, clim_line=clim_line, desc_str=desc_str, years=years, cc=cc,
+                        plot_clim_q_resid(q=q, ai=ai, clim_line=clim_line, desc_str=desc_str, years=years, cc=cci,
                                           resid=resid, resid_line=resid_line, fig_d=fig_dir, cci_per=cc_period,
                                           flow_per=(q_start, q_end))
 
@@ -333,25 +333,28 @@ def get_sig_irr_impact(metadata, ee_series, out_jsn=None, fig_dir=None, gage_exa
                         sig_stations[sid] = {k: v for k, v in s_meta.items() if not isinstance(v, dict)}
                     sig_stations[sid].update({'{}-{}'.format(cc_start, cc_end): {'res_sig': resid_p.item(),
                                                                                  'resid_slope': slope_resid,
-                                                                                 'clim_rsq': r,
+                                                                                 'clim_r': r,
                                                                                  'clim_sig': clim_p,
                                                                                  'clim_slope': slope_clime,
-                                                                                 'resid_rsq': res_r,
+                                                                                 'resid_r': res_r,
                                                                                  'lag': lag,
                                                                                  'q_window': k,
                                                                                  'q_data': list(q),
                                                                                  'ai_data': list(ai),
                                                                                  'q_ai_line': list(clim_line),
-                                                                                 'cci_data': list(cc),
+                                                                                 'cci_data': list(cci),
                                                                                  'q_resid': list(resid),
                                                                                  'q_resid_line': list(resid_line)
                                                                                  }})
                     years_c = sm.add_constant(years)
                     ols = sm.OLS(resid, years_c)
                     fit_resid_q = ols.fit()
+                    lr = linregress(resid, years)
+                    flow_r, = (lr.rvalue).item()
                     resid_p_q = (fit_resid_q.pvalues[1]).item()
                     resid_line_q = fit_resid_q.params[1] * np.array(years) + fit_resid_q.params[0]
-                    sig_stations[sid]['{}-{}'.format(cc_start, cc_end)].update({'q_time_sig': resid_p_q,
+                    sig_stations[sid]['{}-{}'.format(cc_start, cc_end)].update({'q_time_r': flow_r,
+                                                                                'q_time_sig': resid_p_q,
                                                                                 'resid_q_time_line': list(
                                                                                     resid_line_q)})
 
@@ -448,7 +451,7 @@ if __name__ == '__main__':
     #                          out_json=clim_resp, plot_r=fig_dir_)
 
     fig_dir = os.path.join(root, 'gages/figures/irr_impact_q_clim_delQ_cci_all')
-    irr_resp = os.path.join(root, 'gages/station_metadata/irr_impacted_all_w_rsq_test.json')
+    irr_resp = os.path.join(root, 'gages/station_metadata/irr_impacted_all_w.json')
     get_sig_irr_impact(clim_resp, ee_data, out_jsn=irr_resp, fig_dir=fig_dir)
 
     # watersheds_shp = '/media/research/IrrigationGIS/gages/watersheds/selected_watersheds.shp'

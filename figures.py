@@ -5,6 +5,7 @@ import numpy as np
 import matplotlib
 from matplotlib import cm
 from matplotlib import rcParams, pyplot as plt
+from scipy.stats.stats import linregress
 
 from gage_list import EXCLUDE_STATIONS
 from hydrograph import hydrograph
@@ -172,60 +173,69 @@ def impact_time_series_bars(sig_stations, basin_designations, figures, min_area=
         print(' slope used min {:.3f}, max {:.3f}'.format(min_slope, max_slope))
 
 
-def trends_panel(q_clime, irr_impact, cc_trend, ts_data, png, example_gage='06054500'):
+def trends_panel(irr_impact, png):
 
     with open(irr_impact, 'r') as f:
         irr_impact_d = json.load(f)
-    with open(cc_trend, 'r') as f:
-        cc_trend_d = json.load(f)
 
-    ex_irr_imp = irr_impact_d[example_gage]
-
-    slopes, clim_r, irr_r = [], [], []
+    # build data for slope, r histograms
+    clime_slope, resid_slope, clim_r, resid_r = [], [], [], []
+    years = np.array([x for x in range(1991, 2021)])
     for s, v in irr_impact_d.items():
         if s in EXCLUDE_STATIONS:
             continue
-        # TODO: need climate/irr/cc-time/q-resid-time slope and r values
         impact_keys = [p for p, v in v.items() if isinstance(v, dict)]
-        [slopes.append(ex_irr_imp[s][k]['slope']) for k in v.keys() if k in impact_keys]
-        [clim_r.append(ex_irr_imp[s][k]['clim_rsq']) for k in v.keys() if k in impact_keys]
-        [irr_r.append(ex_irr_imp[s][k]['resid_rsq']) for k in v.keys() if k in impact_keys]
 
-    ex_cc_trend = cc_trend_d[example_gage]
-    ex_irr_resid_ts = get_sig_irr_impact(q_clime, ts_data, out_jsn=None,
-                                         fig_dir=None, gage_example=example_gage)
-    gage_data = ex_irr_resid_ts[example_gage]['7-7']
-    q, ai, clim_line = gage_data['q_data'], gage_data['ai_data'], gage_data['q_ai_line']
-    fig, ax = plt.subplots(2, 4)
-    fig.set_figheight(16)
-    fig.set_figwidth(36)
-    ax[0, 0].scatter(ai, q)
-    ax[0, 0].plot(ai, clim_line)
-    ax[0, 0].set(xlabel='ETr / PPT [-]')
-    ax[0, 0].set(ylabel='q [m^3]')
+        [clim_r.append(irr_impact_d[s][k]['clim_rsq']) for k in v.keys() if k in impact_keys]
+        [clime_slope.append(irr_impact_d[s][k]['clim_slope']) for k in v.keys() if k in impact_keys]
 
-    cci, resid, resid_line = gage_data['cci_data'], gage_data['q_resid'], gage_data['q_resid_line']
-    ax[0, 1].set(xlabel='cci [m]')
-    ax[0, 1].set(ylabel='q residual [m^3]')
-    ax[0, 1].scatter(cci, resid)
-    ax[0, 1].plot(cci, resid_line)
+        [resid_r.append(irr_impact_d[s][k]['resid_rsq']) for k in v.keys() if k in impact_keys]
+        [resid_slope.append(irr_impact_d[s][k]['resid_slope']) for k in v.keys() if k in impact_keys]
+        # TODO: write q_resid_time m/r/p and cci_time m/r/p to json from gage analysis
 
-    years = [x for x in range(1991, 2021)]
-    cc, cc_line = ex_cc_trend['cc_data'], ex_cc_trend['cc_line']
-    ax[0, 2].set(xlabel='Year')
-    ax[0, 2].set(ylabel='cc [m^3]')
-    ax[0, 2].scatter(years, cc)
-    ax[0, 2].plot(years, cc_line)
+    for s, d in irr_impact_d.items():
+        impact_keys = [p for p, v in d.items() if isinstance(v, dict)]
+        for k, v in d.items():
+            if k in impact_keys:
+                lr_cc = linregress(years, d[k]['cci_data'])
+                t_cci_r, t_cci_slope, t_cci_p = lr_cc.rvalue, lr_cc.slope, lr_cc.pvalue
+                lr_q_t = linregress(years, d[k]['q_resid_line'])
+                t_q_r, t_q_slope, t_q_p = lr_q_t.rvalue, lr_q_t.slope, lr_q_t.pvalue
+                if d['AREA'] > 5000.: #  t_cci_p < 0.05 and t_q_p < 0.05 and
+                    print(s, d['STANAME'], d['AREA'])
 
-    resid_q_time_line = gage_data['resid_q_time_line']
-    ax[0, 3].set(xlabel='Year')
-    ax[0, 3].set(ylabel='q residual [m^3]')
-    ax[0, 3].scatter(years, resid)
-    ax[0, 3].plot(years, resid_q_time_line)
+                    q, ai, clim_line = v['q_data'], v['ai_data'], v['q_ai_line']
+                    fig, ax = plt.subplots(2, 4)
+                    fig.set_figheight(16)
+                    fig.set_figwidth(36)
+                    ax[0, 0].scatter(ai, q)
+                    ax[0, 0].plot(ai, clim_line)
+                    ax[0, 0].set(xlabel='ETr / PPT [-]')
+                    ax[0, 0].set(ylabel='q [m^3]')
 
+                    cci, resid, resid_line = v['cci_data'], v['q_resid'], v['q_resid_line']
+                    ax[0, 1].set(xlabel='cci [m]')
+                    ax[0, 1].set(ylabel='q residual [m^3]')
+                    ax[0, 1].scatter(cci, resid)
+                    ax[0, 1].plot(cci, resid_line)
 
+                    cc = v['cci_data']
+                    cc_line = (lr_cc.slope) * np.array(years) + lr_cc.intercept
+                    ax[0, 2].set(xlabel='Year')
+                    ax[0, 2].set(ylabel='cc [m^3]')
+                    ax[0, 2].scatter(years, cc)
+                    ax[0, 2].plot(years, cc_line)
 
-    plt.savefig(png)
+                    resid_q_time_line = (lr_q_t.slope) * np.array(years) + lr_q_t.intercept
+                    ax[0, 3].set(xlabel='Year')
+                    ax[0, 3].set(ylabel='q residual [m^3]')
+                    ax[0, 3].scatter(years, resid)
+                    ax[0, 3].plot(years, resid_q_time_line)
+
+                    figname = os.path.join(png, '{}_{}_cc_{}_q_{}_{}_mo_climate.png'.format(s, d['STANAME'],
+                                                                                            k, v['q_window'],
+                                                                                            v['lag']))
+                    plt.savefig(figname)
 
 
 if __name__ == '__main__':
@@ -251,10 +261,9 @@ if __name__ == '__main__':
     clim_resp = os.path.join(root, 'station_metadata/basin_climate_response_all.json')
     trend_metatdata_dir = os.path.join(root, 'station_metadata/significant_gt_2000sqkm')
     cc_trends = os.path.join(trend_metatdata_dir, 'sig_trends_cc.json')
-    irr_resp = os.path.join(root, 'station_metadata/irr_impacted_all_w_rsq_.json')
+    irr_resp = os.path.join(root, 'station_metadata/irr_impacted_all.json')
     clim_dir = os.path.join(root, 'merged_q_ee/monthly_ssebop_tc_q_Comp_16DEC2021')
-    fig_name = os.path.join(figs, 'panel.png')
-    trends_panel(q_clime=clim_resp, irr_impact=irr_resp, cc_trend=cc_trends,
-                 ts_data=clim_dir, png=fig_name)
+    fig_dir = os.path.join(figs, 'panels')
+    trends_panel(irr_impact=irr_resp, png=fig_dir)
 
 # ========================= EOF ====================================================================
