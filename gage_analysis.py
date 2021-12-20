@@ -297,7 +297,8 @@ def get_sig_irr_impact(metadata, ee_series, out_jsn=None, fig_dir=None, gage_exa
                 fit_resid = ols.fit()
                 resid_p = fit_resid.pvalues[1]
                 if resid_p < 0.05:
-                    impacted_gages.append(sid)
+                    if sid not in impacted_gages:
+                        impacted_gages.append(sid)
                     if fit_resid.params[1] > 0.0:
                         slp_pos += 1
                     else:
@@ -310,7 +311,7 @@ def get_sig_irr_impact(metadata, ee_series, out_jsn=None, fig_dir=None, gage_exa
                     resid_line = fit_resid.params[1] * cci + fit_resid.params[0]
 
                     clim_line = fit_clim.params[1] * ai + fit_clim.params[0]
-                    slope_clime = (fit_clim.params[1] * (np.std(q) / np.std(ai))).item()
+                    slope_clime = (fit_clim.params[1] * (np.std(ai) / np.std(q))).item()
 
                     desc_str = '{} {}\n' \
                                '{} months climate, flow months {}-{}\n' \
@@ -342,7 +343,7 @@ def get_sig_irr_impact(metadata, ee_series, out_jsn=None, fig_dir=None, gage_exa
                                                                                  'q_data': list(q),
                                                                                  'ai_data': list(ai),
                                                                                  'q_ai_line': list(clim_line),
-                                                                                 'cci_data': list(cci),
+                                                                                 'cc_data': list(cci),
                                                                                  'q_resid': list(resid),
                                                                                  'q_resid_line': list(resid_line)
                                                                                  }})
@@ -451,7 +452,7 @@ if __name__ == '__main__':
     #                          out_json=clim_resp, plot_r=fig_dir_)
 
     fig_dir = os.path.join(root, 'gages/figures/irr_impact_q_clim_delQ_cci_all')
-    irr_resp = os.path.join(root, 'gages/station_metadata/irr_impacted_all_w.json')
+    irr_resp = os.path.join(root, 'gages/station_metadata/cc_impacted.json')
     get_sig_irr_impact(clim_resp, ee_data, out_jsn=irr_resp, fig_dir=fig_dir)
 
     # watersheds_shp = '/media/research/IrrigationGIS/gages/watersheds/selected_watersheds.shp'

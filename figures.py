@@ -174,26 +174,59 @@ def impact_time_series_bars(sig_stations, basin_designations, figures, min_area=
 
 
 def trends_panel(irr_impact, png):
-
     with open(irr_impact, 'r') as f:
         irr_impact_d = json.load(f)
 
     # build data for slope, r histograms
     clime_slope, resid_slope, clim_r, resid_r = [], [], [], []
+    t_cci_r_, t_cci_slope_ = [], []
+    t_q_r_, t_q_slope_ = [], []
     years = np.array([x for x in range(1991, 2021)])
-    for s, v in irr_impact_d.items():
+    for s, d in irr_impact_d.items():
         if s in EXCLUDE_STATIONS:
             continue
-        impact_keys = [p for p, v in v.items() if isinstance(v, dict)]
+        impact_keys = [p for p, v in d.items() if isinstance(v, dict)]
 
-        [clim_r.append(irr_impact_d[s][k]['clim_rsq']) for k in v.keys() if k in impact_keys]
-        [clime_slope.append(irr_impact_d[s][k]['clim_slope']) for k in v.keys() if k in impact_keys]
+        [clime_slope.append(irr_impact_d[s][k]['clim_slope']) for k in d.keys() if k in impact_keys]
+        [clim_r.append(irr_impact_d[s][k]['clim_rsq']) for k in d.keys() if k in impact_keys]
 
-        [resid_r.append(irr_impact_d[s][k]['resid_rsq']) for k in v.keys() if k in impact_keys]
-        [resid_slope.append(irr_impact_d[s][k]['resid_slope']) for k in v.keys() if k in impact_keys]
+        [resid_slope.append(irr_impact_d[s][k]['resid_slope']) for k in d.keys() if k in impact_keys]
+        [resid_r.append(irr_impact_d[s][k]['resid_rsq']) for k in d.keys() if k in impact_keys]
         # TODO: write q_resid_time m/r/p and cci_time m/r/p to json from gage analysis
+        for k, v in d.items():
+            if k in impact_keys:
+
+                lr_cc = linregress(years, d[k]['cci_data'])
+                t_cci_r, t_cci_slope, t_cci_p = lr_cc.rvalue, lr_cc.slope, lr_cc.pvalue
+                t_cci_slope_norm = lr_cc.slope * np.std(years) / np.std(d[k]['cci_data'])
+                if t_cci_p > 0.05:
+                    continue
+                lr_q_t = linregress(years, d[k]['q_resid_line'])
+                t_q_r, t_q_slope, t_q_p = lr_q_t.rvalue, lr_q_t.slope, lr_q_t.pvalue
+                if t_q_p > 0.05:
+                    continue
+
+                t_cci_r_.append(t_cci_r), t_cci_slope_.append(t_cci_slope_norm)
+                t_q_slope_norm = lr_q_t.slope * np.std(years) / np.std(d[k]['q_resid_line'])
+                t_q_r_.append(t_q_r), t_q_slope_.append(t_q_slope_norm)
+
+    n_bins = 30
+
+    bin_clime_r, bin_clime_slope = np.linspace(0.1, 0.9, n_bins), \
+                                   np.linspace(-0.5, 0.2, n_bins)
+
+    bin_resid_r, bin_resid_slope = np.linspace(-0.7, 0.7, n_bins), \
+                                   np.linspace(-0.7, 0.7, n_bins)
+
+    bin_t_cci_r, bin_t_cci_slope = np.linspace(-0.6, 0.8, n_bins), \
+                                   np.linspace(-0.01, 0.015, n_bins)
+
+    bin_t_q_res_r, bin_t_q_res_slope = np.linspace(-0.8, 0.8, n_bins), \
+                                   np.linspace(-0.8, 0.8, n_bins)
 
     for s, d in irr_impact_d.items():
+        # if s != '06054500':
+        #     continue
         impact_keys = [p for p, v in d.items() if isinstance(v, dict)]
         for k, v in d.items():
             if k in impact_keys:
@@ -201,24 +234,44 @@ def trends_panel(irr_impact, png):
                 t_cci_r, t_cci_slope, t_cci_p = lr_cc.rvalue, lr_cc.slope, lr_cc.pvalue
                 lr_q_t = linregress(years, d[k]['q_resid_line'])
                 t_q_r, t_q_slope, t_q_p = lr_q_t.rvalue, lr_q_t.slope, lr_q_t.pvalue
-                if d['AREA'] > 5000.: #  t_cci_p < 0.05 and t_q_p < 0.05 and
+                if t_cci_p < 0.05 and t_q_p < 0.05 and d['AREA'] > 2000.:
                     print(s, d['STANAME'], d['AREA'])
 
                     q, ai, clim_line = v['q_data'], v['ai_data'], v['q_ai_line']
-                    fig, ax = plt.subplots(2, 4)
+                    fig, ax = plt.subplots(3, 4)
                     fig.set_figheight(16)
                     fig.set_figwidth(36)
+
+                    # climate-flow data
                     ax[0, 0].scatter(ai, q)
                     ax[0, 0].plot(ai, clim_line)
                     ax[0, 0].set(xlabel='ETr / PPT [-]')
                     ax[0, 0].set(ylabel='q [m^3]')
 
+                    ax[1, 0].hist(clime_slope, bins=bin_clime_slope)
+                    ax[1, 0].set(xlabel='Climate-Flow Slope [-]')
+                    ax[1, 0].set(ylabel='count')
+
+                    ax[2, 0].hist(clim_r, bins=bin_clime_r)
+                    ax[2, 0].set(xlabel='Climate-Flow Pearson r [-]')
+                    ax[2, 0].set(ylabel='count')
+
+                    # residual flow - crop consumption data
                     cci, resid, resid_line = v['cci_data'], v['q_resid'], v['q_resid_line']
                     ax[0, 1].set(xlabel='cci [m]')
                     ax[0, 1].set(ylabel='q residual [m^3]')
                     ax[0, 1].scatter(cci, resid)
                     ax[0, 1].plot(cci, resid_line)
 
+                    ax[1, 1].hist(resid_slope, bins=bin_resid_slope)
+                    ax[1, 1].set(xlabel='Residual Flow-Crop Consumption Slope [-]')
+                    ax[1, 1].set(ylabel='count')
+
+                    ax[2, 1].hist(resid_r, bins=bin_resid_r)
+                    ax[2, 1].set(xlabel='Residual Flow-Crop Consumption Pearson r [-]')
+                    ax[2, 1].set(ylabel='count')
+
+                    # crop consumption trend data
                     cc = v['cci_data']
                     cc_line = (lr_cc.slope) * np.array(years) + lr_cc.intercept
                     ax[0, 2].set(xlabel='Year')
@@ -226,16 +279,34 @@ def trends_panel(irr_impact, png):
                     ax[0, 2].scatter(years, cc)
                     ax[0, 2].plot(years, cc_line)
 
+                    ax[1, 2].hist(t_cci_slope_, bins=bin_t_cci_slope)
+                    ax[1, 2].set(xlabel='Crop Consumption Trend Slope [-]')
+                    ax[1, 2].set(ylabel='count')
+
+                    ax[2, 2].hist(t_cci_r_, bins=bin_t_cci_r)
+                    ax[2, 2].set(xlabel='Crop Consumption Trend Pearson r [-]')
+                    ax[2, 2].set(ylabel='count')
+
+                    # residual flow trend data
                     resid_q_time_line = (lr_q_t.slope) * np.array(years) + lr_q_t.intercept
                     ax[0, 3].set(xlabel='Year')
                     ax[0, 3].set(ylabel='q residual [m^3]')
                     ax[0, 3].scatter(years, resid)
                     ax[0, 3].plot(years, resid_q_time_line)
 
+                    ax[1, 3].hist(t_q_slope_, bins=bin_t_q_res_slope)
+                    ax[1, 3].set(xlabel='Residual Flow Trend Slope [-]')
+                    ax[1, 3].set(ylabel='count')
+
+                    ax[2, 3].hist(t_q_r_, bins=bin_t_q_res_r)
+                    ax[2, 3].set(xlabel='Residual Flow Trend Pearson r [-]')
+                    ax[2, 3].set(ylabel='count')
+
                     figname = os.path.join(png, '{}_{}_cc_{}_q_{}_{}_mo_climate.png'.format(s, d['STANAME'],
                                                                                             k, v['q_window'],
                                                                                             v['lag']))
                     plt.savefig(figname)
+                    plt.close()
 
 
 if __name__ == '__main__':
