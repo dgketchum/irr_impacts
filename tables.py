@@ -60,12 +60,17 @@ def merge_ssebop_tc_q(extracts, out_dir, flow_dir, glob='glob', division='basins
             irr, cc, et = [], [], []
             for y, m in months:
                 try:
-                    cc.append(d['cc_{}_{}'.format(y, m)])
-                    et.append(d['et_{}_{}'.format(y, m)])
-                    irr.append(d['irr_{}_{}'.format(y, m)])
+                    cc_, et_ = d['cc_{}_{}'.format(y, m)], d['et_{}_{}'.format(y, m)]
+                    cc.append(cc_)
+                    et.append(et_)
                 except KeyError:
                     cc.append(np.nan)
                     et.append(np.nan)
+
+                try:
+                    irr_ = d['irr_{}_{}'.format(y, m)]
+                    irr.append(irr_)
+                except KeyError:
                     irr.append(np.nan)
 
             irr = irr, 'irr'
@@ -113,8 +118,8 @@ if __name__ == '__main__':
     # g = 'Comp_14DEC2021'
     # merge_ssebop_tc_q(extract_, gage_src, out_dir, glob=g)
 
-    extract_ = os.path.join(root, 'time_series/counties_IrrMapperComp_17DEC2021/ee_export')
-    out = os.path.join(root, 'time_series/counties_IrrMapperComp_17DEC2021/county_monthly')
-    g = 'County_Comp_14DEC2021'
+    extract_ = os.path.join(root, 'time_series/counties_IrrMapperSW_21DEC2021/ee_export')
+    out = os.path.join(root, 'time_series/counties_IrrMapperSW_21DEC2021/county_monthly')
+    g = 'County_sw_20DEC2021'
     merge_ssebop_tc_q(extract_, out_dir=out, flow_dir=None, glob=g, division='county', join_key='GEOID')
 # ========================= EOF ====================================================================

@@ -70,7 +70,7 @@ def nass_irrmapper_climate(irr_dir, nass_c, fig_dir):
 
     m_start, m_end = 10, 9
     years = [x for x in range(1986, 2021)]
-    clim_dates = [(date(y - 1, 10, 1),  date(y, 9, monthrange(y, m_end)[1])) for y in years]
+    clim_dates = [(date(y, 4, 1),  date(y, 9, monthrange(y, m_end)[1])) for y in years]
     cc_dates = [(date(y, 5, 1), date(y, 10, 31)) for y in years]
     irr_dates = [(date(y, 7, 1), date(y, 7, 31)) for y in years]
 
@@ -92,7 +92,7 @@ def nass_irrmapper_climate(irr_dir, nass_c, fig_dir):
         cc = np.array([idf['cc'][d[0]: d[1]].sum() for d in cc_dates])
         cc[cc == 0.0] = np.nan
         irr = np.array([idf['irr'][d[0]: d[1]].sum() for d in irr_dates]) / 4046.86
-        if np.any(irr < 10000):
+        if np.any(irr[5:] < 1000):
             continue
         nrow = [(k[-4:], v) for k, v in ndf.loc[co].items() if 'VALUE' in k]
         n_v, n_y = [x[1] for x in nrow], [int(x[0]) for x in nrow]
@@ -107,13 +107,13 @@ def nass_irrmapper_climate(irr_dir, nass_c, fig_dir):
         ax[0].set(ylabel='Acres Irrigated')
         ax[0].set_xlim(years[0], years[-1])
         ax[1].plot(years, ppt, color='blue')
-        ax[1].set(ylabel='WY Precipitation [m^3]')
+        ax[1].set(ylabel='AMJJA Precipitation [m^3]')
         ax[1].set_xlim(years[0], years[-1])
         ax[2].plot(years, cc, color='black')
         ax[2].set(ylabel='Crop Consumption [m^3]')
         ax[2].set_xlim(years[0], years[-1])
         ax[3].plot(years, ai, color='red')
-        ax[3].set(ylabel='Aridity Index [-]')
+        ax[3].set(ylabel='AMJJA Aridity Index [-]')
         ax[3].set_xlim(years[0], years[-1])
 
         plt.suptitle('{} Co. {}'.format(co_str, st_str))

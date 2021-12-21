@@ -351,7 +351,7 @@ def get_sig_irr_impact(metadata, ee_series, out_jsn=None, fig_dir=None, gage_exa
                     ols = sm.OLS(resid, years_c)
                     fit_resid_q = ols.fit()
                     lr = linregress(resid, years)
-                    flow_r, = (lr.rvalue).item()
+                    flow_r = (lr.rvalue).item()
                     resid_p_q = (fit_resid_q.pvalues[1]).item()
                     resid_line_q = fit_resid_q.params[1] * np.array(years) + fit_resid_q.params[0]
                     sig_stations[sid]['{}-{}'.format(cc_start, cc_end)].update({'q_time_r': flow_r,
