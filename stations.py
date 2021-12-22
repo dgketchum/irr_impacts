@@ -160,7 +160,7 @@ if __name__ == '__main__':
 
     _shp = os.path.join(root, 'gage_loc_usgs', 'selected_gages_sortBasin.shp')
     _basin_json = os.path.join(root, 'station_metadata', 'basin_sort.json')
-    station_basin_designations(_shp, _basin_json)
+    # station_basin_designations(_shp, _basin_json)
 
     # por_stations = os.path.join(root, 'gage_loc_usgs/por_gages_nhd.shp')
     # watershed_source = os.path.join(root, 'watersheds/combined_station_watersheds.shp')
@@ -173,14 +173,14 @@ if __name__ == '__main__':
     #                        out_watersheds=selected_watersheds,
     #                        station_json=station_json)
 
-    # shp = os.path.join(root, '/gage_loc_usgs/selected_gages.shp')
-    # shp = os.path.join(root, '/gage_loc_usgs/selected_gages.shp')
-    # dst = os.path.join(root, '/hydrographs/daily_q_update')
-    # get_station_daily_data('discharge', '1988-01-01', '2020-12-31',
-    #                        shp, dst, freq='dv')
+    shp = os.path.join(root, 'gage_loc_usgs/selected_gages.shp')
+    shp = os.path.join(root, 'gage_loc_usgs/selected_gages.shp')
+    dst = os.path.join(root, 'hydrographs/daily_q')
+    get_station_daily_data('discharge', '1986-01-01', '2020-12-31',
+                           shp, dst, freq='dv')
 
-    # src = os.path.join(root, '/hydrographs/daily_q')
-    # dst = os.path.join(root, '/hydrographs/q_monthly')
-    # get_station_daterange_data(1988, src, dst, resample_freq='M')
+    src = os.path.join(root, 'hydrographs/daily_q')
+    dst = os.path.join(root, 'hydrographs/q_monthly')
+    get_station_daterange_data(1986, src, dst, resample_freq='M')
 
 # ========================= EOF ====================================================================

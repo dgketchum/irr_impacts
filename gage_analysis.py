@@ -452,7 +452,7 @@ if __name__ == '__main__':
     #                          out_json=clim_resp, plot_r=fig_dir_)
 
     fig_dir = os.path.join(root, 'gages/figures/irr_impact_q_clim_delQ_cci_all')
-    irr_resp = os.path.join(root, 'gages/station_metadata/cc_impacted.json')
+    irr_resp = os.path.join(root, 'gages/station_metadata/cci_impacted.json')
     get_sig_irr_impact(clim_resp, ee_data, out_jsn=irr_resp, fig_dir=fig_dir)
 
     # watersheds_shp = '/media/research/IrrigationGIS/gages/watersheds/selected_watersheds.shp'

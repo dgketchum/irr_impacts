@@ -2,14 +2,11 @@ import os
 import json
 
 import numpy as np
-import matplotlib
 from matplotlib import cm
-from matplotlib import rcParams, pyplot as plt
+from matplotlib import pyplot as plt
 from scipy.stats.stats import linregress
 
 from gage_list import EXCLUDE_STATIONS
-from hydrograph import hydrograph
-from gage_analysis import climate_flow_correlation, get_sig_irr_impact
 
 SYSTEM_STATIONS = ['06109500', '06329500', '09180500', '09315000',
                    '09379500', '12396500', '13269000', '13317000']
@@ -328,8 +325,8 @@ if __name__ == '__main__':
     # scatter_figs = os.path.join(figs, 'scatter_area_v_climate_response')
     # response_time_to_area(c_json, fig_dir=figs)
 
-    irr_resp = os.path.join(root, 'station_metadata/cc_impacted.json')
-    fig_dir = os.path.join(figs, 'panels_cc')
+    irr_resp = os.path.join(root, 'station_metadata/cci_impacted.json')
+    fig_dir = os.path.join(figs, 'panels_cci')
     trends_panel(irr_impact=irr_resp, png=fig_dir)
 
 # ========================= EOF ====================================================================

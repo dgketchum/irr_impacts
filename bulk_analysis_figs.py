@@ -3,11 +3,12 @@ from calendar import monthrange
 from datetime import date
 
 from matplotlib import rcParams, pyplot as plt
-from pandas import read_csv
+from pandas import read_csv, concat
 import numpy as np
 
 from hydrograph import hydrograph
 from county_list import included_counties
+from state_county_names_codes import state_fips_code, state_county_code
 
 
 def plot_clim_q_resid(q, ai, clim_line, desc_str, years, cc, resid, resid_line, fig_d, cci_per, flow_per):
@@ -59,12 +60,14 @@ def plot_water_balance_trends(data, data_line, data_str, years, desc_str, fig_d)
     plt.close('all')
 
 
-def nass_irrmapper_climate(irr_dir, nass_c, fig_dir):
+def nass_irrmapper_climate(irr_dir, nass_c, fig_dir, countywise=True):
 
     study_counties = included_counties()
 
     ndf = read_csv(nass_c)
-    ndf = ndf.dropna(how='any', axis=0, subset=['FIPS'])
+    ndf.dropna(how='any', axis=0, subset=['FIPS'], inplace=True)
+    ndf.dropna(how='any', axis=0, subset=['ST_CNTY_STR'], inplace=True)
+    ndf.fillna(0.0, inplace=True)
     ndf['GEOID'] = [str(int(x)).rjust(5, '0') for x in ndf['FIPS']]
     ndf.index = ndf['GEOID']
 
@@ -75,63 +78,126 @@ def nass_irrmapper_climate(irr_dir, nass_c, fig_dir):
     irr_dates = [(date(y, 7, 1), date(y, 7, 31)) for y in years]
 
     l = [os.path.join(irr_dir, x) for x in os.listdir(irr_dir)]
-    for c in l:
-        co = os.path.basename(c).split('.')[0]
-        idf = hydrograph(c)
-        # idf['cci'] = idf['cc'] / idf['irr']
+    if countywise:
+        for c in l:
+            co = os.path.basename(c).split('.')[0]
+            idf = hydrograph(c)
+            # idf['cci'] = idf['cc'] / idf['irr']
 
-        try:
-            co_desc = ndf.loc[co]['ST_CNTY_STR'].split('_')
-        except (KeyError, AttributeError):
-            print('\n{} not found\n'.format(co))
+            try:
+                co_desc = ndf.loc[co]['ST_CNTY_STR'].split('_')
+            except (KeyError, AttributeError):
+                print('\n{} not found\n'.format(co))
 
-        co_str, st_str = co_desc[1].title(), co_desc[0]
-        ppt = np.array([idf['ppt'][d[0]: d[1]].sum() for d in clim_dates])
-        etr = np.array([idf['etr'][d[0]: d[1]].sum() for d in clim_dates])
-        ai = etr / ppt
-        cc = np.array([idf['cc'][d[0]: d[1]].sum() for d in cc_dates])
-        cc[cc == 0.0] = np.nan
-        irr = np.array([idf['irr'][d[0]: d[1]].sum() for d in irr_dates]) / 4046.86
-        if np.any(irr[5:] < 1000):
-            continue
-        nrow = [(k[-4:], v) for k, v in ndf.loc[co].items() if 'VALUE' in k]
-        n_v, n_y = [x[1] for x in nrow], [int(x[0]) for x in nrow]
-        fig, ax = plt.subplots(4, 1)
-        fig.set_figheight(8)
-        fig.set_figwidth(12)
-        fig.tight_layout()
+            co_str, st_str = co_desc[1].title(), co_desc[0]
+            ppt = np.array([idf['ppt'][d[0]: d[1]].sum() for d in clim_dates])
+            etr = np.array([idf['etr'][d[0]: d[1]].sum() for d in clim_dates])
+            ai = etr / ppt
+            cc = np.array([idf['cc'][d[0]: d[1]].sum() for d in cc_dates])
+            cc[cc == 0.0] = np.nan
+            irr = np.array([idf['irr'][d[0]: d[1]].sum() for d in irr_dates]) / 4046.86
+            if np.any(irr[5:] < 1000):
+                continue
+            nrow = [(k[-4:], v) for k, v in ndf.loc[co].items() if 'VALUE' in k]
+            n_v, n_y = [x[1] for x in nrow], [int(x[0]) for x in nrow]
+            fig, ax = plt.subplots(4, 1)
+            fig.set_figheight(8)
+            fig.set_figwidth(12)
+            fig.tight_layout()
 
-        ax[0].plot(years, irr, color='purple', label='IrrMapper')
-        ax[0].plot(n_y, n_v, color='pink', label='NASS')
-        ax[0].legend()
-        ax[0].set(ylabel='Acres Irrigated')
-        ax[0].set_xlim(years[0], years[-1])
-        ax[1].plot(years, ppt, color='blue')
-        ax[1].set(ylabel='AMJJA Precipitation [m^3]')
-        ax[1].set_xlim(years[0], years[-1])
-        ax[2].plot(years, cc, color='black')
-        ax[2].set(ylabel='Crop Consumption [m^3]')
-        ax[2].set_xlim(years[0], years[-1])
-        ax[3].plot(years, ai, color='red')
-        ax[3].set(ylabel='AMJJA Aridity Index [-]')
-        ax[3].set_xlim(years[0], years[-1])
+            ax[0].plot(years, irr, color='purple', label='IrrMapper')
+            ax[0].plot(n_y, n_v, color='pink', label='NASS')
+            ax[0].legend()
+            ax[0].set(ylabel='Acres Irrigated')
+            ax[0].set_xlim(years[0], years[-1])
+            ax[1].plot(years, ppt, color='blue')
+            ax[1].set(ylabel='AMJJA Precipitation [m^3]')
+            ax[1].set_xlim(years[0], years[-1])
+            ax[2].plot(years, cc, color='black')
+            ax[2].set(ylabel='Crop Consumption [m^3]')
+            ax[2].set_xlim(years[0], years[-1])
+            ax[3].plot(years, ai, color='red')
+            ax[3].set(ylabel='AMJJA Aridity Index [-]')
+            ax[3].set_xlim(years[0], years[-1])
 
-        plt.suptitle('{} Co. {}'.format(co_str, st_str))
-        plt.xlim(1985, 2021)
-        plt.gcf().subplots_adjust(left=0.1)
-        plt.tight_layout()
+            plt.suptitle('{} Co. {}'.format(co_str, st_str))
+            plt.xlim(1985, 2021)
+            plt.gcf().subplots_adjust(left=0.1)
+            plt.tight_layout()
 
-        fig_file = '{}_{}.png'.format(st_str, co_str)
+            fig_file = '{}_{}.png'.format(st_str, co_str)
 
-        if co in study_counties:
-            sub_dir = 'impacts_study'
-        else:
-            sub_dir = 'non_study'
+            if co in study_counties:
+                sub_dir = 'impacts_study'
+            else:
+                sub_dir = 'non_study'
 
-        plt.savefig(os.path.join(fig_dir, sub_dir, fig_file))
-        plt.close()
-        print(fig_file, sub_dir)
-        # plt.show()
+            plt.savefig(os.path.join(fig_dir, sub_dir, fig_file))
+            plt.close()
+            print(fig_file, sub_dir)
+            # plt.show()
+    else:
+        states = ['AZ', 'CA', 'CO', 'ID', 'MT', 'NM', 'NV', 'OR', 'UT', 'WA', 'WY']
+        for s in states:
+
+            nass_rows = [i for i, r in ndf.iterrows() if r['ST_CNTY_STR'].startswith(s)]
+            sndf = ndf.loc[nass_rows]
+            sndf = sndf[[x for x in sndf.columns if 'VALUE' in x]]
+            n_v = sndf.sum(axis=0).values
+            n_y = [int(x[-4:]) for x in sndf.columns]
+
+            csv_l = [x for x in l if os.path.basename(x).split('.')[0].startswith(state_fips_code()[s])]
+            assert len(state_county_code()[s].keys()) == len(csv_l)
+            if not len(state_county_code()[s].keys()) == sndf.shape[0]:
+                csv_l = [x for x in csv_l if os.path.basename(x).split('.')[0] in nass_rows]
+                print('{} is short records from NASS'.format(s))
+            first = True
+            for c in csv_l:
+                if first:
+                    idf = hydrograph(c)
+                    first = False
+                    continue
+                idf += hydrograph(c)
+
+            ppt = np.array([idf['ppt'][d[0]: d[1]].sum() for d in clim_dates])
+            etr = np.array([idf['etr'][d[0]: d[1]].sum() for d in clim_dates])
+            ai = etr / ppt
+            cc = np.array([idf['cc'][d[0]: d[1]].sum() for d in cc_dates])
+            cc[cc == 0.0] = np.nan
+            irr = np.array([idf['irr'][d[0]: d[1]].sum() for d in irr_dates]) / 4046.86
+
+            fig, ax = plt.subplots(4, 1)
+            fig.set_figheight(8)
+            fig.set_figwidth(12)
+            fig.tight_layout()
+
+            ax[0].plot(years, irr, color='purple', label='IrrMapper')
+            ax[0].plot(n_y, n_v, color='pink', label='NASS')
+            ax[0].legend()
+            ax[0].set(ylabel='Acres Irrigated')
+            ax[0].set_xlim(years[0], years[-1])
+            ax[1].plot(years, ppt, color='blue')
+            ax[1].set(ylabel='AMJJA Precipitation [m^3]')
+            ax[1].set_xlim(years[0], years[-1])
+            ax[2].plot(years, cc, color='black')
+            ax[2].set(ylabel='Crop Consumption [m^3]')
+            ax[2].set_xlim(years[0], years[-1])
+            ax[3].plot(years, ai, color='red')
+            ax[3].set(ylabel='AMJJA Aridity Index [-]')
+            ax[3].set_xlim(years[0], years[-1])
+
+            plt.suptitle('{}'.format(s))
+            plt.xlim(1986, 2021)
+            plt.gcf().subplots_adjust(left=0.1)
+            plt.tight_layout()
+
+            fig_file = '{}.png'.format(s)
+
+            sub_dir = 'statewise'
+
+            plt.savefig(os.path.join(fig_dir, sub_dir, fig_file))
+            plt.close()
+            print(fig_file, sub_dir)
 
 
 if __name__ == '__main__':
@@ -141,5 +207,5 @@ if __name__ == '__main__':
     nass = os.path.join(root, 'nass_data', 'nass_merged.csv')
     co_irr = os.path.join(root, 'time_series/counties_IrrMapperComp_17DEC2021/county_monthly')
     figs = os.path.join(root, 'time_series/counties_IrrMapperComp_17DEC2021/figures')
-    nass_irrmapper_climate(co_irr, nass, figs)
+    nass_irrmapper_climate(co_irr, nass, figs, countywise=False)
 # ========================= EOF ====================================================================
