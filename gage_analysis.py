@@ -451,26 +451,26 @@ if __name__ == '__main__':
     # climate_flow_correlation(climate_dir=clim_dir, in_json=i_json,
     #                          out_json=clim_resp, plot_r=fig_dir_)
 
-    fig_dir = os.path.join(root, 'gages/figures/irr_impact_q_clim_delQ_cci_all')
-    irr_resp = os.path.join(root, 'gages/station_metadata/cci_impacted.json')
-    get_sig_irr_impact(clim_resp, ee_data, out_jsn=irr_resp, fig_dir=fig_dir)
+    # fig_dir = os.path.join(root, 'gages/figures/irr_impact_q_clim_delQ_cci_all')
+    # irr_resp = os.path.join(root, 'gages/station_metadata/cci_impacted.json')
+    # get_sig_irr_impact(clim_resp, ee_data, out_jsn=irr_resp, fig_dir=fig_dir)
 
-    # watersheds_shp = '/media/research/IrrigationGIS/gages/watersheds/selected_watersheds.shp'
-    # _json = '/media/research/IrrigationGIS/gages/station_metadata/irr_impacted_all.json'
-    # cc_frac_json = '/media/research/IrrigationGIS/gages/station_metadata/basin_cc_ratios.json'
-    # water_balance_ratios(_json, ee_data, watersheds=None, metadata_out=cc_frac_json)
+    watersheds_shp = '/media/research/IrrigationGIS/gages/watersheds/selected_watersheds.shp'
+    _json = '/media/research/IrrigationGIS/gages/station_metadata/cc_impacted.json'
+    cc_frac_json = '/media/research/IrrigationGIS/gages/station_metadata/basin_cc_ratios.json'
+    water_balance_ratios(_json, ee_data, watersheds=None, metadata_out=cc_frac_json)
 
-    # irr_impacted = os.path.join(root, 'gages/station_metadata/basin_cc_ratios.json')
-    # fig_dir = os.path.join(root, 'gages/figures/water_balance_time_series/significant_gt_2000sqkm')
-    # trend_metatdata_dir = os.path.join(root, 'gages/station_metadata/significant_gt_2000sqkm')
-    # trend_json = os.path.join(root, 'gages/water_balance_time_series/cc_q_trends.json')
+    irr_impacted = os.path.join(root, 'gages/station_metadata/basin_cc_ratios.json')
+    fig_dir = os.path.join(root, 'gages/figures/water_balance_time_series/significant_gt_2000sqkm')
+    trend_metatdata_dir = os.path.join(root, 'gages/station_metadata/significant_gt_2000sqkm')
+    trend_json = os.path.join(root, 'gages/water_balance_time_series/cc_q_trends.json')
 
-    # for k in ['ppt', 'q', 'etr', 'ai', 'cc', 'cci', 'irr']:
-    #     fig_ = os.path.join(fig_dir, k)
-    #     if not os.path.exists(fig_):
-    #         os.mkdir(fig_)
-    #     out_json = os.path.join(trend_metatdata_dir, 'sig_trends_{}.json'.format(k))
-    #     basin_trends(k, irr_impacted, ee_data, out_jsn=out_json, fig_dir=fig_,
-    #                  start_mo=1, end_mo=12, significant=True)
+    for k in ['ppt', 'q', 'etr', 'ai', 'cc', 'cci', 'irr']:
+        fig_ = os.path.join(fig_dir, k)
+        if not os.path.exists(fig_):
+            os.mkdir(fig_)
+        out_json = os.path.join(trend_metatdata_dir, 'sig_trends_{}.json'.format(k))
+        basin_trends(k, irr_impacted, ee_data, out_jsn=out_json, fig_dir=fig_,
+                     start_mo=1, end_mo=12, significant=True)
 
 # ========================= EOF ====================================================================

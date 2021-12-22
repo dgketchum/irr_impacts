@@ -100,7 +100,7 @@ def impact_time_series_bars(sig_stations, basin_designations, figures, min_area=
             if s not in sort_keys:
                 continue
             impact_keys = [p for p, v in v.items() if isinstance(v, dict)]
-            [all_slope.append(stations[s][k]['slope']) for k in v.keys() if k in impact_keys]
+            [all_slope.append(stations[s][k]['resid_slope']) for k in v.keys() if k in impact_keys]
 
         min_slope, max_slope = np.min(all_slope), np.max(all_slope)
 
@@ -123,7 +123,7 @@ def impact_time_series_bars(sig_stations, basin_designations, figures, min_area=
             periods = [(int(p.split('-')[0]), int(p.split('-')[1])) for p in impact_keys]
             periods = sorted(periods, key=lambda x: x[1] - x[0])
 
-            slopes = [dct[k]['slope'] for k in dct.keys() if k in impact_keys]
+            slopes = [dct[k]['resid_slope'] for k in dct.keys() if k in impact_keys]
             [all_slope.append(s) for s in slopes]
 
             single_month_resp = [x[1] - x[0] == 0 for x in periods]
@@ -316,17 +316,17 @@ if __name__ == '__main__':
     cc_frac_json = os.path.join(root, 'station_metadata/basin_cc_ratios.json')
     basin_json = os.path.join(root, 'station_metadata/basin_sort.json')
     heat_figs = os.path.join(figs, 'heat_bars_largeSystems_singlemonth')
-    # for sk in ['IAREA', 'ai', 'AREA']:  # 'cc_ppt', 'cc_q', 'cci', 'q_ppt']
-    #     impact_time_series_bars(cc_frac_json, basin_json,
-    #                             heat_figs, min_area=2000., sort_key=sk, x_key='cci')
+    for sk in ['IAREA', 'ai', 'AREA']:  # 'cc_ppt', 'cc_q', 'cci', 'q_ppt']
+        impact_time_series_bars(cc_frac_json, basin_json,
+                                heat_figs, min_area=2000., sort_key=sk, x_key='cci')
 
     # i_json = '/media/research/IrrigationGIS/gages/station_metadata/irr_impacted_all.json'
     # c_json = '/media/research/IrrigationGIS/gages/station_metadata/basin_climate_response_irr.json'
     # scatter_figs = os.path.join(figs, 'scatter_area_v_climate_response')
     # response_time_to_area(c_json, fig_dir=figs)
 
-    irr_resp = os.path.join(root, 'station_metadata/cci_impacted.json')
-    fig_dir = os.path.join(figs, 'panels_cci')
-    trends_panel(irr_impact=irr_resp, png=fig_dir)
+    # irr_resp = os.path.join(root, 'station_metadata/cci_impacted.json')
+    # fig_dir = os.path.join(figs, 'panels_cci')
+    # trends_panel(irr_impact=irr_resp, png=fig_dir)
 
 # ========================= EOF ====================================================================
