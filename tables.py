@@ -112,15 +112,15 @@ if __name__ == '__main__':
     root = '/media/research/IrrigationGIS'
     if not os.path.exists(root):
         root = '/home/dgketchum/data/IrrigationGIS'
-    gage_src = os.path.join(root, 'gages/hydrographs/q_monthly')
-    extract_ = os.path.join(root, 'gages/ee_exports/monthly/IrrMapperComp_21DEC2021')
-    out_dir = os.path.join(root, 'gages/merged_q_ee/monthly_ssebop_tc_q_Comp_21DEC2021')
-    g = 'Comp_21DEC2021'
-    merge_ssebop_tc_q(extracts=extract_, flow_dir=gage_src,
-                      out_dir=out_dir, glob=g, division='basins')
+    # gage_src = os.path.join(root, 'gages/hydrographs/q_monthly')
+    # extract_ = os.path.join(root, 'gages/ee_exports/monthly/IrrMapperComp_21DEC2021')
+    # out_dir = os.path.join(root, 'gages/merged_q_ee/monthly_ssebop_tc_q_Comp_21DEC2021')
+    # g = 'Comp_21DEC2021'
+    # merge_ssebop_tc_q(extracts=extract_, flow_dir=gage_src,
+    #                   out_dir=out_dir, glob=g, division='basins')
 
-    # extract_ = os.path.join(root, 'time_series/counties_IrrMapperSW_21DEC2021/ee_export')
-    # out = os.path.join(root, 'time_series/counties_IrrMapperSW_21DEC2021/county_monthly')
-    # g = 'County_sw_20DEC2021'
-    # merge_ssebop_tc_q(extract_, out_dir=out, flow_dir=None, glob=g, division='county', join_key='GEOID')
+    extract_ = os.path.join(root, 'time_series/counties_IrrMapperComp_21DEC2021/ee_export')
+    out = os.path.join(root, 'time_series/counties_IrrMapperComp_21DEC2021/county_monthly')
+    g = 'County_Comp_21DEC2021'
+    merge_ssebop_tc_q(extract_, out_dir=out, flow_dir=None, glob=g, division='county', join_key='GEOID')
 # ========================= EOF ====================================================================

@@ -72,7 +72,7 @@ def nass_irrmapper_climate(irr_dir, nass_c, fig_dir, countywise=True):
     ndf.index = ndf['GEOID']
 
     m_start, m_end = 10, 9
-    years = [x for x in range(1986, 2021)]
+    years = [x for x in range(1997, 2017)]
     clim_dates = [(date(y, 4, 1),  date(y, 9, monthrange(y, m_end)[1])) for y in years]
     cc_dates = [(date(y, 5, 1), date(y, 10, 31)) for y in years]
     irr_dates = [(date(y, 7, 1), date(y, 7, 31)) for y in years]
@@ -135,22 +135,37 @@ def nass_irrmapper_climate(irr_dir, nass_c, fig_dir, countywise=True):
             plt.savefig(os.path.join(fig_dir, sub_dir, fig_file))
             plt.close()
             print(fig_file, sub_dir)
-            # plt.show()
     else:
-        states = ['AZ', 'CA', 'CO', 'ID', 'MT', 'NM', 'NV', 'OR', 'UT', 'WA', 'WY']
-        for s in states:
+        western_11 = ['AZ', 'CA', 'CO', 'ID', 'MT', 'NM', 'NV', 'OR', 'UT', 'WA', 'WY']
+        inlcude_all = ['ALL'] + western_11
+        fips = state_fips_code()
+        western_fips = [v for k, v in fips.items() if k in western_11]
 
-            nass_rows = [i for i, r in ndf.iterrows() if r['ST_CNTY_STR'].startswith(s)]
+        for s in inlcude_all:
+
+            if s == 'ALL':
+                nass_rows = [i for i, r in ndf.iterrows() if r['ST_CNTY_STR'][:2] in western_11]
+            else:
+                nass_rows = [i for i, r in ndf.iterrows() if r['ST_CNTY_STR'].startswith(s)]
+
             sndf = ndf.loc[nass_rows]
             sndf = sndf[[x for x in sndf.columns if 'VALUE' in x]]
             n_v = sndf.sum(axis=0).values
             n_y = [int(x[-4:]) for x in sndf.columns]
 
-            csv_l = [x for x in l if os.path.basename(x).split('.')[0].startswith(state_fips_code()[s])]
-            assert len(state_county_code()[s].keys()) == len(csv_l)
-            if not len(state_county_code()[s].keys()) == sndf.shape[0]:
-                csv_l = [x for x in csv_l if os.path.basename(x).split('.')[0] in nass_rows]
-                print('{} is short records from NASS'.format(s))
+            if s == 'ALL':
+                csv_l = [x for x in l if os.path.basename(x).split('.')[0][:2] in western_fips]
+            else:
+                csv_l = [x for x in l if os.path.basename(x).split('.')[0].startswith(state_fips_code()[s])]
+
+            if not s == 'ALL':
+                if not len(state_county_code()[s].keys()) == len(csv_l):
+                    csv_l = [x for x in csv_l if os.path.basename(x).split('.')[0] in nass_rows]
+                    print('{} is short records from EE'.format(s))
+                if not len(state_county_code()[s].keys()) == sndf.shape[0]:
+                    csv_l = [x for x in csv_l if os.path.basename(x).split('.')[0] in nass_rows]
+                    print('{} is short records from NASS'.format(s))
+
             first = True
             for c in csv_l:
                 if first:
@@ -187,7 +202,7 @@ def nass_irrmapper_climate(irr_dir, nass_c, fig_dir, countywise=True):
             ax[3].set_xlim(years[0], years[-1])
 
             plt.suptitle('{}'.format(s))
-            plt.xlim(1986, 2021)
+            plt.xlim(years[0], years[-1])
             plt.gcf().subplots_adjust(left=0.1)
             plt.tight_layout()
 
@@ -205,7 +220,7 @@ if __name__ == '__main__':
     if not os.path.exists(root):
         root = '/home/dgketchum/data/IrrigationGIS'
     nass = os.path.join(root, 'nass_data', 'nass_merged.csv')
-    co_irr = os.path.join(root, 'time_series/counties_IrrMapperComp_17DEC2021/county_monthly')
-    figs = os.path.join(root, 'time_series/counties_IrrMapperComp_17DEC2021/figures')
+    co_irr = os.path.join(root, 'time_series/counties_IrrMapperComp_21DEC2021/county_monthly')
+    figs = os.path.join(root, 'time_series/counties_IrrMapperComp_21DEC2021/figures')
     nass_irrmapper_climate(co_irr, nass, figs, countywise=False)
 # ========================= EOF ====================================================================

@@ -67,11 +67,10 @@ def write_json_to_shapefile(in_shp, out_shp, meta):
                 pass
 
 
-def water_balance_ratios(metadata, ee_series, watersheds=None, metadata_out=None):
+def water_balance_ratios(metadata, ee_series, stations=None, metadata_out=None):
     with open(metadata, 'r') as f:
         metadata = json.load(f)
 
-    frac = []
     dct = {}
     for sid, v in metadata.items():
         if sid in EXCLUDE_STATIONS:
@@ -93,30 +92,34 @@ def water_balance_ratios(metadata, ee_series, watersheds=None, metadata_out=None
         print('cci: {:.3f}, {}'.format(np.mean(cci), v['STANAME']))
 
         dct[sid] = v
-        dct[sid].update({'IAREA': np.mean(irr)})
-        dct[sid].update({'cc_q': cc.sum() / q.sum()})
-        dct[sid].update({'cci': np.mean(cci)})
-        dct[sid].update({'q_ppt': q.sum() / ppt.sum()})
-        dct[sid].update({'ai': etr.sum() / ppt.sum()})
-
-    frac_dict = {k: v for k, v in frac}
-    stations_ = [f[0] for f in frac]
+        dct[sid].update({'IAREA': (np.mean(irr)).item()})
+        dct[sid].update({'cc_q': (cc.sum() / q.sum()).item()})
+        dct[sid].update({'cci': (np.mean(cci)).item()})
+        dct[sid].update({'q_ppt': (q.sum() / ppt.sum()).item()})
+        dct[sid].update({'ai': (etr.sum() / ppt.sum()).item()})
+        break
 
     if metadata_out:
         with open(metadata_out, 'w') as fp:
             json.dump(dct, fp, indent=4, sort_keys=False)
-    if watersheds:
-        with fiona.open(watersheds, 'r') as src:
+    if stations:
+        with fiona.open(stations, 'r') as src:
             features = [f for f in src]
             meta = src.meta
-        meta['schema']['properties']['cc_f'] = 'float:19.11'
-        out_shp = os.path.join(os.path.dirname(watersheds),
+
+        [meta['schema']['properties'].update({k: 'float:19.11'}) for k, v in dct[sid].items()
+         if k not in meta['schema']['properties'].keys() and isinstance(v, float)]
+
+        out_shp = os.path.join(os.path.dirname(stations),
                                os.path.basename(metadata_out).replace('json', 'shp'))
         with fiona.open(out_shp, 'w', **meta) as dst:
             for f in features:
                 sid = f['properties']['STAID']
-                if sid in stations_:
-                    f['properties']['cc_f'] = frac_dict[sid]
+                if sid in dct.keys():
+                    d = {k: v for k, v in dct[sid].items() if isinstance(v, str)}
+                    d.update({k: v for k, v in dct[sid].items() if isinstance(v, float)})
+                    d['STAID'] = sid
+                    f['properties'] = d
                     dst.write(f)
 
 
@@ -438,39 +441,40 @@ def basin_trends(key, metadata, ee_series, start_mo, end_mo, out_jsn=None, fig_d
 
 
 if __name__ == '__main__':
-    root = '/media/research/IrrigationGIS'
+    root = '/media/research/IrrigationGIS/gages'
     if not os.path.exists(root):
-        root = '/home/dgketchum/data/IrrigationGIS'
+        root = '/home/dgketchum/data/IrrigationGIS/gages'
 
-    ee_data = os.path.join(root, 'gages/merged_q_ee/monthly_ssebop_tc_q_Comp_16DEC2021')
-    clim_resp = os.path.join(root, 'gages/station_metadata/basin_climate_response_all.json')
+    ee_data = os.path.join(root, 'merged_q_ee/monthly_ssebop_tc_q_Comp_16DEC2021')
+    clim_resp = os.path.join(root, 'station_metadata/basin_climate_response_all.json')
 
-    clim_dir = os.path.join(root, 'gages/merged_q_ee/monthly_ssebop_tc_q_Comp_16DEC2021')
-    i_json = os.path.join(root, 'gages/station_metadata/station_metadata.json')
-    fig_dir_ = os.path.join(root, 'gages/figures/clim_q_correlations')
+    clim_dir = os.path.join(root, 'merged_q_ee/monthly_ssebop_tc_q_Comp_16DEC2021')
+    i_json = os.path.join(root, 'station_metadata/station_metadata.json')
+    fig_dir_ = os.path.join(root, 'figures/clim_q_correlations')
     # climate_flow_correlation(climate_dir=clim_dir, in_json=i_json,
     #                          out_json=clim_resp, plot_r=fig_dir_)
 
-    # fig_dir = os.path.join(root, 'gages/figures/irr_impact_q_clim_delQ_cci_all')
-    # irr_resp = os.path.join(root, 'gages/station_metadata/cci_impacted.json')
+    # fig_dir = os.path.join(root, 'figures/irr_impact_q_clim_delQ_cci_all')
+    # irr_resp = os.path.join(root, 'station_metadata/cci_impacted.json')
     # get_sig_irr_impact(clim_resp, ee_data, out_jsn=irr_resp, fig_dir=fig_dir)
 
-    watersheds_shp = '/media/research/IrrigationGIS/gages/watersheds/selected_watersheds.shp'
-    _json = '/media/research/IrrigationGIS/gages/station_metadata/cc_impacted.json'
-    cc_frac_json = '/media/research/IrrigationGIS/gages/station_metadata/basin_cc_ratios.json'
-    water_balance_ratios(_json, ee_data, watersheds=None, metadata_out=cc_frac_json)
+    # watersheds_shp = os.path.join(root, 'watersheds/selected_watersheds.shp')
+    watersheds_shp = os.path.join(root, 'gage_loc_usgs/selected_gages.shp')
+    _json = os.path.join(root, 'station_metadata/cc_impacted.json')
+    cc_frac_json = os.path.join(root, 'station_metadata/basin_cc_ratios.json')
+    water_balance_ratios(_json, ee_data, stations=watersheds_shp, metadata_out=cc_frac_json)
 
-    irr_impacted = os.path.join(root, 'gages/station_metadata/basin_cc_ratios.json')
-    fig_dir = os.path.join(root, 'gages/figures/water_balance_time_series/significant_gt_2000sqkm')
-    trend_metatdata_dir = os.path.join(root, 'gages/station_metadata/significant_gt_2000sqkm')
-    trend_json = os.path.join(root, 'gages/water_balance_time_series/cc_q_trends.json')
+    irr_impacted = os.path.join(root, 'station_metadata/basin_cc_ratios.json')
+    fig_dir = os.path.join(root, 'figures/water_balance_time_series/significant_gt_2000sqkm')
+    trend_metatdata_dir = os.path.join(root, 'station_metadata/significant_gt_2000sqkm')
+    trend_json = os.path.join(root, 'water_balance_time_series/cc_q_trends.json')
 
-    for k in ['ppt', 'q', 'etr', 'ai', 'cc', 'cci', 'irr']:
-        fig_ = os.path.join(fig_dir, k)
-        if not os.path.exists(fig_):
-            os.mkdir(fig_)
-        out_json = os.path.join(trend_metatdata_dir, 'sig_trends_{}.json'.format(k))
-        basin_trends(k, irr_impacted, ee_data, out_jsn=out_json, fig_dir=fig_,
-                     start_mo=1, end_mo=12, significant=True)
+    # for k in ['ppt', 'q', 'etr', 'ai', 'cc', 'cci', 'irr']:
+    #     fig_ = os.path.join(fig_dir, k)
+    #     if not os.path.exists(fig_):
+    #         os.mkdir(fig_)
+    #     out_json = os.path.join(trend_metatdata_dir, 'sig_trends_{}.json'.format(k))
+    #     basin_trends(k, irr_impacted, ee_data, out_jsn=out_json, fig_dir=fig_,
+    #                  start_mo=1, end_mo=12, significant=True)
 
 # ========================= EOF ====================================================================
