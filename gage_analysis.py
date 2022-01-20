@@ -97,7 +97,6 @@ def water_balance_ratios(metadata, ee_series, stations=None, metadata_out=None):
         dct[sid].update({'cci': (np.mean(cci)).item()})
         dct[sid].update({'q_ppt': (q.sum() / ppt.sum()).item()})
         dct[sid].update({'ai': (etr.sum() / ppt.sum()).item()})
-        break
 
     if metadata_out:
         with open(metadata_out, 'w') as fp:
@@ -462,7 +461,7 @@ if __name__ == '__main__':
     watersheds_shp = os.path.join(root, 'gage_loc_usgs/selected_gages.shp')
     _json = os.path.join(root, 'station_metadata/cc_impacted.json')
     cc_frac_json = os.path.join(root, 'station_metadata/basin_cc_ratios.json')
-    water_balance_ratios(_json, ee_data, stations=watersheds_shp, metadata_out=cc_frac_json)
+    # water_balance_ratios(_json, ee_data, stations=None, metadata_out=cc_frac_json)
 
     irr_impacted = os.path.join(root, 'station_metadata/basin_cc_ratios.json')
     fig_dir = os.path.join(root, 'figures/water_balance_time_series/significant_gt_2000sqkm')

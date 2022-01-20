@@ -1,13 +1,20 @@
 import os
 
-import geopandas as gpd
 import numpy as np
-import rasterio
-from skimage.filters.rank import majority
 from skimage.morphology import disk
+from skimage.filters.rank import majority
+
+import geopandas as gpd
+import cartopy.io.shapereader as shpreader
+import cartopy.feature as cf
+import cartopy.crs as ccrs
+import rasterio
 from rasterio.plot import show
 import matplotlib.colors as colors
 import matplotlib.pyplot as plt
+from cartopy.io.shapereader import Reader
+from cartopy.feature import ShapelyFeature
+from scalebar import scale_bar
 
 
 def map_fig_one(basins_shp, irrmap, gages_shp, states, all_gages, png):
@@ -15,12 +22,12 @@ def map_fig_one(basins_shp, irrmap, gages_shp, states, all_gages, png):
     sdf = gpd.read_file(states)
     bdf = gpd.read_file(basins_shp)
 
-    src = rasterio.open(irrmap)
-    left, bottom, right, top = src.bounds
-    irr = src.read()[0, :, :].astype(np.dtype('uint8'))
-    src.close()
-    irr = majority(irr, disk(2))
-    irr = np.ma.masked_where(irr < 5,
+    with rasterio.open(irrmap, 'r') as rsrc:
+        left, bottom, right, top = rsrc.bounds
+        irr = rsrc.read()[0, :, :].astype(np.dtype('uint8'))
+
+    # irr = majority(irr, disk(2))
+    irr = np.ma.masked_where(irr == 0,
                              irr,
                              copy=True)
 
@@ -31,35 +38,50 @@ def map_fig_one(basins_shp, irrmap, gages_shp, states, all_gages, png):
     gdf = gdf[gdf['cc_q'] <= 0.5]
     gdf['rank'] = gdf['cc_q'].rank(ascending=True)
 
-    fig, ax = plt.subplots(1, figsize=(20, 16))
-    show(irr.data, cmap='RdBu', alpha=0.5, ax=ax, extent=(left, right, bottom, top),
-         norm=colors.Normalize(vmin=-1.0, vmax=1.0),)
+    proj = ccrs.LambertConformal(central_latitude=40,
+                                 central_longitude=-110)
+    fig = plt.figure(figsize=(40, 30))
+    ax = plt.axes(projection=proj)
+    ax.set_extent([-127, -102, 30, 52], crs=ccrs.PlateCarree())
+
+    shape_feature = ShapelyFeature(Reader(basins_shp).geometries(),
+                                   ccrs.PlateCarree(), edgecolor='red')
+    ax.add_feature(shape_feature, facecolor='none')
+
+    ax.add_feature(cf.BORDERS)
+    ax.add_feature(cf.NaturalEarthFeature(
+        category='cultural',
+        name='admin_1_states_provinces_lines',
+        scale='50m',
+        facecolor='none'))
+
+    ax.imshow(irr, transform=ccrs.PlateCarree(), cmap='jet_r',
+              extent=(left, right, bottom, top))
+
     sdf.geometry.boundary.plot(color=None, edgecolor='k', linewidth=1, alpha=0.8, ax=ax)
-    bdf.geometry.boundary.plot(color=None, edgecolor='purple', linewidth=2, ax=ax)
-    adf.plot(color='k', linewidth=0, alpha=0.1, ax=ax)
-    gdf.plot(column='rank', linewidth=1., cmap=plt.cm.coolwarm, legend=True, scheme='quantiles', ax=ax)
-    # locs, labels = plt.xticks()
-    # plt.setp(labels, rotation=90)
-    # plt.axis('equal')
-    # plt.savefig(png)
-    plt.xlim(-125, -102)
-    plt.ylim(30, 50)
-    plt.show()
-    # plt.close()
+    bdf.geometry.boundary.plot(color=None, edgecolor='red', linewidth=0.75, ax=ax)
+    adf.plot(color='k', linewidth=0, edgecolor='black',
+             facecolor='none', ax=ax, transform=ccrs.PlateCarree())
+    gdf.plot(column='rank', linewidth=1., cmap='jet', scheme='quantiles',
+             legend=True, ax=ax, transform=ccrs.PlateCarree())
+    # scale_bar(ax, proj, length=300, bars=1)
+
+    plt.box(False)
+    plt.savefig(png)
+    # plt.show()
+    plt.close()
 
 
 if __name__ == '__main__':
     root = '/media/research/IrrigationGIS/gages'
     if not os.path.exists(root):
         root = '/home/dgketchum/data/IrrigationGIS/gages'
-    fig_data = os.path.join(root, 'figures')
-    fig_shp = os.path.join(root, 'figures', 'fig_shapes')
-    fig_tif = os.path.join(root, 'figures', 'fig_tifs')
-    gages = os.path.join(fig_shp, 'basin_cc_ratios.shp')
-    basins = os.path.join(fig_shp, 'study_basins.shp')
-    states_ = os.path.join(fig_shp, 'western_11_states.shp')
-    all_gages_ = os.path.join(fig_shp, 'study_gages_all.shp')
-    irrmapper = os.path.join(fig_tif, 'irr_freq_merge_360m.tif')
+    fig_data = os.path.join(root, 'figures', 'map_one')
+    gages = os.path.join(fig_data, 'basin_cc_ratios.shp')
+    basins = os.path.join(fig_data, 'study_basins.shp')
+    states_ = os.path.join(fig_data, 'western_states_11_wgs.shp')
+    all_gages_ = os.path.join(fig_data, 'study_gages_all.shp')
+    irrmapper = os.path.join(fig_data, 'irr_freq_merge_360m.tif')
     fig = os.path.join(fig_data, 'map_fig_one.png')
     map_fig_one(basins, irrmapper, gages, states_, all_gages_, fig)
 # ========================= EOF ====================================================================
