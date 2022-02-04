@@ -13,7 +13,7 @@ from dateutil.relativedelta import relativedelta as rdlt
 import fiona
 import statsmodels.api as sm
 
-from bulk_analysis_figs import plot_clim_q_resid, plot_water_balance_trends
+from figures.bulk_analysis_figs import plot_clim_q_resid, plot_water_balance_trends
 from hydrograph import hydrograph
 
 os.environ['R_HOME'] = '/home/dgketchum/miniconda3/envs/renv/lib/R'

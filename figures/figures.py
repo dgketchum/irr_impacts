@@ -311,7 +311,7 @@ if __name__ == '__main__':
     if not os.path.exists(root):
         root = '/home/dgketchum/data/IrrigationGIS/gages'
 
-    figs = os.path.join(root, 'figures')
+    figs = os.path.join(root, '')
 
     cc_frac_json = os.path.join(root, 'station_metadata/basin_cc_ratios.json')
     basin_json = os.path.join(root, 'station_metadata/basin_sort.json')
