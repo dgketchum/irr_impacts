@@ -66,9 +66,19 @@ def scale_bar(ax, projection, bars=4, length=None, location=(0.45, 0.22), linewi
             verticalalignment='bottom', color=col, fontsize=15)
 
     x_north = sbx + length * 1000 / 2
-    x_north_end = sbx - 10000 + length * 1000 / 2
+    x_north_end = sbx - 10000 + length * 1000 / 2 + 30000
     y_north = y0 + (y1 - y0) * (location[1] + 0.025)
     y_north_end = y0 + (y1 - y0) * (location[1] + 0.1)
-    ax.annotate('N', xy=(x_north_end, y_north_end), xytext=(x_north, y_north),
+    ax.annotate('N',
+                xy=(x_north, y_north_end),
+                xytext=(x_north, y_north - 15000),
+                ha='center',
+                va='center',
+                fontsize=18)
+    ax.annotate('',
+                xy=(x_north_end, y_north_end),
+                xytext=(x_north + 5000, y_north + 20000),
                 arrowprops=dict(facecolor='black', width=5, headwidth=15, lw=0.5),
-                ha='center', va='center', fontsize=18)
+                ha='center',
+                va='center',
+                fontsize=18)
