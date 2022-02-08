@@ -13,7 +13,7 @@ from dateutil.relativedelta import relativedelta as rdlt
 import fiona
 import statsmodels.api as sm
 
-from figures.bulk_analysis_figs import plot_clim_q_resid, plot_water_balance_trends
+from figs.bulk_analysis_figs import plot_clim_q_resid, plot_water_balance_trends
 from hydrograph import hydrograph
 
 os.environ['R_HOME'] = '/home/dgketchum/miniconda3/envs/renv/lib/R'
@@ -80,7 +80,7 @@ def water_balance_ratios(metadata, ee_series, stations=None, metadata_out=None):
         cdf['cci'] = cdf['cc'] / cdf['irr']
         years = [x for x in range(1991, 2021)]
         cc_dates = [(date(y, 5, 1), date(y, 10, 31)) for y in years]
-        clim_dates = [(date(y, 1, 1), date(y, 12, 31)) for y in years]
+        clim_dates = [(date(y, 5, 1), date(y, 10, 31)) for y in years]
         q = np.array([cdf['q'][d[0]: d[1]].sum() for d in clim_dates])
         ppt = np.array([cdf['ppt'][d[0]: d[1]].sum() for d in clim_dates])
         etr = np.array([cdf['etr'][d[0]: d[1]].sum() for d in clim_dates])
@@ -460,8 +460,8 @@ if __name__ == '__main__':
     # watersheds_shp = os.path.join(root, 'watersheds/selected_watersheds.shp')
     watersheds_shp = os.path.join(root, 'gage_loc_usgs/selected_gages.shp')
     _json = os.path.join(root, 'station_metadata/cc_impacted.json')
-    cc_frac_json = os.path.join(root, 'station_metadata/basin_cc_ratios.json')
-    # water_balance_ratios(_json, ee_data, stations=None, metadata_out=cc_frac_json)
+    cc_frac_json = os.path.join(root, 'station_metadata/basin_cc_ratios_summer_7FEB2022.json')
+    water_balance_ratios(_json, ee_data, stations=watersheds_shp, metadata_out=cc_frac_json)
 
     irr_impacted = os.path.join(root, 'station_metadata/basin_cc_ratios.json')
     fig_dir = os.path.join(root, 'figures/water_balance_time_series/significant_gt_2000sqkm')
