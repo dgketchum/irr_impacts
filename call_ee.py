@@ -4,9 +4,11 @@ from calendar import monthrange
 
 import fiona
 import numpy as np
-from pandas import read_csv
+from pandas import read_csv, concat, to_datetime
 import ee
 from assets import is_authorized
+import numpy as np
+from pandas import read_csv
 from matplotlib import pyplot as plt
 from scipy.stats import linregress
 
@@ -24,7 +26,7 @@ CMBRB_CLIP = 'users/dgketchum/boundaries/CMB_RB_CLIP'
 CORB_CLIP = 'users/dgketchum/boundaries/CO_RB'
 
 FLUX_SHP = '/media/research/IrrigationGIS/ameriflux/select_flux_sites/select_flux_sites_impacts_ECcorrrected.shp'
-FLUX_DIR = '/media/research/IrrigationGIS/ameriflux/ec_data/monthly'
+FLUX_DIR = '/media/research/IrrigationGIS/ameriflux/ec_data'
 
 ET_ASSET = ee.ImageCollection('users/dgketchum/ssebop/cmbrb')
 
@@ -170,7 +172,7 @@ def extract_gridded_data(tables, years=None, description=None,
             print(out_desc)
 
 
-def extract_flux_stations(shp):
+def extract_flux_stations(flux_dir, shp, pixels=1):
     with fiona.open(shp, 'r') as src:
         dct = {}
         for feat in src:
@@ -183,10 +185,15 @@ def extract_flux_stations(shp):
                 dct[p['site_id']] = p
                 dct[p['site_id']]['clip_feat'] = CMBRB_CLIP
                 dct[p['site_id']]['geo'] = feat['geometry']['coordinates']
+            elif p['basin'] == 'corb':
+                dct[p['site_id']] = p
+                dct[p['site_id']]['clip_feat'] = CORB_CLIP
+                dct[p['site_id']]['geo'] = feat['geometry']['coordinates']
             else:
-                continue
+                raise ValueError('invalid collection')
 
-    et_comp = []
+    et_comp_all, adf = [], None
+    first = True
     for site, props in dct.items():
 
         if props['basin'] == 'cmbrb':
@@ -194,18 +201,24 @@ def extract_flux_stations(shp):
                 ee.ImageCollection('users/hoylmanecohydro2/ssebop/cmbrb'))
         elif props['basin'] == 'umrb':
             annual_coll = ee.ImageCollection('projects/usgs-ssebop/et/umrb')
+        elif props['basin'] == 'corb':
+            annual_coll = ee.ImageCollection('users/kelseyjencso/ssebop/corb').merge(
+                ee.ImageCollection('users/dgketchum/ssebop/corb')).merge(
+                ee.ImageCollection('users/dpendergraph/ssebop/corb'))
         else:
-            continue
+            raise ValueError('invalid collection')
 
         _file = '{}_monthly_data.csv'.format(props['site_id'])
-        csv = os.path.join(FLUX_DIR, _file)
-        df = read_csv(csv)
+        csv = os.path.join(flux_dir, 'monthly', _file)
+        df = read_csv(csv, infer_datetime_format=True, parse_dates=True)
         df = df[df['ET_corr'].notna()]
         et_ssebop = []
         dates = [('{}-01'.format(x[:7]), x) for x in df.date.values]
+        df['date'] = to_datetime(df['date'])
+        df['site'] = [site for x in range(len(dates))]
         et_corr = [x for x in df['ET_corr'].values]
 
-        geo = ee.Geometry.Point(props['geo'][0], props['geo'][1]).buffer(3.5 * 30.0)
+        geo = ee.Geometry.Point(props['geo'][0], props['geo'][1]).buffer(pixels * 30.0)
 
         for et_ec, (s, e) in zip(et_corr, dates):
             et_coll = annual_coll.filter(ee.Filter.date(s, e))
@@ -224,35 +237,26 @@ def extract_flux_stations(shp):
 
             et_ssebop.append(et_extract)
             if not np.any(np.isnan([et_ec, et_extract])):
-                et_comp.append((et_ec, et_extract))
+                et_comp_all.append((et_ec, et_extract))
 
-            print('{}: {:.2f} et, {:.2f} ssebop, {}'.format(site, et_ec, et_extract, s))
+            # print('{}: {:.2f} et, {:.2f} ssebop, {}'.format(site, et_ec, et_extract, s))
 
         df['et_ssebop'] = et_ssebop
+        if first:
+            adf = df
+            first = False
+        else:
+            adf = concat([df, adf], axis=0, ignore_index=True)
         _file = '{}_monthly_data_ee.csv'.format(props['site_id'])
-        csv = os.path.join(FLUX_DIR, _file)
+        csv = os.path.join(flux_dir, 'monthly', _file)
         df.to_csv(csv)
 
-    scatter = '/home/dgketchum/Downloads/et_comp.png'
-    et_ec = np.array([x[0] for x in et_comp])
-    et_model = np.array([x[1] for x in et_comp])
-    rmse = np.sqrt(np.mean((et_model - et_ec) ** 2))
-    lin = np.arange(0, 200)
-    plt.plot(lin, lin)
-    # m, b = np.polyfit(et_ec, et_model, 1)
-    m, b, r, p, stderr = linregress(et_ec, et_model)
-    plt.annotate('{:.2f}x + {:.2f}\n rmse: {:.2f} mm/month\n r2: {:.2f}'.format(m, b, rmse, r ** 2),
-                 xy=(0.05, 0.75), xycoords='axes fraction')
-    plt.plot(lin, m * lin + b)
-    plt.scatter(et_ec, et_model)
-    plt.ylabel('SSEBop ET')
-    plt.xlabel('Eddy Covariance')
-    plt.savefig(scatter)
+    adf.to_csv(os.path.join(flux_dir, 'ec_ssebop_comp.csv'))
 
 
 if __name__ == '__main__':
-    extract_gridded_data(COUNTIES, years=[i for i in range(1986, 2021)],
-                         description='County_Comp_21DEC2021', min_years=0,
-                         basins=False)
-    # extract_flux_stations(FLUX_SHP)
+    # extract_gridded_data(COUNTIES, years=[i for i in range(1986, 2021)],
+    #                      description='County_Comp_21DEC2021', min_years=0,
+    #                      basins=False)
+    extract_flux_stations(FLUX_DIR, FLUX_SHP, pixels=10)
 # ========================= EOF ================================================================================
