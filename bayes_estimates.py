@@ -4,6 +4,7 @@ import json
 import numpy as np
 import pymc3 as pm
 import arviz as az
+from sklearn.base import BaseEstimator
 from scipy.stats.stats import linregress
 from matplotlib import pyplot as plt
 
@@ -16,6 +17,104 @@ def linear_regression(x, y, lr, prior_slope):
         y = pm.Normal("y", mu=slope * x + intercept, sigma=sigma, observed=y)
 
     return model
+
+
+class LinearRegression(BaseEstimator):
+    """Simple Linear Regression with errors in y
+    This is a stripped-down version of sklearn.linear_model.LinearRegression
+    which can correctly accounts for errors in the y variable
+    Parameters
+    ----------
+    fit_intercept : bool (optional)
+        if True (default) then fit the intercept of the data
+    regularization : string (optional)
+        ['l1'|'l2'|'none'] Use L1 (Lasso) or L2 (Ridge) regression
+    kwds: dict
+        additional keyword arguments passed to sklearn estimators:
+        LinearRegression, Lasso (L1), or Ridge (L2)
+    Notes
+    -----
+    This implementation may be compared to that in
+    sklearn.linear_model.LinearRegression.
+    The difference is that here errors are
+    """
+    _regressors = {'none': LinearRegression,
+                   'l1': Lasso,
+                   'l2': Ridge}
+
+    def __init__(self, fit_intercept=True, regularization='none', kwds=None):
+        if regularization.lower() not in ['l1', 'l2', 'none']:
+            raise ValueError("regularization='{}' not recognized"
+                             "".format(regularization))
+        self.fit_intercept = fit_intercept
+        self.regularization = regularization
+        self.kwds = kwds
+
+    def _transform_X(self, X):
+        X = np.asarray(X)
+        if self.fit_intercept:
+            X = np.hstack([np.ones([X.shape[0], 1]), X])
+        return X
+
+    @staticmethod
+    def _scale_by_error(X, y, y_error=1):
+        """Scale regression by error on y"""
+        X = np.atleast_2d(X)
+        y = np.asarray(y)
+        y_error = np.asarray(y_error)
+
+        assert X.ndim == 2
+        assert y.ndim == 1
+        assert X.shape[0] == y.shape[0]
+
+        if y_error.ndim == 0:
+            return X / y_error, y / y_error
+
+        elif y_error.ndim == 1:
+            assert y_error.shape == y.shape
+            X_out, y_out = X / y_error[:, None], y / y_error
+
+        elif y_error.ndim == 2:
+            assert y_error.shape == (y.size, y.size)
+            evals, evecs = np.linalg.eigh(y_error)
+            X_out = np.dot(evecs * (evals ** -0.5),
+                           np.dot(evecs.T, X))
+            y_out = np.dot(evecs * (evals ** -0.5),
+                           np.dot(evecs.T, y))
+        else:
+            raise ValueError("shape of y_error does not match that of y")
+
+        return X_out, y_out
+
+    def _choose_regressor(self):
+        model = self._regressors.get(self.regularization.lower(), None)
+        if model is None:
+            raise ValueError("regularization='{}' unrecognized"
+                             "".format(self.regularization))
+        return model
+
+    def fit(self, X, y, y_error=1):
+        kwds = {}
+        if self.kwds is not None:
+            kwds.update(self.kwds)
+        kwds['fit_intercept'] = False
+
+        model = self._choose_regressor()
+        self.clf_ = model(**kwds)
+
+        X = self._transform_X(X)
+        X, y = self._scale_by_error(X, y, y_error)
+
+        self.clf_.fit(X, y)
+        return self
+
+    def predict(self, X):
+        X = self._transform_X(X)
+        return self.clf_.predict(X)
+
+    @property
+    def coef_(self):
+        return self.clf_.coef_
 
 
 class LinearRegressionwithErrors(LinearRegression):
