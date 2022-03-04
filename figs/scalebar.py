@@ -77,7 +77,7 @@ def scale_bar(ax, projection, bars=4, length=None, location=(0.45, 0.22), linewi
                 fontsize=18)
     ax.annotate('',
                 xy=(x_north_end, y_north_end),
-                xytext=(x_north + 5000, y_north + 20000),
+                xytext=(x_north + 5000, y_north + 15000),
                 arrowprops=dict(facecolor='black', width=5, headwidth=15, lw=0.5),
                 ha='center',
                 va='center',
