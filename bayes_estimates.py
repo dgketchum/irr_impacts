@@ -1,18 +1,13 @@
 import os
 import json
 
+from tqdm import tqdm
 import numpy as np
-import pymc3 as pm
 from pandas import read_csv
-
-from sklearn.preprocessing import MinMaxScaler
 from scipy.stats.stats import linregress
-from matplotlib import pyplot as plt
-import arviz as az
-
-from astroML.datasets import simulation_kelly
 from astroML.linear_model import LinearRegressionwithErrors
-from astroML.plotting import plot_regressions, plot_regression_from_trace
+
+from figs.regression_figs import plot_trace
 
 
 def ssebop_error(csv):
@@ -53,81 +48,44 @@ def irrmapper_error(csv):
     pass
 
 
-def estimate_parameter_distributions(impacts_json, fig_dir, qres_err=0.1, cc_err=0.1):
-    scaler = MinMaxScaler()
+def estimate_parameter_distributions(impacts_json, trc_dir, qres_err=0.1, cc_err=0.1, fig_dir=None,
+                                     cores=4, plot=False):
     with open(impacts_json, 'r') as f:
         stations = json.load(f)
 
-    for station, data in stations.items():
+    for station, data in tqdm(stations.items(), total=len(stations)):
+
         impact_keys = [p for p, v in data.items() if isinstance(v, dict)]
+
         for period in impact_keys:
-            if station != '06126500' or period != '7-9':
-                continue
+
             records = data[period]
             try:
-                print('{} {:.3f} {}'.format(station, records['res_sig'], data['STANAME']))
-                # if records['res_sig'] > 0.02:
-                #     continue
-
-                # ai, q = records['ai_data'], records['q_data']
-                # q = np.log10(q)
-                # q_clim_sigma_slope = np.sqrt((max(ai) - min(ai)) / (max(q) - min(q)))
-                # q_clim_lr = linregress(q, ai)
-                # q_clim = linear_regression(ai, q, q_clim_lr, q_clim_sigma_slope)
-                # with q_clim:
-                #     q_clim_fit = pm.sample(return_inferencedata=True)
+                print('\n{} {:.3f} {}'.format(station, records['res_sig'], data['STANAME']))
 
                 cc = np.array(records['cc_data']).reshape(1, len(records['cc_data']))
                 qres = np.array(records['q_resid'])
 
-                # e.g., simulated data as in
-                # https://www.astroml.org/notebooks/chapter8/astroml_chapter8_Regression_with_Errors_on_Dependent_and_Independent_Variables.html
-                # ksi, eta, xi, yi, xi_error, yi_error, alpha_in, beta_in = simulation_kelly(size=100,
-                #                                                                            scalex=0.2,
-                #                                                                            scaley=0.2,
-                #                                                                            alpha=2,
-                #                                                                            beta=1,
-                #                                                                            epsilon=(0, 0.75))
-
-                # qres, cc = np.array(qres) / 1e8, np.array(cc) / 1e8
                 cc = (cc - cc.min()) / (cc.max() - cc.min())
                 qres = (qres - qres.min()) / (qres.max() - qres.min())
                 print('mean cc: {}, mean q res: {}'.format(cc.mean(), qres.mean()))
 
                 qres_cc_lr = linregress(qres, cc)
 
-                model = LinearRegressionwithErrors()
                 qres_err = qres_err * np.ones_like(qres)
                 cc_err = cc_err * np.ones_like(cc)
-                model.fit(cc, qres, qres_err, cc_err)
 
-                plot_regressions(0.0, 0.0, cc[0], qres,
-                                 cc_err[0], qres_err,
-                                 add_regression_lines=True,
-                                 alpha_in=qres_cc_lr.intercept, beta_in=qres_cc_lr.slope)
+                save_model = os.path.join(trc_dir, '{}_cc{}_q{}.model'.format(station,
+                                                                              period,
+                                                                              records['q_window']))
 
-                # plt.scatter(cc, qres)
-                # plt.xlim([cc.min(), cc.max()])
-                # plt.ylim([qres.min(), qres.max()])
+                sample_kwargs = {'draws': 1000, 'target_accept': 0.9, 'cores': cores, 'chains': 4}
+                model = LinearRegressionwithErrors()
+                model.fit(cc, qres, qres_err, cc_err, save_model=save_model, sample_kwargs=sample_kwargs)
 
-                plot_regression_from_trace(model, (cc, qres, cc_err, qres_err),
-                                           ax=plt.gca(), chains=50)
-
-                # fig, ax = plt.subplots(1, 2, figsize=(10, 5), sharex='col')
-                # az.plot_posterior(q_clim_fit, var_names=["slope"], ref_val=q_clim_lr.slope, ax=ax[0])
-                # ax[0].set(title="Flow - Climate", xlabel="slope")
-                #
-                # az.plot_posterior(model, var_names=["slope"], ref_val=qres_cc_lr.slope, ax=ax[1])
-                # ax[1].set(title="Residual Flow - Crop Consumption", xlabel="slope")
-                #
-                desc_str = '{} {}\n crop consumption: {}\n flow: {}'.format(station, data['STANAME'], period,
-                                                                            records['q_window'])
-                plt.suptitle(desc_str)
-                fig_file = os.path.join(fig_dir, '{}_cc{}_q{}.png'.format(station, records['q_window'],
-                                                                          period))
-                # plt.savefig(fig_file)
-                plt.show()
-                # plt.close()
+                if plot:
+                    desc = [station, data['STANAME'], 'cc', period, 'q', records['q_window']]
+                    plot_trace(cc, qres, cc_err, qres_err, model, qres_cc_lr, fig_dir, desc)
 
             except Exception as e:
                 print(e, station, period)
@@ -146,10 +104,20 @@ if __name__ == '__main__':
     # irrmapper_error(irrmap)
 
     for var in ['cci']:
-        _json = os.path.join(root, 'gages', 'station_metadata', '{}_impacted_06126500.json'.format(var))
-        o_fig = os.path.join(root, 'gages', 'figures', 'slope_trace_{}'.format(var))
+        state = 'ccerr_0.20_qreserr_0.17'
+        trace_dir = os.path.join(root, 'gages', 'bayes', 'traces', state)
+        if not os.path.exists(trace_dir):
+            os.makedirs(trace_dir)
+
+        _json = os.path.join(root, 'gages', 'station_metadata', '{}_impacted.json'.format(var))
+
+        o_fig = os.path.join(root, 'gages', 'figures', 'slope_trace_{}'.format(var), state)
+        if not os.path.exists(o_fig):
+            os.makedirs(o_fig)
 
         # cc_err=0.32, qres_err=0.174
-        estimate_parameter_distributions(_json, fig_dir=o_fig, cc_err=0.50, qres_err=0.17)
+        estimate_parameter_distributions(_json, trc_dir=trace_dir, cc_err=0.20,
+                                         qres_err=0.17, fig_dir=o_fig, cores=10,
+                                         plot=True)
 
 # ========================= EOF ====================================================================
