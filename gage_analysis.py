@@ -3,6 +3,7 @@ import json
 from collections import OrderedDict
 from pprint import pprint
 from calendar import monthrange
+import pickle
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -207,7 +208,7 @@ def climate_flow_correlation(climate_dir, in_json, out_json, plot_r=None):
         json.dump(windows, f, indent=4)
 
 
-def get_sig_irr_impact(metadata, ee_series, out_jsn=None, fig_dir=None, gage_example=None):
+def get_sig_irr_impact(metadata, ee_series, out_jsn=None, fig_dir=None, gage_example=None, climate_sig_only=False):
     ct, irr_ct, irr_sig_ct, ct_tot = 0, 0, 0, 0
     slp_pos, slp_neg = 0, 0
     sig_stations = {}
@@ -298,7 +299,7 @@ def get_sig_irr_impact(metadata, ee_series, out_jsn=None, fig_dir=None, gage_exa
                 ols = sm.OLS(resid, _cc_c)
                 fit_resid = ols.fit()
                 resid_p = fit_resid.pvalues[1]
-                if resid_p < 0.05:
+                if resid_p < 0.05 or climate_sig_only:
                     if sid not in impacted_gages:
                         impacted_gages.append(sid)
                     if fit_resid.params[1] > 0.0:
@@ -439,6 +440,45 @@ def basin_trends(key, metadata, ee_series, start_mo, end_mo, out_jsn=None, fig_d
             print('write {} sig {} to file'.format(len(sig_stations.keys()), key))
 
 
+def bayes_sig_irr_impact(metadata, trc_dir, out_json):
+    with open(metadata, 'r') as f:
+        stations = json.load(f)
+
+    out_meta = {}
+
+    for station, data in stations.items():
+
+        out_meta[station] = data
+        impact_keys = [p for p, v in data.items() if isinstance(v, dict)]
+
+        for period in impact_keys:
+            records = data[period]
+
+            saved_model = os.path.join(trc_dir, '{}_cc{}_q{}.model'.format(station,
+                                                                           period,
+                                                                           records['q_window']))
+            with open(saved_model, 'rb') as buff:
+                mdata = pickle.load(buff)
+                model, trace = mdata['model'], mdata['trace']
+
+            div_ = float(np.count_nonzero(trace.diverging)) / np.count_nonzero(~trace.diverging)
+            trace_slope = trace['slope'][:, 0]
+            H2D, bins1, bins2 = np.histogram2d(trace_slope,
+                                               trace['inter'], bins=50)
+            w = np.where(H2D == H2D.max())
+
+            # choose the maximum posterior slope and intercept
+            slope_best = bins1[w[0][0]]
+            intercept_best = bins2[w[1][0]]
+            out_meta[station][period]['map_slope'] = slope_best
+            out_meta[station][period]['map_intercept'] = intercept_best
+            out_meta[station][period]['divergence_ratio'] = div_
+            out_meta[station][period]['model_path'] = saved_model
+
+    with open(out_json, 'w') as f:
+        json.dump(out_meta, f, indent=4, sort_keys=False)
+
+
 if __name__ == '__main__':
     root = '/media/research/IrrigationGIS/gages'
     if not os.path.exists(root):
@@ -453,20 +493,28 @@ if __name__ == '__main__':
     # climate_flow_correlation(climate_dir=clim_dir, in_json=i_json,
     #                          out_json=clim_resp, plot_r=fig_dir_)
 
-    # fig_dir = os.path.join(root, 'figures/irr_impact_q_clim_delQ_cci_all')
-    # irr_resp = os.path.join(root, 'station_metadata/cci_impacted.json')
-    # get_sig_irr_impact(clim_resp, ee_data, out_jsn=irr_resp, fig_dir=fig_dir)
+    fig_dir = os.path.join(root, 'figures', 'irr_impact_q_clim_delQ_cci_all')
+    irr_resp = os.path.join(root, 'station_metadata', 'cci_climate_sig.json')
+    get_sig_irr_impact(clim_resp, ee_data, out_jsn=irr_resp, fig_dir=fig_dir, climate_sig_only=False)
+
+    # state = 'ccerr_0.18_qreserr_0.17'
+    # trace_dir = os.path.join(root, 'bayes', 'traces', state)
+    # if not os.path.exists(trace_dir):
+    #     os.makedirs(trace_dir)
+    # _json = os.path.join(root, 'station_metadata', 'cci_impacted.json')
+    # o_json = os.path.join(root, 'station_metadata', 'cci_impacted_bayes.json')
+    # bayes_sig_irr_impact(_json, trace_dir, o_json)
 
     # watersheds_shp = os.path.join(root, 'watersheds/selected_watersheds.shp')
-    watersheds_shp = os.path.join(root, 'gage_loc_usgs/selected_gages.shp')
-    _json = os.path.join(root, 'station_metadata/cc_impacted.json')
-    cc_frac_json = os.path.join(root, 'station_metadata/basin_cc_ratios_summer_7FEB2022.json')
-    water_balance_ratios(_json, ee_data, stations=watersheds_shp, metadata_out=cc_frac_json)
-
-    irr_impacted = os.path.join(root, 'station_metadata/basin_cc_ratios.json')
-    fig_dir = os.path.join(root, 'figures/water_balance_time_series/significant_gt_2000sqkm')
-    trend_metatdata_dir = os.path.join(root, 'station_metadata/significant_gt_2000sqkm')
-    trend_json = os.path.join(root, 'water_balance_time_series/cc_q_trends.json')
+    # watersheds_shp = os.path.join(root, 'gage_loc_usgs/selected_gages.shp')
+    # _json = os.path.join(root, 'station_metadata/cc_impacted.json')
+    # cc_frac_json = os.path.join(root, 'station_metadata/basin_cc_ratios_summer_7FEB2022.json')
+    # water_balance_ratios(_json, ee_data, stations=watersheds_shp, metadata_out=cc_frac_json)
+    #
+    # irr_impacted = os.path.join(root, 'station_metadata/basin_cc_ratios.json')
+    # fig_dir = os.path.join(root, 'figures/water_balance_time_series/significant_gt_2000sqkm')
+    # trend_metatdata_dir = os.path.join(root, 'station_metadata/significant_gt_2000sqkm')
+    # trend_json = os.path.join(root, 'water_balance_time_series/cc_q_trends.json')
 
     # for k in ['ppt', 'q', 'etr', 'ai', 'cc', 'cci', 'irr']:
     #     fig_ = os.path.join(fig_dir, k)

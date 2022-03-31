@@ -1,5 +1,6 @@
 import os
 import json
+import pickle
 
 import numpy as np
 from matplotlib import cm
@@ -7,6 +8,7 @@ from matplotlib import pyplot as plt
 from scipy.stats.stats import linregress
 
 from gage_list import EXCLUDE_STATIONS
+from figs.regression_figs import plot_regression_from_trace
 
 SYSTEM_STATIONS = ['06109500', '06329500', '09180500', '09315000',
                    '09379500', '12396500', '13269000', '13317000']
@@ -219,14 +221,19 @@ def trends_panel(irr_impact, png):
                                    np.linspace(-0.66, 0.95, n_bins)
 
     bin_t_q_res_r, bin_t_q_res_slope = np.linspace(-0.8, 0.8, n_bins), \
-                                   np.linspace(-0.8, 0.8, n_bins)
+                                       np.linspace(-0.8, 0.8, n_bins)
 
     for s, d in irr_impact_d.items():
-        # if s != '06054500':
-        #     continue
         impact_keys = [p for p, v in d.items() if isinstance(v, dict)]
         for k, v in d.items():
             if k in impact_keys:
+                # if s != '06016000' or k != '5-7':
+                #     continue
+
+                with open(d[k]['model_path'], 'rb') as buff:
+                    mdata = pickle.load(buff)
+                    model, trace = mdata['model'], mdata['trace']
+
                 lr_cc = linregress(years, d[k]['cc_data'])
                 t_cci_r, t_cci_slope, t_cci_p = lr_cc.rvalue, lr_cc.slope, lr_cc.pvalue
                 lr_q_t = linregress(years, d[k]['q_resid_line'])
@@ -254,11 +261,20 @@ def trends_panel(irr_impact, png):
                     ax[2, 0].set(ylabel='count')
 
                     # residual flow - crop consumption data
-                    cci, resid, resid_line = v['cc_data'], v['q_resid'], v['q_resid_line']
+                    cci, resid, resid_line = np.array(v['cc_data']), np.array(v['q_resid']), v['q_resid_line']
+
+                    map_slope, map_intercept = v['map_slope'], v['map_intercept']
+
+                    ccin = (cci - cci.min()) / (cci.max() - cci.min())
+                    qres = (resid - resid.min()) / (resid.max() - resid.min())
                     ax[0, 1].set(xlabel='cci [m]')
                     ax[0, 1].set(ylabel='q residual [m^3]')
-                    ax[0, 1].scatter(cci, resid)
-                    ax[0, 1].plot(cci, resid_line)
+                    ax[0, 1].scatter(ccin, qres)
+                    ax[0, 1].errorbar(ccin, qres, xerr=0.18, yerr=0.17, alpha=0.1, ls='', color='b')
+                    cc_err = 0.18 * np.ones_like(ccin)
+                    qres_err = 0.17 * np.ones_like(qres)
+                    _ = plot_regression_from_trace(model, (ccin, qres, cc_err, qres_err),
+                                                   ax=ax[0, 1], chains=50, traces=trace, legend=False)
 
                     ax[1, 1].hist(resid_slope, bins=bin_resid_slope)
                     ax[1, 1].set(xlabel='Residual Flow-Crop Consumption Slope [-]')
@@ -294,7 +310,6 @@ def trends_panel(irr_impact, png):
                     ax[1, 3].hist(t_q_slope_, bins=bin_t_q_res_slope)
                     ax[1, 3].set(xlabel='Residual Flow Trend Slope [-]')
                     ax[1, 3].set(ylabel='count')
-
                     ax[2, 3].hist(t_q_r_, bins=bin_t_q_res_r)
                     ax[2, 3].set(xlabel='Residual Flow Trend Pearson r [-]')
                     ax[2, 3].set(ylabel='count')
@@ -311,22 +326,22 @@ if __name__ == '__main__':
     if not os.path.exists(root):
         root = '/home/dgketchum/data/IrrigationGIS/gages'
 
-    figs = os.path.join(root, '')
+    figs = os.path.join(root, 'figures')
 
-    cc_frac_json = os.path.join(root, 'station_metadata/basin_cc_ratios.json')
-    basin_json = os.path.join(root, 'station_metadata/basin_sort.json')
-    heat_figs = os.path.join(figs, 'heat_bars_largeSystems_singlemonth')
-    for sk in ['IAREA', 'ai', 'AREA']:  # 'cc_ppt', 'cc_q', 'cci', 'q_ppt']
-        impact_time_series_bars(cc_frac_json, basin_json,
-                                heat_figs, min_area=2000., sort_key=sk, x_key='cci')
+    # cc_frac_json = os.path.join(root, 'station_metadata/basin_cc_ratios.json')
+    # basin_json = os.path.join(root, 'station_metadata/basin_sort.json')
+    # heat_figs = os.path.join(figs, 'heat_bars_largeSystems_singlemonth')
+    # for sk in ['IAREA', 'ai', 'AREA']:  # 'cc_ppt', 'cc_q', 'cci', 'q_ppt']
+    #     impact_time_series_bars(cc_frac_json, basin_json,
+    #                             heat_figs, min_area=2000., sort_key=sk, x_key='cci')
 
     # i_json = '/media/research/IrrigationGIS/gages/station_metadata/irr_impacted_all.json'
     # c_json = '/media/research/IrrigationGIS/gages/station_metadata/basin_climate_response_irr.json'
     # scatter_figs = os.path.join(figs, 'scatter_area_v_climate_response')
     # response_time_to_area(c_json, fig_dir=figs)
 
-    # irr_resp = os.path.join(root, 'station_metadata/cci_impacted.json')
-    # fig_dir = os.path.join(figs, 'panels_cci')
-    # trends_panel(irr_impact=irr_resp, png=fig_dir)
+    irr_resp = os.path.join(root, 'station_metadata', 'cci_impacted_bayes.json')
+    fig_dir = os.path.join(figs, 'panels_cci_bayes')
+    trends_panel(irr_impact=irr_resp, png=fig_dir)
 
 # ========================= EOF ====================================================================

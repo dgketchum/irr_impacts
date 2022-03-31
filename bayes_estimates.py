@@ -5,7 +5,8 @@ from tqdm import tqdm
 import numpy as np
 from pandas import read_csv
 from scipy.stats.stats import linregress
-from astroML.linear_model import LinearRegressionwithErrors
+from linear_regression_errors import LinearRegressionwithErrors
+# from astroML.linear_model import LinearRegressionwithErrors
 
 from figs.regression_figs import plot_trace
 
@@ -78,14 +79,22 @@ def estimate_parameter_distributions(impacts_json, trc_dir, qres_err=0.1, cc_err
                 save_model = os.path.join(trc_dir, '{}_cc{}_q{}.model'.format(station,
                                                                               period,
                                                                               records['q_window']))
+                if os.path.isfile(save_model):
+                    print('{} exists, skipping'.format(os.path.basename(save_model)))
+                    continue
 
-                sample_kwargs = {'draws': 1000, 'target_accept': 0.9, 'cores': cores, 'chains': 4}
+                sample_kwargs = {'draws': 1000,
+                                 'target_accept': 0.9,
+                                 'cores': cores,
+                                 'chains': 4}
+
                 model = LinearRegressionwithErrors()
-                model.fit(cc, qres, qres_err, cc_err, save_model=save_model, sample_kwargs=sample_kwargs)
+                model.fit(cc, qres, qres_err, cc_err,
+                          save_model=save_model, sample_kwargs=sample_kwargs)
 
                 if plot:
                     desc = [station, data['STANAME'], 'cc', period, 'q', records['q_window']]
-                    plot_trace(cc, qres, cc_err, qres_err, model, qres_cc_lr, fig_dir, desc)
+                    plot_trace(cc, qres, cc_err, qres_err, save_model, qres_cc_lr, fig_dir, desc)
 
             except Exception as e:
                 print(e, station, period)
@@ -104,20 +113,23 @@ if __name__ == '__main__':
     # irrmapper_error(irrmap)
 
     for var in ['cci']:
-        state = 'ccerr_0.20_qreserr_0.17'
+        state = 'ccerr_0.18_qreserr_0.17'
         trace_dir = os.path.join(root, 'gages', 'bayes', 'traces', state)
         if not os.path.exists(trace_dir):
             os.makedirs(trace_dir)
 
-        _json = os.path.join(root, 'gages', 'station_metadata', '{}_impacted.json'.format(var))
+        _json = os.path.join(root, 'gages', 'station_metadata',
+                             '{}_impacted.json'.format(var))
 
-        o_fig = os.path.join(root, 'gages', 'figures', 'slope_trace_{}'.format(var), state)
+        o_fig = os.path.join(root, 'gages', 'figures',
+                             'slope_trace_{}'.format(var), state)
+
         if not os.path.exists(o_fig):
             os.makedirs(o_fig)
 
         # cc_err=0.32, qres_err=0.174
-        estimate_parameter_distributions(_json, trc_dir=trace_dir, cc_err=0.20,
-                                         qres_err=0.17, fig_dir=o_fig, cores=10,
-                                         plot=True)
+        estimate_parameter_distributions(_json, trc_dir=trace_dir, cc_err=0.18,
+                                         qres_err=0.17, fig_dir=o_fig, cores=4,
+                                         plot=False)
 
 # ========================= EOF ====================================================================
