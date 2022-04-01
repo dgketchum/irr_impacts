@@ -227,8 +227,8 @@ def trends_panel(irr_impact, png):
         impact_keys = [p for p, v in d.items() if isinstance(v, dict)]
         for k, v in d.items():
             if k in impact_keys:
-                # if s != '06016000' or k != '5-7':
-                #     continue
+                if s != '06016000' or k != '5-7':
+                    continue
 
                 with open(d[k]['model_path'], 'rb') as buff:
                     mdata = pickle.load(buff)

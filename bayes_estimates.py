@@ -1,7 +1,7 @@
 import os
 import json
+from multiprocessing import Pool, cpu_count
 
-from tqdm import tqdm
 import numpy as np
 from pandas import read_csv
 from scipy.stats.stats import linregress
@@ -49,56 +49,47 @@ def irrmapper_error(csv):
     pass
 
 
-def estimate_parameter_distributions(impacts_json, trc_dir, qres_err=0.1, cc_err=0.1, fig_dir=None,
-                                     cores=4, plot=False):
-    with open(impacts_json, 'r') as f:
-        stations = json.load(f)
+def regression_errors(station, records, period, qres_err, cc_err, trc_dir):
+    try:
+        print('\n{} {:.3f}'.format(station, records['res_sig']))
 
-    for station, data in tqdm(stations.items(), total=len(stations)):
+        cc = np.array(records['cc_data']).reshape(1, len(records['cc_data']))
+        qres = np.array(records['q_resid'])
 
-        impact_keys = [p for p, v in data.items() if isinstance(v, dict)]
+        cc = (cc - cc.min()) / (cc.max() - cc.min())
+        qres = (qres - qres.min()) / (qres.max() - qres.min())
+        years = [x for x in range(1991, 2021)]
+        print('mean cc: {}, mean q res: {}'.format(cc.mean(), qres.mean()))
 
-        for period in impact_keys:
+        qres_err = qres_err * np.ones_like(qres)
+        cc_err = cc_err * np.ones_like(cc)
+        years_err = 0.0 * np.ones_like(cc)
 
-            records = data[period]
-            try:
-                print('\n{} {:.3f} {}'.format(station, records['res_sig'], data['STANAME']))
+        sample_kwargs = {'draws': 1000,
+                         'target_accept': 0.9,
+                         'cores': 1,
+                         'chains': 4}
 
-                cc = np.array(records['cc_data']).reshape(1, len(records['cc_data']))
-                qres = np.array(records['q_resid'])
+        regression_combs = [(cc, qres, cc_err, qres_err),
+                            (years, cc, years_err, cc_err),
+                            (years, qres, years_err, qres_err)]
+        trc_subdirs = ['cc_qres', 'time_cc', 'time_qres']
 
-                cc = (cc - cc.min()) / (cc.max() - cc.min())
-                qres = (qres - qres.min()) / (qres.max() - qres.min())
-                print('mean cc: {}, mean q res: {}'.format(cc.mean(), qres.mean()))
-
-                qres_cc_lr = linregress(qres, cc)
-
-                qres_err = qres_err * np.ones_like(qres)
-                cc_err = cc_err * np.ones_like(cc)
-
-                save_model = os.path.join(trc_dir, '{}_cc{}_q{}.model'.format(station,
-                                                                              period,
-                                                                              records['q_window']))
-                if os.path.isfile(save_model):
-                    print('{} exists, skipping'.format(os.path.basename(save_model)))
-                    continue
-
-                sample_kwargs = {'draws': 1000,
-                                 'target_accept': 0.9,
-                                 'cores': cores,
-                                 'chains': 4}
-
-                model = LinearRegressionwithErrors()
-                model.fit(cc, qres, qres_err, cc_err,
-                          save_model=save_model, sample_kwargs=sample_kwargs)
-
-                if plot:
-                    desc = [station, data['STANAME'], 'cc', period, 'q', records['q_window']]
-                    plot_trace(cc, qres, cc_err, qres_err, save_model, qres_cc_lr, fig_dir, desc)
-
-            except Exception as e:
-                print(e, station, period)
+        for (x, y, x_err, y_err), subdir in zip(regression_combs, trc_subdirs):
+            save_model = os.path.join(trc_dir, subdir, '{}_cc_{}_q_{}.model'.format(station,
+                                                                                    period,
+                                                                                    records['q_window']))
+            if os.path.isfile(save_model):
+                print('{} exists, skipping'.format(os.path.basename(save_model)))
                 continue
+
+            model = LinearRegressionwithErrors()
+            model.fit(x, y, y_err, x_err,
+                      save_model=save_model,
+                      sample_kwargs=sample_kwargs)
+
+    except Exception as e:
+        print(e, station, period)
 
 
 if __name__ == '__main__':
@@ -112,8 +103,13 @@ if __name__ == '__main__':
     irrmap = os.path.join(root, 'climate', 'irrmapper', 'pixel_metric_climate_clip.csv')
     # irrmapper_error(irrmap)
 
+    # cc_err=0.32, qres_err=0.174
+    cc_err = '0.305'
+    qres_err = '0.17'
+    mproc = 9
+
     for var in ['cci']:
-        state = 'ccerr_0.18_qreserr_0.17'
+        state = 'ccerr_{}_qreserr_{}'.format(str(cc_err), str(qres_err))
         trace_dir = os.path.join(root, 'gages', 'bayes', 'traces', state)
         if not os.path.exists(trace_dir):
             os.makedirs(trace_dir)
@@ -127,9 +123,19 @@ if __name__ == '__main__':
         if not os.path.exists(o_fig):
             os.makedirs(o_fig)
 
-        # cc_err=0.32, qres_err=0.174
-        estimate_parameter_distributions(_json, trc_dir=trace_dir, cc_err=0.18,
-                                         qres_err=0.17, fig_dir=o_fig, cores=4,
-                                         plot=False)
+        with open(_json, 'r') as f:
+            stations = json.load(f)
+
+        diter = [[(kk, k, r) for k, r in vv.items() if isinstance(r, dict)] for kk, vv in stations.items()]
+        diter = [i for ll in diter for i in ll]
+
+        pool = Pool(processes=mproc)
+
+        for sid, per, rec in diter:
+            pool.apply_async(regression_errors, args=(sid, rec, per, float(qres_err),
+                                                      float(cc_err), trace_dir))
+
+        pool.close()
+        pool.join()
 
 # ========================= EOF ====================================================================
