@@ -58,7 +58,7 @@ def regression_errors(station, records, period, qres_err, cc_err, trc_dir):
 
         cc = (cc - cc.min()) / (cc.max() - cc.min())
         qres = (qres - qres.min()) / (qres.max() - qres.min())
-        years = [x for x in range(1991, 2021)]
+        years = np.array([x for x in range(1991, 2021)])
         print('mean cc: {}, mean q res: {}'.format(cc.mean(), qres.mean()))
 
         qres_err = qres_err * np.ones_like(qres)
@@ -73,9 +73,10 @@ def regression_errors(station, records, period, qres_err, cc_err, trc_dir):
         regression_combs = [(cc, qres, cc_err, qres_err),
                             (years, cc, years_err, cc_err),
                             (years, qres, years_err, qres_err)]
+
         trc_subdirs = ['cc_qres', 'time_cc', 'time_qres']
 
-        for (x, y, x_err, y_err), subdir in zip(regression_combs, trc_subdirs):
+        for (x, y, x_err, y_err), subdir in zip(regression_combs[1:], trc_subdirs[1:]):
             save_model = os.path.join(trc_dir, subdir, '{}_cc_{}_q_{}.model'.format(station,
                                                                                     period,
                                                                                     records['q_window']))
@@ -106,7 +107,7 @@ if __name__ == '__main__':
     # cc_err=0.32, qres_err=0.174
     cc_err = '0.305'
     qres_err = '0.17'
-    mproc = 9
+    mproc = 1
 
     for var in ['cci']:
         state = 'ccerr_{}_qreserr_{}'.format(str(cc_err), str(qres_err))
