@@ -6,13 +6,13 @@ try:
     import pymc3 as pm
     import theano.tensor as tt
     from packaging.version import Version
+
     PYMC_LT_39 = Version(pm.__version__) < Version("3.9")
 except ImportError:
     warnings.warn('LinearRegressionwithErrors requires PyMC3 to be installed')
     PYMC_LT_39 = True
 
 from astroML.linear_model import LinearRegression
-
 
 __all__ = ['LinearRegressionwithErrors']
 
@@ -21,6 +21,8 @@ class LinearRegressionwithErrors(LinearRegression):
 
     def __init__(self, fit_intercept=False, regularization='none', kwds=None):
         super().__init__(fit_intercept, regularization, kwds)
+        self.clf_ = None
+        self.trace = None
 
     def fit(self, X, y, y_error=1, x_error=None, *,
             sample_kwargs={'draws': 1000, 'target_accept': 0.9}, save_model=None):
@@ -38,9 +40,10 @@ class LinearRegressionwithErrors(LinearRegression):
 
         if x_error is not None:
             x_error = np.atleast_2d(x_error)
+
         with pm.Model():
             # slope and intercept of eta-ksi relation
-            slope = pm.Flat('slope', shape=(X.shape[0], ))
+            slope = pm.Flat('slope', shape=(X.shape[0],))
             inter = pm.Flat('inter')
 
             # intrinsic scatter of eta-ksi relation
@@ -59,15 +62,21 @@ class LinearRegressionwithErrors(LinearRegression):
                             sigma=int_std, shape=y.shape)
 
             # observed xi, yi
-            x = pm.Normal('xi', mu=ksi.T, sigma=x_error, observed=X, shape=X.shape)  # noqa: F841
+            if x_error is None:
+                x = pm.Normal('xi', mu=ksi.T, observed=X, shape=X.shape)
+
+            else:
+                x = pm.Normal('xi', mu=ksi.T, sigma=x_error, observed=X, shape=X.shape)  # noqa: F841
+
             y = pm.Normal('yi', mu=eta, sigma=y_error, observed=y, shape=y.shape)
 
             self.trace = pm.sample(**sample_kwargs)
 
             # TODO: make it optional to choose a way to define best
-
-            HND, edges = np.histogramdd(np.hstack((self.trace['slope'],
-                                                   self.trace['inter'][:, None])), bins=50)
+            slopes = self.trace['slope']
+            if slopes.shape[1] > 1:
+                slopes = slopes.mean(axis=1).reshape((slopes.shape[0], 1))
+            HND, edges = np.histogramdd(np.hstack((slopes, self.trace['inter'][:, None])), bins=50)
 
             w = np.where(HND == HND.max())
 

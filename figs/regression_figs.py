@@ -95,10 +95,10 @@ def plot_trace(cc, qres, cc_err, qres_err, model, qres_cc_lr, fig_dir,
     print(fig_file, '\n')
 
     plt.suptitle(' '.join(desc_str))
-    plt.savefig(fig_file)
-    # plt.show()
-    # exit()
-    plt.close()
+    # plt.savefig(fig_file)
+    plt.show()
+    exit()
+    # plt.close()
 
 
 if __name__ == '__main__':
@@ -106,9 +106,12 @@ if __name__ == '__main__':
     if not os.path.exists(root):
         root = '/home/dgketchum/data/IrrigationGIS'
 
+    cc_err = '0.17'
+    qres_err = '0.17'
+
     for var in ['cci']:
-        state = 'ccerr_0.40_qreserr_0.17'
-        trace_dir = os.path.join(root, 'gages', 'bayes', 'traces', state, 'cc_qres')
+        state = 'ccerr_{}_qreserr_{}'.format(str(cc_err), str(qres_err))
+        trace_dir = os.path.join(root, 'gages', 'bayes', 'traces', state, 'time_cc')
         if not os.path.exists(trace_dir):
             os.makedirs(trace_dir)
 
@@ -117,6 +120,7 @@ if __name__ == '__main__':
 
         o_fig = os.path.join(root, 'gages', 'figures', 'slope_trace_{}'.format(var), state)
 
-        plot_saved_traces(_json, trace_dir, o_fig, qres_err=0.40, cc_err=0.18, overwrite=True)
+        plot_saved_traces(_json, trace_dir, o_fig, qres_err=float(qres_err),
+                          cc_err=float(cc_err), overwrite=True)
 
 # ========================= EOF ====================================================================
