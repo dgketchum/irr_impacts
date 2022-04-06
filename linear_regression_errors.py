@@ -29,6 +29,7 @@ class LinearRegressionwithErrors(LinearRegression):
         if not PYMC_LT_39:
             sample_kwargs['return_inferencedata'] = False
 
+        sample_kwargs['progressbar'] = False
         kwds = {}
         if self.kwds is not None:
             kwds.update(self.kwds)
