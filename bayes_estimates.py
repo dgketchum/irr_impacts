@@ -50,55 +50,55 @@ def irrmapper_error(csv):
 
 
 def regression_errors(station, records, period, qres_err, cc_err, trc_dir, multiproc=False):
-    # try:
-    print('\n{}, p = {:.3f}'.format(station, records['res_sig']))
+    try:
+        print('\n{}, p = {:.3f}'.format(station, records['res_sig']))
 
-    cc = np.array(records['cc_data']).reshape(1, len(records['cc_data']))
-    qres = np.array(records['q_resid'])
+        cc = np.array(records['cc_data']).reshape(1, len(records['cc_data']))
+        qres = np.array(records['q_resid'])
 
-    cc = (cc - cc.min()) / (cc.max() - cc.min()) + 0.001
-    qres = (qres - qres.min()) / (qres.max() - qres.min()) + 0.001
-    years = (np.linspace(0, 1, len(qres)) + 0.001).reshape(1, -1)
+        cc = (cc - cc.min()) / (cc.max() - cc.min()) + 0.001
+        qres = (qres - qres.min()) / (qres.max() - qres.min()) + 0.001
+        years = (np.linspace(0, 1, len(qres)) + 0.001).reshape(1, -1)
 
-    qres_err = qres_err * np.ones_like(qres)
-    cc_err = cc_err * np.ones_like(cc)
+        qres_err = qres_err * np.ones_like(qres)
+        cc_err = cc_err * np.ones_like(cc)
 
-    sample_kwargs = {'draws': 1000,
-                     'target_accept': 0.9,
-                     'cores': 4,
-                     'chains': 4}
+        sample_kwargs = {'draws': 1000,
+                         'target_accept': 0.9,
+                         'cores': 1,
+                         'chains': 4}
 
-    regression_combs = [(cc, qres, cc_err, qres_err),
-                        (years, cc, None, cc_err),
-                        (years, qres, None, qres_err)]
+        regression_combs = [(cc, qres, cc_err, qres_err),
+                            (years, cc, None, cc_err),
+                            (years, qres, None, qres_err)]
 
-    trc_subdirs = ['cc_qres', 'time_cc', 'time_qres']
+        trc_subdirs = ['cc_qres', 'time_cc', 'time_qres']
 
-    for subdir in trc_subdirs:
-        model_dir = os.path.join(trc_dir, subdir)
-        if not os.path.isdir(model_dir):
-            os.makedirs(model_dir)
+        for subdir in trc_subdirs:
+            model_dir = os.path.join(trc_dir, subdir)
+            if not os.path.isdir(model_dir):
+                os.makedirs(model_dir)
 
-    for (x, y, x_err, y_err), subdir in zip(regression_combs, trc_subdirs):
-        if subdir == 'time_cc':
-            y = y[0, :]
+        for (x, y, x_err, y_err), subdir in zip(regression_combs, trc_subdirs):
+            if subdir == 'time_cc':
+                y = y[0, :]
 
-        save_model = os.path.join(trc_dir, subdir, '{}_cc_{}_q_{}.model'.format(station,
-                                                                                period,
-                                                                                records['q_window']))
-        if os.path.isfile(save_model):
-            print('{} exists'.format(subdir))
-            continue
-        else:
-            print('sampling {}'.format(subdir))
+            save_model = os.path.join(trc_dir, subdir, '{}_cc_{}_q_{}.model'.format(station,
+                                                                                    period,
+                                                                                    records['q_window']))
+            if os.path.isfile(save_model):
+                print('{} exists'.format(subdir))
+                continue
+            else:
+                print('sampling {}'.format(subdir))
 
-        model = LinearRegressionwithErrors()
-        model.fit(x, y, y_err, x_err,
-                  save_model=save_model,
-                  sample_kwargs=sample_kwargs)
+            model = LinearRegressionwithErrors()
+            model.fit(x, y, y_err, x_err,
+                      save_model=save_model,
+                      sample_kwargs=sample_kwargs)
 
-    # except Exception as e:
-    #     print(e, station, period)
+    except Exception as e:
+        print(e, station, period)
 
 
 if __name__ == '__main__':
@@ -114,7 +114,7 @@ if __name__ == '__main__':
 
     cc_err_ = '0.17'
     qres_err_ = '0.17'
-    mproc = 1
+    mproc = 30
 
     for var in ['cci']:
         state = 'ccerr_{}_qreserr_{}'.format(str(cc_err_), str(qres_err_))
@@ -140,8 +140,8 @@ if __name__ == '__main__':
         pool = Pool(processes=mproc)
 
         for sid, per, rec in diter:
-            regression_errors(sid, rec, per, float(qres_err_),
-                              float(cc_err_), trace_dir, True)
+            # regression_errors(sid, rec, per, float(qres_err_),
+            #                   float(cc_err_), trace_dir, True)
             pool.apply_async(regression_errors, args=(sid, rec, per, float(qres_err_),
                                                       float(cc_err_), trace_dir, True))
 
