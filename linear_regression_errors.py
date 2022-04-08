@@ -67,7 +67,7 @@ class LinearRegressionwithErrors(LinearRegression):
                 x = pm.Normal('xi', mu=ksi.T, observed=X, shape=X.shape)
 
             else:
-                x = pm.Normal('xi', mu=ksi.T, sigma=x_error, observed=X, shape=X.shape)  # noqa: F841
+                x = pm.Normal('xi', mu=ksi.T, sigma=x_error, observed=X, shape=X.shape)
 
             y = pm.Normal('yi', mu=eta, sigma=y_error, observed=y, shape=y.shape)
 
@@ -75,6 +75,7 @@ class LinearRegressionwithErrors(LinearRegression):
 
             # TODO: make it optional to choose a way to define best
             slopes = self.trace['slope']
+            # fix burn-in and why does this give [4000, 30]?
             if slopes.shape[1] > 1:
                 slopes = slopes.mean(axis=1).reshape((slopes.shape[0], 1))
             HND, edges = np.histogramdd(np.hstack((slopes, self.trace['inter'][:, None])), bins=50)
