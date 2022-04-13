@@ -184,6 +184,8 @@ def trends_panel(irr_impact, png):
     for s, d in irr_impact_d.items():
         if s in EXCLUDE_STATIONS:
             continue
+        # if s != '06016000':
+        #     continue
         impact_keys = [p for p, v in d.items() if isinstance(v, dict)]
 
         [clime_slope.append(irr_impact_d[s][k]['clim_slope']) for k in d.keys() if k in impact_keys]
@@ -194,7 +196,8 @@ def trends_panel(irr_impact, png):
         # TODO: write q_resid_time m/r/p and cci_time m/r/p to json from gage analysis
         for k, v in d.items():
             if k in impact_keys:
-
+                # if k != '6-6':
+                #     continue
                 lr_cc = linregress(years, d[k]['cc_data'])
                 t_cci_r, t_cci_slope, t_cci_p = lr_cc.rvalue, lr_cc.slope, lr_cc.pvalue
                 t_cci_slope_norm = lr_cc.slope * np.std(years) / np.std(d[k]['cc_data'])
@@ -317,7 +320,8 @@ def trends_panel(irr_impact, png):
                     figname = os.path.join(png, '{}_{}_cc_{}_q_{}_{}_mo_climate.png'.format(s, d['STANAME'],
                                                                                             k, v['q_window'],
                                                                                             v['lag']))
-                    plt.savefig(figname)
+                    # plt.savefig(figname)
+                    plt.show()
                     plt.close()
 
 

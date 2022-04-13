@@ -5,7 +5,7 @@ from multiprocessing import Pool, cpu_count
 import numpy as np
 from pandas import read_csv
 from scipy.stats.stats import linregress
-from linear_regression_errors import LinearRegressionwithErrors
+from linear_regression_errors import LinearRegressionwithErrors, LinearModel
 # from astroML.linear_model import LinearRegressionwithErrors
 
 from figs.regression_figs import plot_trace
@@ -49,7 +49,7 @@ def irrmapper_error(csv):
     pass
 
 
-def regression_errors(station, records, period, qres_err, cc_err, trc_dir, multiproc=False):
+def regression_errors(station, records, period, qres_err, cc_err, trc_dir):
     try:
         print('\n{}, p = {:.3f}'.format(station, records['res_sig']))
 
@@ -63,10 +63,15 @@ def regression_errors(station, records, period, qres_err, cc_err, trc_dir, multi
         qres_err = qres_err * np.ones_like(qres)
         cc_err = cc_err * np.ones_like(cc)
 
-        sample_kwargs = {'draws': 1000,
+        sample_kwargs = {'draws': 500,
+                         'tune': 5000,
                          'target_accept': 0.9,
                          'cores': 1,
-                         'chains': 4}
+                         'chains': 4,
+                         'init': "advi+adapt_diag",
+                         'n_init': 50000,
+                         'progressbar': True,
+                         'return_inferencedata': True}
 
         regression_combs = [(cc, qres, cc_err, qres_err),
                             (years, cc, None, cc_err),
@@ -79,20 +84,23 @@ def regression_errors(station, records, period, qres_err, cc_err, trc_dir, multi
             if not os.path.isdir(model_dir):
                 os.makedirs(model_dir)
 
-        for (x, y, x_err, y_err), subdir in zip(regression_combs, trc_subdirs):
+        for (x, y, x_err, y_err), subdir in zip(regression_combs[1:], trc_subdirs[1:]):
             if subdir == 'time_cc':
                 y = y[0, :]
 
             save_model = os.path.join(trc_dir, subdir, '{}_cc_{}_q_{}.model'.format(station,
                                                                                     period,
                                                                                     records['q_window']))
-            if os.path.isfile(save_model):
-                print('{} exists'.format(subdir))
-                continue
-            else:
-                print('sampling {}'.format(subdir))
+            # if os.path.isfile(save_model):
+            #     print('{} exists'.format(subdir))
+            #     continue
+            # else:
+            print('sampling {}'.format(subdir))
 
-            model = LinearRegressionwithErrors()
+            if subdir == 'cc_qres':
+                model = LinearRegressionwithErrors()
+            else:
+                model = LinearModel()
             model.fit(x, y, y_err, x_err,
                       save_model=save_model,
                       sample_kwargs=sample_kwargs)
@@ -112,8 +120,8 @@ if __name__ == '__main__':
     irrmap = os.path.join(root, 'climate', 'irrmapper', 'pixel_metric_climate_clip.csv')
     # irrmapper_error(irrmap)
 
-    cc_err_ = '0.17'
-    qres_err_ = '0.17'
+    cc_err_ = '0.16'
+    qres_err_ = '0.16'
     mproc = 30
 
     for var in ['cci']:
@@ -140,8 +148,12 @@ if __name__ == '__main__':
         pool = Pool(processes=mproc)
 
         for sid, per, rec in diter:
+            # if sid != '09486500' or per != '5-6':
+            #     continue
+            # if sid != '06025500' or per != '10-10':
+            #     continue
             # regression_errors(sid, rec, per, float(qres_err_),
-            #                   float(cc_err_), trace_dir, True)
+            #                   float(cc_err_), trace_dir)
             pool.apply_async(regression_errors, args=(sid, rec, per, float(qres_err_),
                                                       float(cc_err_), trace_dir, True))
 

@@ -92,3 +92,53 @@ class LinearRegressionwithErrors(LinearRegression):
                     pickle.dump({'model': self, 'trace': self.trace}, buff)
 
         return self
+
+
+class LinearModel(LinearRegression):
+
+    def __init__(self, fit_intercept=False, regularization='none', kwds=None):
+        super().__init__(fit_intercept, regularization, kwds)
+        self.clf_ = None
+        self.trace = None
+
+    def fit(self, X, y, y_error=1, x_error=None, save_model=None,
+            sample_kwargs=None):
+        sample_kwargs['progressbar'] = False
+        kwds = {}
+        if self.kwds is not None:
+            kwds.update(self.kwds)
+        kwds['fit_intercept'] = False
+        model = self._choose_regressor()
+        self.clf_ = model(**kwds)
+
+        if sample_kwargs is None:
+            sample_kwargs = {'draws': 1000, 'target_accept': 0.9}
+
+        with pm.Model():
+            # slope and intercept of eta-ksi relation
+            b0 = pm.Normal("inter", mu=0, sigma=10)
+            b1 = pm.Normal("slope", mu=0, sigma=10)
+
+            y_est = b0 + b1 * X
+
+            likelihood = pm.Normal("likelihood", mu=y_est, sigma=y_error, observed=y)
+            self.trace = pm.sample(**sample_kwargs)
+
+            slopes = np.array(self.trace['posterior']['slope']).ravel()
+            intercepts = np.array(self.trace['posterior']['inter']).ravel()
+
+            HND, edges = np.histogramdd(np.hstack((slopes, intercepts)), bins=50)
+
+            w = np.where(HND == HND.max())
+
+            # choose the maximum posterior slope and intercept
+            slope_best = [edges[i][w[i][0]] for i in range(len(edges) - 1)]
+            intercept_best = edges[-1][w[-1][0]]
+            self.clf_.coef_ = np.array([intercept_best, *slope_best])
+
+            if save_model:
+                with open(save_model, 'wb') as buff:
+                    pickle.dump({'model': self, 'trace': self.trace}, buff)
+
+        return self
+

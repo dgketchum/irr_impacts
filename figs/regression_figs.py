@@ -14,19 +14,22 @@ def plot_saved_traces(impacts_json, trc_dir, fig_dir, cc_err, qres_err, overwrit
     with open(impacts_json, 'r') as f:
         stations = json.load(f)
 
+    lp_cc, lp_qres = 1, 1
+
     for station, data in stations.items():
 
         impact_keys = [p for p, v in data.items() if isinstance(v, dict)]
 
         for period in impact_keys:
+            if station != '09486500' or period != '5-6':
+                continue
             # if station != '06025500' or period != '10-10':
             #     continue
-            if station != '06016000' or period != '6-6':
-                continue
             records = data[period]
 
             cc = np.array(records['cc_data']).reshape(1, len(records['cc_data']))
             qres = np.array(records['q_resid'])
+            years_ = [x for x in range(1991, 2021)]
 
             cc = (cc - cc.min()) / (cc.max() - cc.min()) + 0.001
             qres = (qres - qres.min()) / (qres.max() - qres.min()) + 0.001
@@ -34,8 +37,20 @@ def plot_saved_traces(impacts_json, trc_dir, fig_dir, cc_err, qres_err, overwrit
             dummy_error = np.zeros_like(years)
 
             qres_cc_lr = linregress(qres, cc)
-            time_cc_lr = linregress(years, cc)
-            time_qres_lr = linregress(years, qres)
+            time_cc_lr = linregress(years_, cc)
+            time_qres_lr = linregress(years_, qres)
+
+            tccp, tqrp = time_cc_lr.pvalue, time_qres_lr.pvalue
+
+            if tccp < lp_cc:
+                lp_cc = tccp
+                print(station, period)
+                print('cc trend p: {:.3f}\n'.format(lp_cc))
+
+            if tqrp < lp_qres:
+                lp_qres = tqrp
+                print(station, period)
+                print('qres trend p: {:.3f}\n'.format(lp_qres))
 
             qres_err = qres_err * np.ones_like(qres)
             cc_err = cc_err * np.ones_like(cc)
@@ -53,8 +68,8 @@ def plot_saved_traces(impacts_json, trc_dir, fig_dir, cc_err, qres_err, overwrit
                     os.makedirs(os.path.join(model_dir, 'not_converged'))
                     os.makedirs(os.path.join(model_dir, 'converged'))
 
-            for (x, y, x_err, y_err, lr, varstr_x, varstr_y), subdir in zip(regression_combs,
-                                                                            trc_subdirs):
+            for (x, y, x_err, y_err, lr, varstr_x, varstr_y), subdir in zip(regression_combs[1:],
+                                                                            trc_subdirs[1:]):
                 if subdir == 'time_cc':
                     y = y[0, :]
 
@@ -81,21 +96,24 @@ def plot_trace(x, y, x_err, y_err, model, ols, fig_dir, desc_str, fig_file=None)
         with open(model, 'rb') as buff:
             data = pickle.load(buff)
             model, traces = data['model'], data['trace']
-            betas = [trace['slope'][0] for trace in traces]
+            # try:
+            #     betas = [trace['slope'][0] for trace in traces]
+            # except TypeError:
+            #     betas = traces['posterior']['slope'].values.ravel()
             az.plot_trace(traces, var_names=['slope'], rug=True)
-            div_ = float(np.count_nonzero(traces.diverging)) / np.count_nonzero(~traces.diverging)
+            # div_ = float(np.count_nonzero(traces.diverging)) / np.count_nonzero(~traces.diverging)
 
     except EOFError:
         print(model, 'error')
         return None
 
-    if div_ < 0.05:
-        subdir = 'converged'
-    else:
-        subdir = 'not_converged'
+    # if div_ < 0.05:
+    #     subdir = 'converged'
+    # else:
+    #     subdir = 'not_converged'
 
     if not fig_file:
-        fig_file = os.path.join(fig_dir, subdir,
+        fig_file = os.path.join(fig_dir,
                                 '{}_{}_{}_{}_{}_{}.png'.format(*desc_str))
 
     plt.savefig(fig_file.replace('.png', '_trace.png'))
@@ -114,14 +132,14 @@ def plot_trace(x, y, x_err, y_err, model, ols, fig_dir, desc_str, fig_file=None)
                                        ax=plt.gca(), chains=50, traces=traces)
     plt.xlabel(desc_str[2])
     plt.ylabel(desc_str[4])
-    print('beta: {}, mean trace: {}, divergence rate: {}'.format(beta_, np.mean(betas),
-                                                                 div_))
+    # print('beta: {}, mean trace: {}, divergence rate: {}'.format(beta_, np.mean(betas),
+    #                                                              div_))
 
     print(fig_file, '\n')
 
     plt.suptitle(' '.join(desc_str))
-    # plt.savefig(fig_file)
-    plt.show()
+    plt.savefig(fig_file)
+    # plt.show()
     plt.close()
 
 

@@ -17,8 +17,6 @@ import statsmodels.api as sm
 from figs.bulk_analysis_figs import plot_clim_q_resid, plot_water_balance_trends
 from hydrograph import hydrograph
 
-os.environ['R_HOME'] = '/home/dgketchum/miniconda3/envs/renv/lib/R'
-
 from gage_list import EXCLUDE_STATIONS
 
 
@@ -498,7 +496,7 @@ if __name__ == '__main__':
 
     fig_dir = os.path.join(root, 'figures', 'clim_impact_q_clim_delQ_cci_all')
     irr_resp = os.path.join(root, 'station_metadata', 'cci_climate_sig.json')
-    # get_sig_irr_impact(clim_resp, ee_data, out_jsn=irr_resp, fig_dir=fig_dir, climate_sig_only=True)
+    get_sig_irr_impact(clim_resp, ee_data, out_jsn=irr_resp, fig_dir=fig_dir, climate_sig_only=True)
 
     # state = 'ccerr_0.18_qreserr_0.17'
     # trace_dir = os.path.join(root, 'bayes', 'traces', state)
@@ -512,7 +510,7 @@ if __name__ == '__main__':
     # _json = os.path.join(root, 'station_metadata/cci_climate_sig.json')
     _json = os.path.join(root, 'station_metadata/cci_climate_sig.json')
     cc_frac_json = os.path.join(root, 'station_metadata/basin_cc_ratios_summer_7FEB2022.json')
-    water_balance_ratios(_json, ee_data, stations=watersheds_shp, metadata_out=cc_frac_json)
+    # water_balance_ratios(_json, ee_data, stations=watersheds_shp, metadata_out=cc_frac_json)
 
     # irr_impacted = os.path.join(root, 'station_metadata/basin_cc_ratios.json')
     # fig_dir = os.path.join(root, 'figures/water_balance_time_series/significant_gt_2000sqkm')
