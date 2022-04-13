@@ -96,21 +96,11 @@ def plot_trace(x, y, x_err, y_err, model, ols, fig_dir, desc_str, fig_file=None)
         with open(model, 'rb') as buff:
             data = pickle.load(buff)
             model, traces = data['model'], data['trace']
-            # try:
-            #     betas = [trace['slope'][0] for trace in traces]
-            # except TypeError:
-            #     betas = traces['posterior']['slope'].values.ravel()
             az.plot_trace(traces, var_names=['slope'], rug=True)
-            # div_ = float(np.count_nonzero(traces.diverging)) / np.count_nonzero(~traces.diverging)
 
     except EOFError:
         print(model, 'error')
         return None
-
-    # if div_ < 0.05:
-    #     subdir = 'converged'
-    # else:
-    #     subdir = 'not_converged'
 
     if not fig_file:
         fig_file = os.path.join(fig_dir,

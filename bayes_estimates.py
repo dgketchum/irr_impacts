@@ -84,18 +84,18 @@ def regression_errors(station, records, period, qres_err, cc_err, trc_dir):
             if not os.path.isdir(model_dir):
                 os.makedirs(model_dir)
 
-        for (x, y, x_err, y_err), subdir in zip(regression_combs[1:], trc_subdirs[1:]):
+        for (x, y, x_err, y_err), subdir in zip(regression_combs[:1], trc_subdirs[:1]):
             if subdir == 'time_cc':
                 y = y[0, :]
 
             save_model = os.path.join(trc_dir, subdir, '{}_cc_{}_q_{}.model'.format(station,
                                                                                     period,
                                                                                     records['q_window']))
-            # if os.path.isfile(save_model):
-            #     print('{} exists'.format(subdir))
-            #     continue
-            # else:
-            print('sampling {}'.format(subdir))
+            if os.path.isfile(save_model):
+                print('{} exists'.format(subdir))
+                continue
+            else:
+                print('sampling {}'.format(subdir))
 
             if subdir == 'cc_qres':
                 model = LinearRegressionwithErrors()
@@ -110,6 +110,7 @@ def regression_errors(station, records, period, qres_err, cc_err, trc_dir):
 
 
 if __name__ == '__main__':
+
     root = '/media/research/IrrigationGIS'
     if not os.path.exists(root):
         root = '/home/dgketchum/data/IrrigationGIS'
@@ -120,8 +121,8 @@ if __name__ == '__main__':
     irrmap = os.path.join(root, 'climate', 'irrmapper', 'pixel_metric_climate_clip.csv')
     # irrmapper_error(irrmap)
 
-    cc_err_ = '0.16'
-    qres_err_ = '0.16'
+    cc_err_ = '0.17'
+    qres_err_ = '0.17'
     mproc = 30
 
     for var in ['cci']:
@@ -155,7 +156,7 @@ if __name__ == '__main__':
             # regression_errors(sid, rec, per, float(qres_err_),
             #                   float(cc_err_), trace_dir)
             pool.apply_async(regression_errors, args=(sid, rec, per, float(qres_err_),
-                                                      float(cc_err_), trace_dir, True))
+                                                      float(cc_err_), trace_dir))
 
         pool.close()
         pool.join()
