@@ -1,20 +1,10 @@
 import numpy as np
-import warnings
 import pickle
 
-try:
-    import pymc3 as pm
-    import theano.tensor as tt
-    from packaging.version import Version
-
-    PYMC_LT_39 = Version(pm.__version__) < Version("3.9")
-except ImportError:
-    warnings.warn('LinearRegressionwithErrors requires PyMC3 to be installed')
-    PYMC_LT_39 = True
+import pymc3 as pm
+import theano.tensor as tt
 
 from astroML.linear_model import LinearRegression
-
-__all__ = ['LinearRegressionwithErrors']
 
 
 class LinearRegressionwithErrors(LinearRegression):
@@ -26,8 +16,6 @@ class LinearRegressionwithErrors(LinearRegression):
 
     def fit(self, X, y, y_error=1, x_error=None, *,
             sample_kwargs={'draws': 1000, 'target_accept': 0.9}, save_model=None):
-        if not PYMC_LT_39:
-            sample_kwargs['return_inferencedata'] = False
 
         sample_kwargs['progressbar'] = False
         kwds = {}
@@ -49,7 +37,7 @@ class LinearRegressionwithErrors(LinearRegression):
 
             # intrinsic scatter of eta-ksi relation
             # int_std = pm.HalfFlat('int_std')
-            int_std = 0.001
+            int_std = 0.0001
             # standard deviation of Gaussian that ksi are drawn from (assumed mean zero)
             tau = pm.HalfFlat('tau', shape=(X.shape[0],))
             # intrinsic ksi
@@ -63,11 +51,7 @@ class LinearRegressionwithErrors(LinearRegression):
                             sigma=int_std, shape=y.shape)
 
             # observed xi, yi
-            if x_error is None:
-                x = pm.Normal('xi', mu=ksi.T, observed=X, shape=X.shape)
-
-            else:
-                x = pm.Normal('xi', mu=ksi.T, sigma=x_error, observed=X, shape=X.shape)
+            x = pm.Normal('xi', mu=ksi.T, sigma=x_error, observed=X, shape=X.shape)
 
             y = pm.Normal('yi', mu=eta, sigma=y_error, observed=y, shape=y.shape)
 

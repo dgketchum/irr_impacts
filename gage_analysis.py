@@ -1,18 +1,20 @@
 import os
 import json
-from collections import OrderedDict
+import pickle
+from datetime import date
 from pprint import pprint
 from calendar import monthrange
-import pickle
+from collections import OrderedDict
+from dateutil.relativedelta import relativedelta as rdlt
 
-import matplotlib.pyplot as plt
+import fiona
 import numpy as np
 from pandas import DataFrame
-from scipy.stats.stats import linregress
-from datetime import date
-from dateutil.relativedelta import relativedelta as rdlt
-import fiona
 import statsmodels.api as sm
+from scipy.stats.stats import linregress
+import matplotlib.pyplot as plt
+import arviz as az
+import pymc3.backends.base
 
 from figs.bulk_analysis_figs import plot_clim_q_resid, plot_water_balance_trends
 from hydrograph import hydrograph
@@ -455,26 +457,44 @@ def bayes_sig_irr_impact(metadata, trc_dir, out_json):
         for period in impact_keys:
             records = data[period]
 
-            saved_model = os.path.join(trc_dir, '{}_cc{}_q{}.model'.format(station,
-                                                                           period,
-                                                                           records['q_window']))
-            with open(saved_model, 'rb') as buff:
-                mdata = pickle.load(buff)
-                model, trace = mdata['model'], mdata['trace']
+            # if station != '06016000' or period != '6-7':
+            #     continue
 
-            div_ = float(np.count_nonzero(trace.diverging)) / np.count_nonzero(~trace.diverging)
-            trace_slope = trace['slope'][:, 0]
-            H2D, bins1, bins2 = np.histogram2d(trace_slope,
-                                               trace['inter'], bins=50)
-            w = np.where(H2D == H2D.max())
+            trc_subdirs = ['cc_qres', 'time_cc', 'time_qres']
 
-            # choose the maximum posterior slope and intercept
-            slope_best = bins1[w[0][0]]
-            intercept_best = bins2[w[1][0]]
-            out_meta[station][period]['map_slope'] = slope_best
-            out_meta[station][period]['map_intercept'] = intercept_best
-            out_meta[station][period]['divergence_ratio'] = div_
-            out_meta[station][period]['model_path'] = saved_model
+            for subdir in trc_subdirs:
+                saved_model = os.path.join(trc_dir, subdir, '{}_cc_{}_q_{}.model'.format(station,
+                                                                                         period,
+                                                                                         records['q_window']))
+                with open(saved_model, 'rb') as buff:
+                    mdata = pickle.load(buff)
+                    model, trace = mdata['model'], mdata['trace']
+
+                if subdir == 'cc_qres':
+                    # individual chains may diverge; drop them?
+                    diverge = trace.diverging.reshape(4, -1)
+                    diverge_sum = diverge.sum(axis=1)
+                    div_ = np.count_nonzero(diverge_sum) / float(diverge.size)
+                    div_chain = np.array(diverge_sum, dtype=float) / (np.ones_like(diverge_sum) * diverge.shape[1])
+                    drop_chain = div_chain < 0.1
+                    chain_idx = [i for i, x in enumerate(drop_chain) if x]
+                    suptitle = '{} {} cc {} q {} div: {:.3f} {} chains'.format(subdir, station, period,
+                                                                               records['q_window'], div_,
+                                                                               len(chain_idx))
+                else:
+                    chain_idx = [i for i in range(4)]
+                    suptitle = '{} {} cc {} q {} div: {:.3f} {} chains'.format(subdir, station, period,
+                                                                               records['q_window'], div_,
+                                                                               len(chain_idx))
+
+                summary = az.summary(trace, var_names=['slope'], coords={'chain': chain_idx})
+                az.plot_posterior(trace, var_names=['slope'])
+                plt.suptitle(suptitle)
+                plt.show()
+                az.plot_trace(trace, var_names=['slope'], coords={'chain': chain_idx})
+                plt.suptitle(suptitle)
+                plt.show()
+                continue
 
     with open(out_json, 'w') as f:
         json.dump(out_meta, f, indent=4, sort_keys=False)
@@ -496,15 +516,15 @@ if __name__ == '__main__':
 
     fig_dir = os.path.join(root, 'figures', 'clim_impact_q_clim_delQ_cci_all')
     irr_resp = os.path.join(root, 'station_metadata', 'cci_climate_sig.json')
-    get_sig_irr_impact(clim_resp, ee_data, out_jsn=irr_resp, fig_dir=fig_dir, climate_sig_only=True)
+    # get_sig_irr_impact(clim_resp, ee_data, out_jsn=irr_resp, fig_dir=fig_dir, climate_sig_only=True)
 
-    # state = 'ccerr_0.18_qreserr_0.17'
-    # trace_dir = os.path.join(root, 'bayes', 'traces', state)
-    # if not os.path.exists(trace_dir):
-    #     os.makedirs(trace_dir)
-    # _json = os.path.join(root, 'station_metadata', 'cci_impacted.json')
-    # o_json = os.path.join(root, 'station_metadata', 'cci_impacted_bayes.json')
-    # bayes_sig_irr_impact(_json, trace_dir, o_json)
+    state = 'ccerr_0.17_qreserr_0.17'
+    trace_dir = os.path.join(root, 'bayes', 'traces', state)
+    if not os.path.exists(trace_dir):
+        os.makedirs(trace_dir)
+    _json = os.path.join(root, 'station_metadata', 'cci_impacted.json')
+    o_json = os.path.join(root, 'station_metadata', 'cci_impacted_bayes.json')
+    bayes_sig_irr_impact(_json, trace_dir, o_json)
 
     watersheds_shp = os.path.join(root, 'watersheds/selected_watersheds.shp')
     # _json = os.path.join(root, 'station_metadata/cci_climate_sig.json')
