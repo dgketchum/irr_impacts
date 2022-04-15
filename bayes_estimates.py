@@ -58,7 +58,7 @@ def regression_errors(station, records, period, qres_err, cc_err, trc_dir, cores
 
         cc = (cc - cc.min()) / (cc.max() - cc.min()) + 0.001
         qres = (qres - qres.min()) / (qres.max() - qres.min()) + 0.001
-        years = (np.linspace(0, 1, len(qres)) + 0.001).reshape(1, -1)
+        years = (np.linspace(0, 1, len(qres)) + 0.001).reshape(1, -1) + 0.001
 
         qres_err = qres_err * np.ones_like(qres)
         cc_err = cc_err * np.ones_like(cc)
@@ -67,10 +67,11 @@ def regression_errors(station, records, period, qres_err, cc_err, trc_dir, cores
                          'tune': 5000,
                          'target_accept': 0.9,
                          'cores': cores,
+                         'init': 'advi+adapt_diag',
                          'chains': 4,
                          'n_init': 50000,
-                         'progressbar': True,
-                         'return_inferencedata': True}
+                         'progressbar': False,
+                         'return_inferencedata': False}
 
         regression_combs = [(cc, qres, cc_err, qres_err),
                             (years, cc, None, cc_err),
@@ -100,6 +101,7 @@ def regression_errors(station, records, period, qres_err, cc_err, trc_dir, cores
                 model = LinearRegressionwithErrors()
             else:
                 model = LinearModel()
+
             model.fit(x, y, y_err, x_err,
                       save_model=save_model,
                       sample_kwargs=sample_kwargs)
