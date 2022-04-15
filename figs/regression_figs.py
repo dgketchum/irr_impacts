@@ -5,9 +5,9 @@ import pickle
 import numpy as np
 from scipy.stats.stats import linregress
 from matplotlib import pyplot as plt
-from astroML.plotting import plot_regressions, plot_regression_from_trace
 import arviz as az
-from astroML.linear_model import LinearRegressionwithErrors
+
+from figs.regr_fig_utils import plot_regressions, plot_regression_from_trace
 
 
 def plot_saved_traces(impacts_json, trc_dir, fig_dir, cc_err, qres_err, overwrite=False):
@@ -21,8 +21,8 @@ def plot_saved_traces(impacts_json, trc_dir, fig_dir, cc_err, qres_err, overwrit
         impact_keys = [p for p, v in data.items() if isinstance(v, dict)]
 
         for period in impact_keys:
-            if station != '09486500' or period != '5-6':
-                continue
+            # if station != '09486500' or period != '5-6':
+            #     continue
             # if station != '06025500' or period != '10-10':
             #     continue
             records = data[period]
@@ -42,14 +42,10 @@ def plot_saved_traces(impacts_json, trc_dir, fig_dir, cc_err, qres_err, overwrit
 
             tccp, tqrp = time_cc_lr.pvalue, time_qres_lr.pvalue
 
+            print(station, period)
             if tccp < lp_cc:
-                lp_cc = tccp
-                print(station, period)
-                print('cc trend p: {:.3f}\n'.format(lp_cc))
-
-            if tqrp < lp_qres:
-                lp_qres = tqrp
-                print(station, period)
+                print('cc qres p: {:.3f}'.format(qres_cc_lr.pvalue))
+                print('cc trend p: {:.3f}'.format(lp_cc))
                 print('qres trend p: {:.3f}\n'.format(lp_qres))
 
             qres_err = qres_err * np.ones_like(qres)
@@ -65,11 +61,9 @@ def plot_saved_traces(impacts_json, trc_dir, fig_dir, cc_err, qres_err, overwrit
                 model_dir = os.path.join(fig_dir, subdir)
                 if not os.path.isdir(model_dir):
                     os.makedirs(model_dir)
-                    os.makedirs(os.path.join(model_dir, 'not_converged'))
-                    os.makedirs(os.path.join(model_dir, 'converged'))
 
-            for (x, y, x_err, y_err, lr, varstr_x, varstr_y), subdir in zip(regression_combs[1:],
-                                                                            trc_subdirs[1:]):
+            for (x, y, x_err, y_err, lr, varstr_x, varstr_y), subdir in zip(regression_combs,
+                                                                            trc_subdirs):
                 if subdir == 'time_cc':
                     y = y[0, :]
 
@@ -86,6 +80,7 @@ def plot_saved_traces(impacts_json, trc_dir, fig_dir, cc_err, qres_err, overwrit
                                                                                          records['q_window']))
 
                 if not os.path.exists(saved_model):
+                    print(saved_model, ' missing, skipping')
                     continue
 
                 plot_trace(x, y, x_err, y_err, saved_model, lr, os.path.join(fig_dir, subdir), desc)
@@ -119,13 +114,11 @@ def plot_trace(x, y, x_err, y_err, model, ols, fig_dir, desc_str, fig_file=None)
     plt.ylim([-0.1, 1.1])
 
     beta_ = plot_regression_from_trace(model, (x, y, x_err, y_err),
-                                       ax=plt.gca(), chains=50, traces=traces)
+                                       ax=plt.gca(), chains=4, traces=traces)
     plt.xlabel(desc_str[2])
     plt.ylabel(desc_str[4])
     # print('beta: {}, mean trace: {}, divergence rate: {}'.format(beta_, np.mean(betas),
     #                                                              div_))
-
-    print(fig_file, '\n')
 
     plt.suptitle(' '.join(desc_str))
     plt.savefig(fig_file)
