@@ -64,11 +64,13 @@ def plot_regressions(ksi, eta, x, y, sigma_x, sigma_y, add_regression_lines=Fals
 
 
 def plot_regression_from_trace(fitted, observed, ax=None, chains=4, multidim_ind=None,
-                               traces=None, legend=True, n_lines=100, burn=500):
+                               traces=None, legend=True, n_lines=100, burn=500,
+                               chain_idx=None):
     if not traces:
         traces = [fitted.trace, ]
     else:
         traces = [traces, ]
+
     xi, yi, sigx, sigy = observed
 
     if multidim_ind is not None:
@@ -92,8 +94,13 @@ def plot_regression_from_trace(fitted, observed, ax=None, chains=4, multidim_ind
 
         trace_inter = trace_inter.reshape(-1, chains)
 
+        if chain_idx:
+            trace_slope = trace_slope[:, chain_idx]
+            trace_inter = trace_inter[:, chain_idx]
+            chains = len(chain_idx)
+
         sample_idx = np.array((np.random.randint(trace_slope.shape[0], size=n_lines),
-                               np.random.randint(0, 4, size=n_lines)))
+                               np.random.randint(0, chains, size=n_lines)))
 
         slope_samples = [x for x in zip(sample_idx[0], sample_idx[1])]
 
@@ -114,7 +121,7 @@ def plot_regression_from_trace(fitted, observed, ax=None, chains=4, multidim_ind
         y = intercept_best + slope_best * x
 
         # y_pre = fitted.predict(x[:, None])
-        ax.plot(x, y, label='MAP')
+        # ax.plot(x, y, label='MAP')
 
         break
     if legend:

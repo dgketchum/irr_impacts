@@ -14,7 +14,9 @@ import statsmodels.api as sm
 from scipy.stats.stats import linregress
 import matplotlib.pyplot as plt
 import arviz as az
-import pymc3.backends.base
+import warnings
+
+warnings.filterwarnings('ignore')
 
 from figs.bulk_analysis_figs import plot_clim_q_resid, plot_water_balance_trends
 from hydrograph import hydrograph
@@ -443,7 +445,7 @@ def basin_trends(key, metadata, ee_series, start_mo, end_mo, out_jsn=None, fig_d
             print('write {} sig {} to file'.format(len(sig_stations.keys()), key))
 
 
-def bayes_sig_irr_impact(metadata, trc_dir, out_json):
+def bayes_sig_irr_impact(metadata, trc_dir, out_json, plot=False):
     with open(metadata, 'r') as f:
         stations = json.load(f)
 
@@ -456,9 +458,7 @@ def bayes_sig_irr_impact(metadata, trc_dir, out_json):
 
         for period in impact_keys:
             records = data[period]
-
-            # if station != '06016000' or period != '6-7':
-            #     continue
+            print('\n', station, period)
 
             trc_subdirs = ['cc_qres', 'time_cc', 'time_qres']
 
@@ -478,23 +478,21 @@ def bayes_sig_irr_impact(metadata, trc_dir, out_json):
                     div_chain = np.array(diverge_sum, dtype=float) / (np.ones_like(diverge_sum) * diverge.shape[1])
                     drop_chain = div_chain < 0.1
                     chain_idx = [i for i, x in enumerate(drop_chain) if x]
-                    suptitle = '{} {} cc {} q {} div: {:.3f} {} chains'.format(subdir, station, period,
-                                                                               records['q_window'], div_,
-                                                                               len(chain_idx))
                 else:
                     chain_idx = [i for i in range(4)]
-                    suptitle = '{} {} cc {} q {} div: {:.3f} {} chains'.format(subdir, station, period,
-                                                                               records['q_window'], div_,
-                                                                               len(chain_idx))
 
-                summary = az.summary(trace, var_names=['slope'], coords={'chain': chain_idx})
-                az.plot_posterior(trace, var_names=['slope'])
-                plt.suptitle(suptitle)
-                plt.show()
-                az.plot_trace(trace, var_names=['slope'], coords={'chain': chain_idx})
-                plt.suptitle(suptitle)
-                plt.show()
-                continue
+                summary = az.summary(trace, hdi_prob=0.95, var_names=['slope'], coords={'chain': chain_idx})
+                d = {'mean': summary.iloc[0]['mean'],
+                     'hdi_2.5%': summary.iloc[0]['hdi_2.5%'],
+                     'hdi_97.5%': summary.iloc[0]['hdi_97.5%'],
+                     'model': saved_model}
+                out_meta[station][period] = data[period]
+                out_meta[station][period][subdir] = d
+
+                print('{} mean: {:.2f}; hdi {:.2f} to {:.2f}'.format(subdir,
+                                                                     d['mean'],
+                                                                     d['hdi_2.5%'],
+                                                                     d['hdi_97.5%']))
 
     with open(out_json, 'w') as f:
         json.dump(out_meta, f, indent=4, sort_keys=False)
@@ -505,44 +503,12 @@ if __name__ == '__main__':
     if not os.path.exists(root):
         root = '/home/dgketchum/data/IrrigationGIS/gages'
 
-    ee_data = os.path.join(root, 'merged_q_ee/monthly_ssebop_tc_q_Comp_16DEC2021')
-    clim_resp = os.path.join(root, 'station_metadata/basin_climate_response_all.json')
-
-    clim_dir = os.path.join(root, 'merged_q_ee/monthly_ssebop_tc_q_Comp_16DEC2021')
-    i_json = os.path.join(root, 'station_metadata/station_metadata.json')
-    fig_dir_ = os.path.join(root, 'figures/clim_q_correlations')
-    # climate_flow_correlation(climate_dir=clim_dir, in_json=i_json,
-    #                          out_json=clim_resp, plot_r=fig_dir_)
-
-    fig_dir = os.path.join(root, 'figures', 'clim_impact_q_clim_delQ_cci_all')
-    irr_resp = os.path.join(root, 'station_metadata', 'cci_climate_sig.json')
-    # get_sig_irr_impact(clim_resp, ee_data, out_jsn=irr_resp, fig_dir=fig_dir, climate_sig_only=True)
-
     state = 'ccerr_0.17_qreserr_0.17'
     trace_dir = os.path.join(root, 'bayes', 'traces', state)
     if not os.path.exists(trace_dir):
         os.makedirs(trace_dir)
-    _json = os.path.join(root, 'station_metadata', 'cci_impacted.json')
+    f_json = os.path.join(root, 'station_metadata', 'cci_impacted.json')
     o_json = os.path.join(root, 'station_metadata', 'cci_impacted_bayes.json')
-    bayes_sig_irr_impact(_json, trace_dir, o_json)
-
-    watersheds_shp = os.path.join(root, 'watersheds/selected_watersheds.shp')
-    # _json = os.path.join(root, 'station_metadata/cci_climate_sig.json')
-    _json = os.path.join(root, 'station_metadata/cci_climate_sig.json')
-    cc_frac_json = os.path.join(root, 'station_metadata/basin_cc_ratios_summer_7FEB2022.json')
-    # water_balance_ratios(_json, ee_data, stations=watersheds_shp, metadata_out=cc_frac_json)
-
-    # irr_impacted = os.path.join(root, 'station_metadata/basin_cc_ratios.json')
-    # fig_dir = os.path.join(root, 'figures/water_balance_time_series/significant_gt_2000sqkm')
-    # trend_metatdata_dir = os.path.join(root, 'station_metadata/significant_gt_2000sqkm')
-    # trend_json = os.path.join(root, 'water_balance_time_series/cc_q_trends.json')
-    #
-    # for k in ['ppt', 'q', 'etr', 'ai', 'cc', 'cci', 'irr']:
-    #     fig_ = os.path.join(fig_dir, k)
-    #     if not os.path.exists(fig_):
-    #         os.mkdir(fig_)
-    #     out_json = os.path.join(trend_metatdata_dir, 'sig_trends_{}.json'.format(k))
-    #     basin_trends(k, irr_impacted, ee_data, out_jsn=out_json, fig_dir=fig_,
-    #                  start_mo=1, end_mo=12, significant=True)
+    bayes_sig_irr_impact(f_json, trace_dir, o_json)
 
 # ========================= EOF ====================================================================

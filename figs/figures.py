@@ -3,9 +3,13 @@ import json
 import pickle
 
 import numpy as np
+from scipy.stats.stats import linregress
+
 from matplotlib import cm
 from matplotlib import pyplot as plt
-from scipy.stats.stats import linregress
+import seaborn as sns
+import arviz as az
+import arviz.plots.backends.matplotlib.posteriorplot as posterior
 
 from gage_list import EXCLUDE_STATIONS
 from figs.regression_figs import plot_regression_from_trace
@@ -173,6 +177,9 @@ def impact_time_series_bars(sig_stations, basin_designations, figures, min_area=
 
 
 def trends_panel(irr_impact, png):
+
+    sns.set_theme()
+
     with open(irr_impact, 'r') as f:
         irr_impact_d = json.load(f)
 
@@ -184,8 +191,6 @@ def trends_panel(irr_impact, png):
     for s, d in irr_impact_d.items():
         if s in EXCLUDE_STATIONS:
             continue
-        # if s != '06016000':
-        #     continue
         impact_keys = [p for p, v in d.items() if isinstance(v, dict)]
 
         [clime_slope.append(irr_impact_d[s][k]['clim_slope']) for k in d.keys() if k in impact_keys]
@@ -196,21 +201,17 @@ def trends_panel(irr_impact, png):
         # TODO: write q_resid_time m/r/p and cci_time m/r/p to json from gage analysis
         for k, v in d.items():
             if k in impact_keys:
-                # if k != '6-6':
-                #     continue
-                lr_cc = linregress(years, d[k]['cc_data'])
-                t_cci_r, t_cci_slope, t_cci_p = lr_cc.rvalue, lr_cc.slope, lr_cc.pvalue
-                t_cci_slope_norm = lr_cc.slope * np.std(years) / np.std(d[k]['cc_data'])
-                if t_cci_p > 0.05:
-                    continue
-                lr_q_t = linregress(years, d[k]['q_resid_line'])
-                t_q_r, t_q_slope, t_q_p = lr_q_t.rvalue, lr_q_t.slope, lr_q_t.pvalue
-                if t_q_p > 0.05:
-                    continue
+                bayes_est = d[k]['cc_qres']
+                if np.sign(bayes_est['hdi_2.5%']) == np.sign(bayes_est['hdi_97.5%']):
+                    resid_slope.append(bayes_est['mean'])
 
-                t_cci_r_.append(t_cci_r), t_cci_slope_.append(t_cci_slope_norm)
-                t_q_slope_norm = lr_q_t.slope * np.std(years) / np.std(d[k]['q_resid_line'])
-                t_q_r_.append(t_q_r), t_q_slope_.append(t_q_slope_norm)
+                bayes_est = d[k]['time_cc']
+                if np.sign(bayes_est['hdi_2.5%']) == np.sign(bayes_est['hdi_97.5%']):
+                    t_cci_slope_.append(bayes_est['mean'])
+
+                bayes_est = d[k]['time_qres']
+                if np.sign(bayes_est['hdi_2.5%']) == np.sign(bayes_est['hdi_97.5%']):
+                    t_q_slope_.append(bayes_est['mean'])
 
     n_bins = 30
 
@@ -230,12 +231,8 @@ def trends_panel(irr_impact, png):
         impact_keys = [p for p, v in d.items() if isinstance(v, dict)]
         for k, v in d.items():
             if k in impact_keys:
-                if s != '06016000' or k != '5-7':
-                    continue
-
-                with open(d[k]['model_path'], 'rb') as buff:
-                    mdata = pickle.load(buff)
-                    model, trace = mdata['model'], mdata['trace']
+                # if s != '06016000' or k != '5-7':
+                #     continue
 
                 lr_cc = linregress(years, d[k]['cc_data'])
                 t_cci_r, t_cci_slope, t_cci_p = lr_cc.rvalue, lr_cc.slope, lr_cc.pvalue
@@ -266,8 +263,6 @@ def trends_panel(irr_impact, png):
                     # residual flow - crop consumption data
                     cci, resid, resid_line = np.array(v['cc_data']), np.array(v['q_resid']), v['q_resid_line']
 
-                    map_slope, map_intercept = v['map_slope'], v['map_intercept']
-
                     ccin = (cci - cci.min()) / (cci.max() - cci.min())
                     qres = (resid - resid.min()) / (resid.max() - resid.min())
                     ax[0, 1].set(xlabel='cci [m]')
@@ -276,52 +271,77 @@ def trends_panel(irr_impact, png):
                     ax[0, 1].errorbar(ccin, qres, xerr=0.18, yerr=0.17, alpha=0.1, ls='', color='b')
                     cc_err = 0.18 * np.ones_like(ccin)
                     qres_err = 0.17 * np.ones_like(qres)
+
+                    with open(d[k]['cc_qres']['model'], 'rb') as buff:
+                        mdata = pickle.load(buff)
+                        model, trace = mdata['model'], mdata['trace']
+
+                    diverge = trace.diverging.reshape(4, -1)
+                    diverge_sum = diverge.sum(axis=1)
+                    div_chain = np.array(diverge_sum, dtype=float) / (np.ones_like(diverge_sum) * diverge.shape[1])
+                    drop_chain = div_chain < 0.1
+                    chain_idx = [i for i, x in enumerate(drop_chain) if x]
+
                     _ = plot_regression_from_trace(model, (ccin, qres, cc_err, qres_err),
-                                                   ax=ax[0, 1], chains=50, traces=trace, legend=False)
+                                                   ax=ax[0, 1], chains=4, traces=trace, legend=False,
+                                                   chain_idx=chain_idx)
 
-                    ax[1, 1].hist(resid_slope, bins=bin_resid_slope)
-                    ax[1, 1].set(xlabel='Residual Flow-Crop Consumption Slope [-]')
-                    ax[1, 1].set(ylabel='count')
+                    az.plot_posterior(trace, var_names=['slope'], hdi_prob=0.95, ax=ax[1, 1],
+                                      coords={'chain': chain_idx})
 
-                    ax[2, 1].hist(resid_r, bins=bin_resid_r)
-                    ax[2, 1].set(xlabel='Residual Flow-Crop Consumption Pearson r [-]')
+                    ax[1, 1].set(xlabel='Slope')
+
+                    ax[2, 1].hist(resid_slope, bins=bin_resid_slope)
+                    ax[2, 1].set(xlabel='Residual Flow-Crop Consumption Slope [-]')
                     ax[2, 1].set(ylabel='count')
 
                     # crop consumption trend data
-                    cc = v['cc_data']
-                    cc_line = (lr_cc.slope) * np.array(years) + lr_cc.intercept
-                    ax[0, 2].set(xlabel='Year')
-                    ax[0, 2].set(ylabel='cc [m^3]')
-                    ax[0, 2].scatter(years, cc)
-                    ax[0, 2].plot(years, cc_line)
+                    years = (np.linspace(0, 1, len(qres)) + 0.001)
+                    years_err = np.zeros_like(cc_err)
+                    ax[0, 2].set(xlabel='Time')
+                    ax[0, 2].set(ylabel='cci [m]')
+                    ax[0, 2].scatter(years, ccin)
+                    ax[0, 2].errorbar(years, ccin, xerr=0.0, yerr=0.17, alpha=0.1, ls='', color='b')
 
-                    ax[1, 2].hist(t_cci_slope_, bins=bin_t_cci_slope)
-                    ax[1, 2].set(xlabel='Crop Consumption Trend Slope [-]')
-                    ax[1, 2].set(ylabel='count')
+                    with open(d[k]['time_cc']['model'], 'rb') as buff:
+                        mdata = pickle.load(buff)
+                        model, trace = mdata['model'], mdata['trace']
 
-                    ax[2, 2].hist(t_cci_r_, bins=bin_t_cci_r)
-                    ax[2, 2].set(xlabel='Crop Consumption Trend Pearson r [-]')
+                    _ = plot_regression_from_trace(model, (years, ccin, years_err, cc_err),
+                                                   ax=ax[0, 2], chains=4, traces=trace, legend=False)
+
+                    az.plot_posterior(trace, var_names=['slope'], hdi_prob=0.95, ax=ax[1, 2])
+                    ax[1, 2].set(xlabel='Slope')
+
+                    ax[2, 2].hist(t_cci_slope_, bins=bin_t_cci_slope)
+                    ax[2, 2].set(xlabel='Crop Consumption Trend Slope [-]')
                     ax[2, 2].set(ylabel='count')
 
                     # residual flow trend data
-                    resid_q_time_line = (lr_q_t.slope) * np.array(years) + lr_q_t.intercept
-                    ax[0, 3].set(xlabel='Year')
-                    ax[0, 3].set(ylabel='q residual [m^3]')
-                    ax[0, 3].scatter(years, resid)
-                    ax[0, 3].plot(years, resid_q_time_line)
+                    ax[0, 3].set(xlabel='Time')
+                    ax[0, 3].set(ylabel='qres [m]')
+                    ax[0, 3].scatter(years, qres)
+                    ax[0, 3].errorbar(years, qres, xerr=0.0, yerr=0.17, alpha=0.1, ls='', color='b')
 
-                    ax[1, 3].hist(t_q_slope_, bins=bin_t_q_res_slope)
-                    ax[1, 3].set(xlabel='Residual Flow Trend Slope [-]')
-                    ax[1, 3].set(ylabel='count')
-                    ax[2, 3].hist(t_q_r_, bins=bin_t_q_res_r)
-                    ax[2, 3].set(xlabel='Residual Flow Trend Pearson r [-]')
+                    with open(d[k]['time_qres']['model'], 'rb') as buff:
+                        mdata = pickle.load(buff)
+                        model, trace = mdata['model'], mdata['trace']
+
+                    _ = plot_regression_from_trace(model, (years, qres, years_err, qres_err),
+                                                   ax=ax[0, 3], chains=4, traces=trace, legend=False)
+
+                    az.plot_posterior(trace, var_names=['slope'], hdi_prob=0.95, ax=ax[1, 3])
+                    ax[1, 3].set(xlabel='Slope')
+
+                    ax[2, 3].hist(t_q_slope_, bins=bin_t_q_res_slope)
+                    ax[2, 3].set(xlabel='Residual Flow Trend Slope [-]')
                     ax[2, 3].set(ylabel='count')
 
                     figname = os.path.join(png, '{}_{}_cc_{}_q_{}_{}_mo_climate.png'.format(s, d['STANAME'],
                                                                                             k, v['q_window'],
                                                                                             v['lag']))
-                    # plt.savefig(figname)
-                    plt.show()
+                    plt.savefig(figname)
+                    # plt.show()
                     plt.close()
 
 
