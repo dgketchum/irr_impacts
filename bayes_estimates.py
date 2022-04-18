@@ -84,7 +84,7 @@ def regression_errors(station, records, period, qres_err, cc_err, trc_dir, cores
             if not os.path.isdir(model_dir):
                 os.makedirs(model_dir)
 
-        for (x, y, x_err, y_err), subdir in zip(regression_combs, trc_subdirs):
+        for (x, y, x_err, y_err), subdir in zip(regression_combs[1:], trc_subdirs[1:]):
             if subdir == 'time_cc':
                 y = y[0, :]
 
@@ -95,7 +95,7 @@ def regression_errors(station, records, period, qres_err, cc_err, trc_dir, cores
                 print('{} exists'.format(subdir))
                 continue
             else:
-                print('sampling {}'.format(subdir))
+                print('\nsampling {}'.format(subdir))
 
             if subdir == 'cc_qres':
                 model = LinearRegressionwithErrors()
@@ -152,7 +152,7 @@ if __name__ == '__main__':
         for sid, per, rec in diter:
             # if sid != '09486500' or per != '5-6':
             #     continue
-            # if sid != '06025500' or per != '10-10':
+            # if sid != '13142500' or per != '7-10':
             #     continue
             # regression_errors(sid, rec, per, float(qres_err_),
             #                   float(cc_err_), trace_dir, 4)

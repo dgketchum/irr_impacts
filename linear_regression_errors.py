@@ -108,8 +108,8 @@ class LinearModel(LinearRegression):
             likelihood = pm.Normal("likelihood", mu=y_est, sigma=y_error, observed=y)
             self.trace = pm.sample(**sample_kwargs)
 
-            slopes = np.array(self.trace['posterior']['slope']).ravel()
-            intercepts = np.array(self.trace['posterior']['inter']).ravel()
+            slopes = np.array(self.trace['slope']).ravel()
+            intercepts = np.array(self.trace['inter']).ravel()
 
             HND, edges = np.histogramdd(np.hstack((slopes, intercepts)), bins=50)
 
