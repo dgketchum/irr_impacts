@@ -1,8 +1,10 @@
 import os
+import json
+from collections import OrderedDict
+
 import fiona
 from pandas import read_csv, Series
 import numpy as np
-from collections import OrderedDict
 import statsmodels.api as sm
 
 SHORT_RECORDS = ['06017000', '06024580', '06040000', '06074000', '06077500',
@@ -67,6 +69,52 @@ def add_metadata_to_shapefile(basin_gages, series, out):
                        'type': 'Feature'}
             dst.write(feature)
             ct += 1
+
+
+def write_json_to_shapefile(in_shp, out_shp, meta):
+    with open(meta, 'r') as f:
+        meta = json.load(f)
+
+    features = []
+    out_gages = []
+    gages = list(meta.keys())
+    with fiona.open(in_shp, 'r') as src:
+        shape_meta = src.meta
+        for f in src:
+            sid = f['properties']['STAID']
+            if sid in gages:
+                out_gages.append(sid)
+                features.append(f)
+
+    shape_meta['schema']['properties'].update({'STANAME': 'str:40',
+                                               'cc_frac': 'float:19.11',
+                                               'irr_pct': 'float:19.11',
+                                               'slope': 'float:19.11'})
+
+    ct = 0
+    with fiona.open(out_shp, 'w', **shape_meta) as dst:
+        for f in features:
+            ct += 1
+            sid = f['properties']['STAID']
+            feature = {'geometry': f['geometry'],
+                       'id': ct,
+                       'properties': OrderedDict([('STAID', f['properties']['STAID']),
+                                                  ('STANAME', f['properties']['STANAME']),
+                                                  ('SQMI', f['properties']['SQMI']),
+
+                                                  ('cc_frac', meta[sid]['cc_frac']),
+                                                  ('irr_pct', meta[sid]['irr_pct']),
+                                                  ('slope', meta[sid]['slope']),
+
+                                                  ('start', f['properties']['start']),
+                                                  ('end', f['properties']['end'])]),
+                       'type': 'Feature'}
+            ct += 1
+            try:
+                dst.write(feature)
+                print(f['properties']['STAID'], f['properties']['STANAME'])
+            except TypeError:
+                pass
 
 
 if __name__ == '__main__':

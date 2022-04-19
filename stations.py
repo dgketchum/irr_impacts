@@ -154,33 +154,5 @@ def get_station_daterange_data(year_start, daily_q_dir, aggregate_q_dir, start_m
 
 
 if __name__ == '__main__':
-    root = '/media/research/IrrigationGIS/gages'
-    if not os.path.exists(root):
-        root = '/home/dgketchum/data/IrrigationGIS/gages'
-
-    _shp = os.path.join(root, 'gage_loc_usgs', 'selected_gages_sortBasin.shp')
-    _basin_json = os.path.join(root, 'station_metadata', 'basin_sort.json')
-    # station_basin_designations(_shp, _basin_json)
-
-    # por_stations = os.path.join(root, 'gage_loc_usgs/por_gages_nhd.shp')
-    # watershed_source = os.path.join(root, 'watersheds/combined_station_watersheds.shp')
-    # selected_stations = os.path.join(root, 'gage_loc_usgs/selected_gages.shp')
-    # selected_watersheds = os.path.join(root, 'watersheds/selected_watersheds.shp')
-    # station_json = os.path.join(root, 'station_metadata/station_metadata.json')
-    # get_station_watersheds(stations_source=por_stations,
-    #                        watersheds_source=watershed_source,
-    #                        out_stations=selected_stations,
-    #                        out_watersheds=selected_watersheds,
-    #                        station_json=station_json)
-
-    shp = os.path.join(root, 'gage_loc_usgs/selected_gages.shp')
-    shp = os.path.join(root, 'gage_loc_usgs/selected_gages.shp')
-    dst = os.path.join(root, 'hydrographs/daily_q')
-    get_station_daily_data('discharge', '1986-01-01', '2020-12-31',
-                           shp, dst, freq='dv')
-
-    src = os.path.join(root, 'hydrographs/daily_q')
-    dst = os.path.join(root, 'hydrographs/q_monthly')
-    get_station_daterange_data(1986, src, dst, resample_freq='M')
-
+    pass
 # ========================= EOF ====================================================================

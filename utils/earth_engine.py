@@ -3,18 +3,15 @@ import sys
 from calendar import monthrange
 
 import fiona
-import numpy as np
-from pandas import read_csv, concat, to_datetime
+from pandas import concat, to_datetime
 import ee
-from assets import is_authorized
+from utils.assets import is_authorized
 import numpy as np
 from pandas import read_csv
-from matplotlib import pyplot as plt
-from scipy.stats import linregress
 
 is_authorized()
 
-sys.path.insert(0, os.path.abspath('..'))
+sys.path.insert(0, os.path.abspath('../..'))
 sys.setrecursionlimit(5000)
 
 RF_ASSET = 'projects/ee-dgketchum/assets/IrrMapper/IrrMapperComp'

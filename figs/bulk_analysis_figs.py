@@ -3,12 +3,12 @@ from calendar import monthrange
 from datetime import date
 
 from matplotlib import rcParams, pyplot as plt
-from pandas import read_csv, concat
+from pandas import read_csv
 import numpy as np
 
 from hydrograph import hydrograph
-from county_list import included_counties
-from state_county_names_codes import state_fips_code, state_county_code
+from utils.county_list import included_counties
+from utils.state_county_names_codes import state_fips_code, state_county_code
 
 
 def plot_clim_q_resid(q, ai, clim_line, desc_str, years, cc, resid, resid_line, fig_d, cci_per, flow_per):
