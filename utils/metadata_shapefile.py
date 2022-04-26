@@ -118,8 +118,5 @@ def write_json_to_shapefile(in_shp, out_shp, meta):
 
 
 if __name__ == '__main__':
-    w = '/media/research/IrrigationGIS/gages/watersheds/selected_watersheds.shp'
-    o = '/media/research/IrrigationGIS/gages/watersheds/selected_watersheds_meta.shp'
-    a_series = '/media/research/IrrigationGIS/gages/hydrographs/annual_stations'
-    add_metadata_to_shapefile(w, a_series, o)
+    pass
 # ========================= EOF ====================================================================

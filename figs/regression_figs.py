@@ -10,6 +10,16 @@ import arviz as az
 from figs.regr_fig_utils import plot_regressions, plot_regression_from_trace
 
 
+def standardize(arr):
+    arr = (arr - arr.mean()) / arr.std()
+    return arr
+
+
+def magnitude(arr):
+    mag = np.floor(np.log10(arr))
+    return mag
+
+
 def plot_saved_traces(impacts_json, trc_dir, fig_dir, cc_err, qres_err, overwrite=False):
     with open(impacts_json, 'r') as f:
         stations = json.load(f)
@@ -31,8 +41,11 @@ def plot_saved_traces(impacts_json, trc_dir, fig_dir, cc_err, qres_err, overwrit
             qres = np.array(records['q_resid'])
             years_ = [x for x in range(1991, 2021)]
 
-            cc = (cc - cc.min()) / (cc.max() - cc.min()) + 0.001
-            qres = (qres - qres.min()) / (qres.max() - qres.min()) + 0.001
+            # cc = standardize(cc)
+            # qres = standardize(qres)
+            qres_err = abs(qres_err * qres)
+            cc_err = abs(cc_err * cc)
+
             years = (np.linspace(0, 1, len(qres)) + 0.001).reshape(1, -1)
             dummy_error = np.zeros_like(years)
 
@@ -47,9 +60,6 @@ def plot_saved_traces(impacts_json, trc_dir, fig_dir, cc_err, qres_err, overwrit
                 print('cc qres p: {:.3f}'.format(qres_cc_lr.pvalue))
                 print('cc trend p: {:.3f}'.format(lp_cc))
                 print('qres trend p: {:.3f}\n'.format(lp_qres))
-
-            qres_err = qres_err * np.ones_like(qres)
-            cc_err = cc_err * np.ones_like(cc)
 
             regression_combs = [(cc, qres, cc_err, qres_err, qres_cc_lr, 'cc', 'qres'),
                                 (years, cc, dummy_error, cc_err, time_cc_lr, 'years', 'cc'),
@@ -110,8 +120,8 @@ def plot_trace(x, y, x_err, y_err, model, ols, fig_dir, desc_str, fig_file=None)
                      alpha_in=ols.intercept, beta_in=ols.slope)
 
     plt.scatter(x, y)
-    plt.xlim([-0.1, 1.1])
-    plt.ylim([-0.1, 1.1])
+    # plt.xlim([-0.1, 1.1])
+    # plt.ylim([-0.1, 1.1])
 
     beta_ = plot_regression_from_trace(model, (x, y, x_err, y_err),
                                        ax=plt.gca(), chains=4, traces=traces)
@@ -131,11 +141,11 @@ if __name__ == '__main__':
     if not os.path.exists(root):
         root = '/home/dgketchum/data/IrrigationGIS'
 
-    cc_err = '0.17'
-    qres_err = '0.17'
+    cc_err_ = '0.197'
+    qres_err_ = '0.17'
 
     for var in ['cci']:
-        state = 'ccerr_{}_qreserr_{}'.format(str(cc_err), str(qres_err))
+        state = 'ccerr_{}_qreserr_{}'.format(str(cc_err_), str(qres_err_))
         trace_dir = os.path.join(root, 'gages', 'bayes', 'traces', state)
         if not os.path.exists(trace_dir):
             os.makedirs(trace_dir)
@@ -145,7 +155,7 @@ if __name__ == '__main__':
 
         o_fig = os.path.join(root, 'gages', 'figures', 'slope_trace_{}'.format(var), state)
 
-        plot_saved_traces(_json, trace_dir, o_fig, qres_err=float(qres_err),
-                          cc_err=float(cc_err), overwrite=True)
+        plot_saved_traces(_json, trace_dir, o_fig, qres_err=float(qres_err_),
+                          cc_err=float(cc_err_), overwrite=True)
 
 # ========================= EOF ====================================================================

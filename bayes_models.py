@@ -126,3 +126,7 @@ class LinearModel(LinearRegression):
 
         return self
 
+
+if __name__ == '__main__':
+    pass
+# ========================= EOF ====================================================================

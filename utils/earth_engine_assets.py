@@ -215,14 +215,5 @@ def is_authorized():
 
 
 if __name__ == '__main__':
-    is_authorized()
-    collection = 'users/dgketchum/ssebop/columbia'
-    l = list_assets(collection)
-    for i in l:
-        info = ee.Image(i).bandNames().getInfo()
-        print(info[0], i)
-
-    # new = i.replace('_et_', '_et_actual_')
-        # move_asset(i, new)
-
+    pass
 # ========================= EOF ====================================================================

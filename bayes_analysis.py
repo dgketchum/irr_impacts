@@ -1,12 +1,34 @@
 import os
+import sys
 import json
+import pickle
 from multiprocessing import Pool, cpu_count
 
 import numpy as np
-from bayes_regression import LinearRegressionwithErrors, LinearModel
+import arviz as az
+from bayes_models import LinearRegressionwithErrors, LinearModel
+import bayes_models
+
+# suppress pymc3 FutureWarning
+import warnings
+
+warnings.simplefilter(action='ignore', category=FutureWarning)
+
+# temporary hack to open pickled model with renamed module
+sys.modules['linear_regression_errors'] = bayes_models
 
 
-def bayes_regression(traces_dir, stations, multiproc=False):
+def standardize(arr):
+    arr = (arr - arr.mean()) / arr.std()
+    return arr
+
+
+def magnitude(arr):
+    mag = np.ceil(np.log10(abs(arr)))
+    return 10**mag
+
+
+def run_bayes_regression(traces_dir, stations, multiproc=False):
     if not os.path.exists(traces_dir):
         os.makedirs(traces_dir)
 
@@ -16,9 +38,12 @@ def bayes_regression(traces_dir, stations, multiproc=False):
     diter = [[(kk, k, r) for k, r in vv.items() if isinstance(r, dict)] for kk, vv in stations.items()]
     diter = [i for ll in diter for i in ll]
 
-    pool = Pool(processes=mproc)
+    if multiproc:
+        pool = Pool(processes=mproc)
 
     for sid, per, rec in diter:
+        if sid != '06016000' or per != '5-7':
+            continue
         if not multiproc:
             bayes_linear_regression(sid, rec, per, float(qres_err_),
                                     float(cc_err_), trace_dir, 4)
@@ -26,8 +51,9 @@ def bayes_regression(traces_dir, stations, multiproc=False):
             pool.apply_async(bayes_linear_regression, args=(sid, rec, per, float(qres_err_),
                                                             float(cc_err_), traces_dir, 1))
 
-    pool.close()
-    pool.join()
+    if multiproc:
+        pool.close()
+        pool.join()
 
 
 def bayes_linear_regression(station, records, period, qres_err, cc_err, trc_dir, cores):
@@ -37,14 +63,14 @@ def bayes_linear_regression(station, records, period, qres_err, cc_err, trc_dir,
         cc = np.array(records['cc_data']).reshape(1, len(records['cc_data']))
         qres = np.array(records['q_resid'])
 
-        cc = (cc - cc.min()) / (cc.max() - cc.min()) + 0.001
-        qres = (qres - qres.min()) / (qres.max() - qres.min()) + 0.001
+        cc = cc / magnitude(cc)
+        cc_err = abs(cc_err * cc)
+        qres = qres / magnitude(qres)
+        qres_err = abs(qres_err * qres)
+
         years = (np.linspace(0, 1, len(qres)) + 0.001).reshape(1, -1) + 0.001
 
-        qres_err = qres_err * np.ones_like(qres)
-        cc_err = cc_err * np.ones_like(cc)
-
-        sample_kwargs = {'draws': 500,
+        sample_kwargs = {'draws': 1000,
                          'tune': 5000,
                          'target_accept': 0.9,
                          'cores': cores,
@@ -65,7 +91,7 @@ def bayes_linear_regression(station, records, period, qres_err, cc_err, trc_dir,
             if not os.path.isdir(model_dir):
                 os.makedirs(model_dir)
 
-        for (x, y, x_err, y_err), subdir in zip(regression_combs[1:], trc_subdirs[1:]):
+        for (x, y, x_err, y_err), subdir in zip(regression_combs[:1], trc_subdirs[:1]):
             if subdir == 'time_cc':
                 y = y[0, :]
 
@@ -91,15 +117,20 @@ def bayes_linear_regression(station, records, period, qres_err, cc_err, trc_dir,
         print(e, station, period)
 
 
-def bayes_sig_irr_impact(metadata, trc_dir, out_json):
+def bayes_sig_irr_impact(metadata, trc_dir, out_json, update=False):
     with open(metadata, 'r') as f:
         stations = json.load(f)
 
-    out_meta = {}
+    if update:
+        with open(out_json, 'r') as f:
+            out_meta = json.load(f)
+    else:
+        out_meta = {}
 
-    for station, data in stations.items():
+    for i, (station, data) in enumerate(stations.items()):
 
-        out_meta[station] = data
+        if not update:
+            out_meta[station] = data
         impact_keys = [p for p, v in data.items() if isinstance(v, dict)]
 
         for period in impact_keys:
@@ -109,12 +140,23 @@ def bayes_sig_irr_impact(metadata, trc_dir, out_json):
             trc_subdirs = ['cc_qres', 'time_cc', 'time_qres']
 
             for subdir in trc_subdirs:
-                saved_model = os.path.join(trc_dir, subdir, '{}_cc_{}_q_{}.model'.format(station,
-                                                                                         period,
-                                                                                         records['q_window']))
-                with open(saved_model, 'rb') as buff:
-                    mdata = pickle.load(buff)
-                    model, trace = mdata['model'], mdata['trace']
+
+                if update and subdir in out_meta[station][period].keys():
+                    continue
+
+                saved_model = os.path.join(trc_dir, subdir,
+                                           '{}_cc_{}_q_{}.model'.format(station, period, records['q_window']))
+
+                if os.path.exists(saved_model):
+                    try:
+                        with open(saved_model, 'rb') as buff:
+                            mdata = pickle.load(buff)
+                            model, trace = mdata['model'], mdata['trace']
+                    except Exception as e:
+                        print(e)
+                        continue
+                else:
+                    continue
 
                 if subdir == 'cc_qres':
                     # individual chains may diverge; drop them?
@@ -145,25 +187,26 @@ def bayes_sig_irr_impact(metadata, trc_dir, out_json):
 
 if __name__ == '__main__':
 
-    root = '/media/research/IrrigationGIS'
+    root = '/media/research/IrrigationGIS/gages'
     if not os.path.exists(root):
-        root = '/home/dgketchum/data/IrrigationGIS'
+        root = '/home/dgketchum/data/IrrigationGIS/gages'
 
-    cc_err_ = '0.196'
+    cc_err_ = '0.233'
     qres_err_ = '0.17'
     mproc = 30
     state = 'ccerr_{}_qreserr_{}'.format(str(cc_err_), str(qres_err_))
-    trace_dir = os.path.join(root, 'gages', 'bayes', 'traces', state)
+    trace_dir = os.path.join(root, 'bayes', 'traces', state)
+    f_json = os.path.join(root, 'station_metadata', 'cci_impacted.json')
     if not os.path.exists(trace_dir):
         os.makedirs(trace_dir)
 
-    bayes_regression()
+    run_bayes_regression(trace_dir, f_json, multiproc=False)
 
-    o_fig = os.path.join(root, 'gages', 'figures', 'slope_trace_{}'.format(var), state)
+    var = 'cci'
+    o_fig = os.path.join(root, 'figures', 'slope_trace_{}'.format(var), state)
     if not os.path.exists(o_fig):
         os.makedirs(o_fig)
-    f_json = os.path.join(root, 'station_metadata', 'cci_impacted.json')
-    o_json = os.path.join(root, 'station_metadata', 'cci_impacted_bayes.json')
-    bayes_sig_irr_impact(f_json, trace_dir, o_json)
+    o_json = os.path.join(root, 'station_metadata', 'cci_impacted_bayes_{}.json'.format(state))
+    # bayes_sig_irr_impact(f_json, trace_dir, o_json, update=True)
 
 # ========================= EOF ====================================================================
