@@ -12,55 +12,13 @@ def get_m_b(beta):
     return m, b
 
 
-def plot_regressions(ksi, eta, x, y, sigma_x, sigma_y, add_regression_lines=False,
-                     alpha_in=1, beta_in=0.5, basis='linear'):
+def plot_regressions(x, y, sigma_x, sigma_y):
     figure = plt.figure(figsize=(8, 6))
     ax = figure.add_subplot(111)
     ax.scatter(x, y, alpha=0.5, color='b')
     ax.errorbar(x, y, xerr=sigma_x, yerr=sigma_y, alpha=0.1, ls='', color='b')
     ax.set_xlabel('x')
     ax.set_ylabel('y')
-
-    x0 = np.linspace(np.min(x) - 0.5, np.max(x) + 0.5, 20)
-
-    # True regression line
-
-    # if alpha_in is not None and beta_in is not None:
-    #     if basis == 'linear':
-    #         y0 = alpha_in + x0 * beta_in
-    #     elif basis == 'poly':
-    #         y0 = alpha_in + beta_in[0] * x0 + beta_in[1] * x0 * x0 + beta_in[2] * x0 * x0 * x0
-    #
-    #     ax.plot(x0, y0, color='black', label='True regression')
-    # else:
-    #     y0 = None
-
-    # if add_regression_lines:
-    #     for label, data, *target in [['OLS', x, y, 1],
-    #                                  ['fit y errors only', x, y, sigma_y],
-    #                                  ['fit x errors only', y, x, sigma_x]][:1]:
-    #         linreg = LinearRegression()
-    #         linreg.fit(data[:, None], *target)
-    #         if label == 'fit x errors only' and y0 is not None:
-    #             x_fit = linreg.predict(y0[:, None])
-    #             ax.plot(x_fit, y0, label=label)
-    #         else:
-    #             y_fit = linreg.predict(x0[:, None])
-    #             ax.plot(x0, y_fit, label=label)
-
-        # TLS
-        # X = np.vstack((x, y)).T
-        # dX = np.zeros((len(x), 2, 2))
-        # dX[:, 0, 0] = sigma_x
-        # dX[:, 1, 1] = sigma_y
-        #
-        # def min_func(beta):
-        #     return -TLS_logL(beta, X, dX)
-        #
-        # beta_fit = optimize.fmin(min_func, x0=[-1, 1])
-        # m_fit, b_fit = get_m_b(beta_fit)
-        # x_fit = np.linspace(-10, 10, 20)
-        # ax.plot(x_fit, m_fit * x_fit + b_fit, label='TLS')
 
 
 def plot_regression_from_trace(fitted, observed, ax=None, chains=4, multidim_ind=None,
@@ -79,11 +37,12 @@ def plot_regression_from_trace(fitted, observed, ax=None, chains=4, multidim_ind
     x = np.linspace(np.min(xi), np.max(xi), 50)
 
     for i, trace in enumerate(traces):
-
         try:
             trace_slope = trace['slope'][:, 0]
         except KeyError:
             trace_slope = trace['posterior']['slope'].values.ravel()
+        except IndexError:
+            trace_slope = trace['slope']
 
         trace_slope = trace_slope.reshape(-1, chains)
 

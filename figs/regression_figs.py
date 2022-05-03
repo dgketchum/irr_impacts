@@ -1,4 +1,5 @@
 import os
+import sys
 import json
 import pickle
 
@@ -8,6 +9,9 @@ from matplotlib import pyplot as plt
 import arviz as az
 
 from figs.regr_fig_utils import plot_regressions, plot_regression_from_trace
+import bayes_models
+
+sys.modules['linear_regression_errors'] = bayes_models
 
 
 def standardize(arr):
@@ -31,20 +35,18 @@ def plot_saved_traces(impacts_json, trc_dir, fig_dir, cc_err, qres_err, overwrit
         impact_keys = [p for p, v in data.items() if isinstance(v, dict)]
 
         for period in impact_keys:
-            # if station != '09486500' or period != '5-6':
-            #     continue
-            # if station != '06025500' or period != '10-10':
-            #     continue
+
             records = data[period]
 
             cc = np.array(records['cc_data']).reshape(1, len(records['cc_data']))
             qres = np.array(records['q_resid'])
             years_ = [x for x in range(1991, 2021)]
 
-            # cc = standardize(cc)
-            # qres = standardize(qres)
-            qres_err = abs(qres_err * qres)
+            cc = (cc - cc.min()) / (cc.max() - cc.min()) + 0.001
+            qres = (qres - qres.min()) / (qres.max() - qres.min()) + 0.001
+
             cc_err = abs(cc_err * cc)
+            qres_err = abs(qres_err * qres)
 
             years = (np.linspace(0, 1, len(qres)) + 0.001).reshape(1, -1)
             dummy_error = np.zeros_like(years)
@@ -55,11 +57,11 @@ def plot_saved_traces(impacts_json, trc_dir, fig_dir, cc_err, qres_err, overwrit
 
             tccp, tqrp = time_cc_lr.pvalue, time_qres_lr.pvalue
 
-            print(station, period)
-            if tccp < lp_cc:
-                print('cc qres p: {:.3f}'.format(qres_cc_lr.pvalue))
-                print('cc trend p: {:.3f}'.format(lp_cc))
-                print('qres trend p: {:.3f}\n'.format(lp_qres))
+            # print(station, period)
+            # if tccp < lp_cc:
+            #     print('cc qres p: {:.3f}'.format(qres_cc_lr.pvalue))
+            #     print('cc trend p: {:.3f}'.format(lp_cc))
+            #     print('qres trend p: {:.3f}\n'.format(lp_qres))
 
             regression_combs = [(cc, qres, cc_err, qres_err, qres_cc_lr, 'cc', 'qres'),
                                 (years, cc, dummy_error, cc_err, time_cc_lr, 'years', 'cc'),
@@ -114,14 +116,11 @@ def plot_trace(x, y, x_err, y_err, model, ols, fig_dir, desc_str, fig_file=None)
     plt.savefig(fig_file.replace('.png', '_trace.png'))
     plt.close()
 
-    plot_regressions(0.0, 0.0, x[0], y,
-                     x_err[0], y_err,
-                     add_regression_lines=True,
-                     alpha_in=ols.intercept, beta_in=ols.slope)
+    plot_regressions(x[0], y, x_err[0], y_err)
 
     plt.scatter(x, y)
-    # plt.xlim([-0.1, 1.1])
-    # plt.ylim([-0.1, 1.1])
+    plt.xlim([x.min(), x.max()])
+    plt.ylim([y.min(), y.max()])
 
     beta_ = plot_regression_from_trace(model, (x, y, x_err, y_err),
                                        ax=plt.gca(), chains=4, traces=traces)
@@ -141,7 +140,7 @@ if __name__ == '__main__':
     if not os.path.exists(root):
         root = '/home/dgketchum/data/IrrigationGIS'
 
-    cc_err_ = '0.197'
+    cc_err_ = '0.23'
     qres_err_ = '0.17'
 
     for var in ['cci']:
@@ -155,7 +154,7 @@ if __name__ == '__main__':
 
         o_fig = os.path.join(root, 'gages', 'figures', 'slope_trace_{}'.format(var), state)
 
-        plot_saved_traces(_json, trace_dir, o_fig, qres_err=float(qres_err_),
-                          cc_err=float(cc_err_), overwrite=True)
+        plot_saved_traces(_json, trace_dir, o_fig, qres_err=float(qres_err_) / 2,
+                          cc_err=float(cc_err_) / 2, overwrite=True)
 
 # ========================= EOF ====================================================================

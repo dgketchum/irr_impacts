@@ -66,12 +66,15 @@ def climate_flow_correlation(climate_dir, in_json, out_json, plot_r=None):
                 ppt = np.array([df['ppt'][d[0]: d[1]].sum() for d in dates])
                 ind = etr / ppt
                 lr = linregress(ind, q)
-                r, p = lr.rvalue, lr.pvalue
+                r, p, b = lr.rvalue, lr.pvalue, lr.slope
+                norm_slope = (b * (np.std(ind) / np.std(q))).item()
                 r_dct[key_].append(r)
                 if abs(r) > corr[1] and p < 0.05:
                     corr = (lag, abs(r))
 
-                    response_d[key_] = {'q_window': q_win, 'lag': lag, 'r': r, 'pval': p, 'irr_pct': irr_pct,
+                    response_d[key_] = {'q_window': q_win, 'slope': b,
+                                        'norm_slope': norm_slope,
+                                        'lag': lag, 'r': r, 'pval': p, 'irr_pct': irr_pct,
                                         'c_dates': '{} to {}'.format(str(dates[0][0]), str(dates[0][1])),
                                         'q_dates': '{} to {}'.format(str(q_dates[0][0]), str(q_dates[0][1]))}
                     found_sig = True
@@ -334,5 +337,18 @@ def basin_trends(key, metadata, ee_series, start_mo, end_mo, out_jsn=None, fig_d
 
 
 if __name__ == '__main__':
-    pass
+    root = '/media/research/IrrigationGIS/gages'
+    if not os.path.exists(root):
+        root = '/home/dgketchum/data/IrrigationGIS/gages'
+
+    ee_data = os.path.join(root, 'merged_q_ee/monthly_ssebop_tc_q_Comp_16DEC2021')
+    clim_resp = os.path.join(root, 'station_metadata/basin_climate_response_27APR2022.json')
+
+    clim_dir = os.path.join(root, 'merged_q_ee/monthly_ssebop_tc_q_Comp_16DEC2021')
+    i_json = os.path.join(root, 'station_metadata/station_metadata.json')
+    fig_dir_ = os.path.join(root, 'figures/clim_q_correlations')
+    # climate_flow_correlation(climate_dir=clim_dir, in_json=i_json,
+    #                           out_json=clim_resp, plot_r=fig_dir_)
+    f_json = os.path.join(root, 'station_metadata', 'cci_impacted_all_q.json')
+    get_sig_irr_impact(clim_resp, ee_data, f_json)
 # ========================= EOF ====================================================================
