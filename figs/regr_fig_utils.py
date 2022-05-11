@@ -22,7 +22,7 @@ def plot_regressions(x, y, sigma_x, sigma_y):
 
 
 def plot_regression_from_trace(fitted, observed, ax=None, chains=4, multidim_ind=None,
-                               traces=None, legend=True, n_lines=100, burn=500,
+                               traces=None, legend=True, n_lines=100,
                                chain_idx=None):
     if not traces:
         traces = [fitted.trace, ]

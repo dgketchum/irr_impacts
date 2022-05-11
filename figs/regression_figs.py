@@ -45,8 +45,8 @@ def plot_saved_traces(impacts_json, trc_dir, fig_dir, cc_err, qres_err, overwrit
             cc = (cc - cc.min()) / (cc.max() - cc.min()) + 0.001
             qres = (qres - qres.min()) / (qres.max() - qres.min()) + 0.001
 
-            cc_err = abs(cc_err * cc)
-            qres_err = abs(qres_err * qres)
+            qres_err = qres_err * np.ones_like(qres)
+            cc_err = cc_err * np.ones_like(cc)
 
             years = (np.linspace(0, 1, len(qres)) + 0.001).reshape(1, -1)
             dummy_error = np.zeros_like(years)
@@ -105,7 +105,7 @@ def plot_trace(x, y, x_err, y_err, model, ols, fig_dir, desc_str, fig_file=None)
             model, traces = data['model'], data['trace']
             az.plot_trace(traces, var_names=['slope'], rug=True)
 
-    except EOFError:
+    except (EOFError, ValueError):
         print(model, 'error')
         return None
 
@@ -140,7 +140,7 @@ if __name__ == '__main__':
     if not os.path.exists(root):
         root = '/home/dgketchum/data/IrrigationGIS'
 
-    cc_err_ = '0.23'
+    cc_err_ = '0.233'
     qres_err_ = '0.17'
 
     for var in ['cci']:
