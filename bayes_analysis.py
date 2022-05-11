@@ -134,12 +134,12 @@ def bayes_sig_irr_impact(metadata, trc_dir, out_json, update=False):
 
         if not update:
             out_meta[station] = data
+
         impact_keys = [p for p, v in data.items() if isinstance(v, dict)]
 
         for period in impact_keys:
             records = data[period]
             print('\n', station, period)
-
 
             trc_subdirs = ['cc_qres', 'time_cc', 'time_qres']
 
@@ -172,18 +172,24 @@ def bayes_sig_irr_impact(metadata, trc_dir, out_json, update=False):
                 else:
                     chain_idx = [i for i in range(4)]
 
-                summary = az.summary(trace, hdi_prob=0.95, var_names=['slope'], coords={'chain': chain_idx})
-                d = {'mean': summary.iloc[0]['mean'],
-                     'hdi_2.5%': summary.iloc[0]['hdi_2.5%'],
-                     'hdi_97.5%': summary.iloc[0]['hdi_97.5%'],
-                     'model': saved_model}
-                out_meta[station][period] = data[period]
-                out_meta[station][period][subdir] = d
+                try:
+                    summary = az.summary(trace, hdi_prob=0.95, var_names=['slope'], coords={'chain': chain_idx})
+                    d = {'mean': summary.iloc[0]['mean'],
+                         'hdi_2.5%': summary.iloc[0]['hdi_2.5%'],
+                         'hdi_97.5%': summary.iloc[0]['hdi_97.5%'],
+                         'model': saved_model}
 
-                print('{} mean: {:.2f}; hdi {:.2f} to {:.2f}'.format(subdir,
+                    if not update:
+                        out_meta[station][period] = data[period]
+
+                    out_meta[station][period][subdir] = d
+
+                    print('{} mean: {:.2f}; hdi {:.2f} to {:.2f}'.format(subdir,
                                                                      d['mean'],
                                                                      d['hdi_2.5%'],
                                                                      d['hdi_97.5%']))
+                except ValueError as e:
+                    print(station, e)
 
     with open(out_json, 'w') as f:
         json.dump(out_meta, f, indent=4, sort_keys=False)
@@ -204,13 +210,13 @@ if __name__ == '__main__':
     if not os.path.exists(trace_dir):
         os.makedirs(trace_dir)
 
-    run_bayes_regression(trace_dir, f_json, multiproc=True)
+    # run_bayes_regression(trace_dir, f_json, multiproc=False)
 
     var = 'cci'
     o_fig = os.path.join(root, 'figures', 'slope_trace_{}'.format(var), state)
     if not os.path.exists(o_fig):
         os.makedirs(o_fig)
-    o_json = os.path.join(root, 'station_metadata', 'cci_impacted_bayes_{}_test.json'.format(state))
-    # bayes_sig_irr_impact(f_json, trace_dir, o_json, update=False)
+    o_json = os.path.join(root, 'station_metadata', 'cci_impacted_bayes_{}.json'.format(state))
+    bayes_sig_irr_impact(f_json, trace_dir, o_json, update=True)
 
 # ========================= EOF ====================================================================
