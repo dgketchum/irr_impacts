@@ -438,13 +438,16 @@ if __name__ == '__main__':
     # scatter_figs = os.path.join(figs, 'scatter_area_v_climate_response')
     # response_time_to_area(c_json, fig_dir=figs)
 
-    xerr, yerr = 0.196, 0.17
+    cc_err_ = '0.233'
+    qres_err_ = '0.17'
 
-    filter = os.path.join(root, 'station_metadata', 'cci_impacted_bayes_ccerr_0.196_qreserr_0.17_forShape.json')
+    state = 'ccerr_{}_qreserr_{}'.format(str(cc_err_), str(qres_err_))
+    filter = os.path.join(root, 'station_metadata', 'cci_impacted_bayes_{}_forShape.json'.format(state))
     irr_resp = os.path.join(root, 'station_metadata', 'cci_impacted_bayes.json')
     clim_resp = os.path.join(root, 'station_metadata', 'basin_climate_response_27APR2022.json')
     fig_dir = os.path.join(figs, 'cci_bayes')
+
     trends_panel(irr_impact=irr_resp, clim_flow_d=clim_resp, png=fig_dir,
-                 x_err=xerr, y_err=yerr, filter_json=filter)
+                 x_err=float(qres_err_), y_err=float(cc_err_), filter_json=filter)
 
 # ========================= EOF ====================================================================
