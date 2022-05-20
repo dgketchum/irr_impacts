@@ -38,7 +38,7 @@ def climate_flow_correlation(climate_dir, in_json, out_json, plot_r=None):
         max_len = 5
         rr = [x for x in range(7, 11)]
         for n in range(1, max_len + 1):
-            for i in range(max_len - n):
+            for i in range(max_len):
                 per = rr[i: i + n]
                 if len(per) == 1:
                     per = [per[0], per[0]]
@@ -50,6 +50,10 @@ def climate_flow_correlation(climate_dir, in_json, out_json, plot_r=None):
         ind = None
         r_dct = {}
         for q_win in flow_periods:
+
+            if q_win != (7, 8, 9, 10):
+                continue
+
             corr = (0, 0.0)
             key_ = '{}-{}'.format(q_win[0], q_win[-1])
             r_dct[key_] = []
@@ -74,6 +78,8 @@ def climate_flow_correlation(climate_dir, in_json, out_json, plot_r=None):
 
                     response_d[key_] = {'q_window': q_win, 'slope': b,
                                         'norm_slope': norm_slope,
+                                        'q_data': list(q),
+                                        'ai_data': list(ind),
                                         'lag': lag, 'r': r, 'pval': p, 'irr_pct': irr_pct,
                                         'c_dates': '{} to {}'.format(str(dates[0][0]), str(dates[0][1])),
                                         'q_dates': '{} to {}'.format(str(q_dates[0][0]), str(q_dates[0][1]))}
@@ -342,13 +348,15 @@ if __name__ == '__main__':
         root = '/home/dgketchum/data/IrrigationGIS/gages'
 
     ee_data = os.path.join(root, 'merged_q_ee/monthly_ssebop_tc_q_Comp_16DEC2021')
-    clim_resp = os.path.join(root, 'station_metadata/basin_climate_response_27APR2022.json')
+    clim_resp = os.path.join(root, 'station_metadata/basin_climate_response_summerflow_7_10_20MAY2022.json')
 
     clim_dir = os.path.join(root, 'merged_q_ee/monthly_ssebop_tc_q_Comp_16DEC2021')
     i_json = os.path.join(root, 'station_metadata/station_metadata.json')
     fig_dir_ = os.path.join(root, 'figures/clim_q_correlations')
+
     # climate_flow_correlation(climate_dir=clim_dir, in_json=i_json,
-    #                           out_json=clim_resp, plot_r=fig_dir_)
-    f_json = os.path.join(root, 'station_metadata', 'cci_impacted_all_q.json')
-    get_sig_irr_impact(clim_resp, ee_data, f_json)
+    #                          out_json=clim_resp, plot_r=None)
+
+    f_json = os.path.join(root, 'station_metadata', 'impacts_summerflow_7_10.json')
+    get_sig_irr_impact(clim_resp, ee_data, f_json, climate_sig_only=True)
 # ========================= EOF ====================================================================
