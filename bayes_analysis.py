@@ -26,7 +26,7 @@ def standardize(arr):
 
 def magnitude(arr):
     mag = np.ceil(np.log10(abs(arr)))
-    return 10**mag
+    return 10 ** mag
 
 
 def run_bayes_regression(traces_dir, stations, multiproc=False):
@@ -188,9 +188,9 @@ def bayes_sig_irr_impact(metadata, trc_dir, out_json, update=False):
                     out_meta[station][period][subdir] = d
 
                     print('{} mean: {:.2f}; hdi {:.2f} to {:.2f}'.format(subdir,
-                                                                     d['mean'],
-                                                                     d['hdi_2.5%'],
-                                                                     d['hdi_97.5%']))
+                                                                         d['mean'],
+                                                                         d['hdi_2.5%'],
+                                                                         d['hdi_97.5%']))
                 except ValueError as e:
                     print(station, e)
 
@@ -208,20 +208,23 @@ if __name__ == '__main__':
     qres_err_ = '0.17'
     # state = 'ccerr_{}_qreserr_{}'.format(str(cc_err_), str(qres_err_))
 
-    state = 'summer_qnorm_qreserr_{}'.format(str(cc_err_), str(qres_err_))
-    trace_dir = os.path.join(root, 'bayes', 'traces', state)
-    f_json = os.path.join(root, 'station_metadata', 'impacts_summerflow_7_10.json')
+    for m in range(7, 11):
 
-    if not os.path.exists(trace_dir):
-        os.makedirs(trace_dir)
+        state = 'qnorm_{}_qreserr_{}'.format(m, str(qres_err_))
+        trace_dir = os.path.join(root, 'bayes', 'traces', state)
 
-    run_bayes_regression(trace_dir, f_json, multiproc=False)
+        f_json = os.path.join(root, 'station_metadata', 'impacts_summerflow_{}.json'.format(m))
 
-    var = 'cci'
-    o_fig = os.path.join(root, 'figures', 'slope_trace_{}'.format(var), state)
-    if not os.path.exists(o_fig):
-        os.makedirs(o_fig)
-    o_json = os.path.join(root, 'station_metadata', 'cci_impacted_bayes_{}.json'.format(state))
-    # bayes_sig_irr_impact(f_json, trace_dir, o_json, update=True)
+        if not os.path.exists(trace_dir):
+            os.makedirs(trace_dir)
+
+        run_bayes_regression(trace_dir, f_json, multiproc=True)
+
+        var = 'cci'
+        o_fig = os.path.join(root, 'figures', 'slope_trace_{}'.format(var), state)
+        if not os.path.exists(o_fig):
+            os.makedirs(o_fig)
+        o_json = os.path.join(root, 'station_metadata', 'bayes_impacts_summerflow_{}_{}.json'.format(m, state))
+        # bayes_sig_irr_impact(f_json, trace_dir, o_json, update=False)
 
 # ========================= EOF ====================================================================

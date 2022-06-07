@@ -16,7 +16,7 @@ from hydrograph import hydrograph
 from gage_analysis import EXCLUDE_STATIONS
 
 
-def climate_flow_correlation(climate_dir, in_json, out_json, plot_r=None):
+def climate_flow_correlation(climate_dir, in_json, out_json, plot_r=None, spec_time=None):
     """Find linear relationship between climate and flow in an expanding time window"""
     l = sorted([os.path.join(climate_dir, x) for x in os.listdir(climate_dir)])
     print(len(l), 'station files')
@@ -51,8 +51,9 @@ def climate_flow_correlation(climate_dir, in_json, out_json, plot_r=None):
         r_dct = {}
         for q_win in flow_periods:
 
-            if q_win != (7, 8, 9, 10):
-                continue
+            if spec_time:
+                if q_win != spec_time:
+                    continue
 
             corr = (0, 0.0)
             key_ = '{}-{}'.format(q_win[0], q_win[-1])
@@ -348,15 +349,18 @@ if __name__ == '__main__':
         root = '/home/dgketchum/data/IrrigationGIS/gages'
 
     ee_data = os.path.join(root, 'merged_q_ee/monthly_ssebop_tc_q_Comp_16DEC2021')
-    clim_resp = os.path.join(root, 'station_metadata/basin_climate_response_summerflow_7_10_20MAY2022.json')
 
     clim_dir = os.path.join(root, 'merged_q_ee/monthly_ssebop_tc_q_Comp_16DEC2021')
     i_json = os.path.join(root, 'station_metadata/station_metadata.json')
     fig_dir_ = os.path.join(root, 'figures/clim_q_correlations')
 
-    # climate_flow_correlation(climate_dir=clim_dir, in_json=i_json,
-    #                          out_json=clim_resp, plot_r=None)
+    for m in range(7, 11):
+        mo_tupe = (m, m)
+        clim_resp = os.path.join(root, 'station_metadata/basin_climate_response_{}_7JUN2022.json'.format(m))
+        climate_flow_correlation(climate_dir=clim_dir, in_json=i_json,
+                                 out_json=clim_resp, plot_r=None, spec_time=mo_tupe)
 
-    f_json = os.path.join(root, 'station_metadata', 'impacts_summerflow_7_10.json')
-    get_sig_irr_impact(clim_resp, ee_data, f_json, climate_sig_only=True)
+        f_json = os.path.join(root, 'station_metadata', 'impacts_summerflow_{}.json'.format(m))
+        get_sig_irr_impact(clim_resp, ee_data, f_json, climate_sig_only=True)
+
 # ========================= EOF ====================================================================

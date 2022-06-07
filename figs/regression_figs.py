@@ -145,14 +145,16 @@ if __name__ == '__main__':
 
     for var in ['cci']:
         state = 'ccerr_{}_qreserr_{}'.format(str(cc_err_), str(qres_err_))
-        trace_dir = os.path.join(root, 'gages', 'bayes', 'traces', state)
+        # trace_dir = os.path.join(root, 'gages', 'bayes', 'traces', state)
+        trace_dir = os.path.join(root, 'gages', 'bayes', 'traces', 'summer_qnorm_qreserr_0.233')
         if not os.path.exists(trace_dir):
             os.makedirs(trace_dir)
 
-        _json = os.path.join(root, 'gages', 'station_metadata',
-                             '{}_impacted.json'.format(var))
+        # _json = os.path.join(root, 'gages', 'station_metadata', '{}_impacted.json'.format(var))
+        _json = os.path.join(root, 'gages', 'station_metadata', 'impacts_summerflow_7_10.json'.format(var))
 
-        o_fig = os.path.join(root, 'gages', 'figures', 'slope_trace_{}'.format(var), state)
+        # o_fig = os.path.join(root, 'gages', 'figures', 'slope_trace_{}'.format(var), state)
+        o_fig = os.path.join(root, 'gages', 'figures', 'summer_qres'.format(var), state)
 
         plot_saved_traces(_json, trace_dir, o_fig, qres_err=float(qres_err_) / 2,
                           cc_err=float(cc_err_) / 2, overwrite=True)

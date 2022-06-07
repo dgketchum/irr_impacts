@@ -67,6 +67,13 @@ def count_impacted_gages(clim_q, bayes, out):
                         sig_p_q_cc_gages.append(k)
 
                     try:
+                        bayes_est = vv['time_qres']
+                        if np.sign(bayes_est['hdi_2.5%']) == np.sign(bayes_est['hdi_97.5%']):
+                            sig_t_q_gages.append(k)
+                            sig_t_q_ct += 1
+                            sig_t_q_b_val = bayes_est['mean']
+                            sig_t_q_b.append(sig_t_q_b_val)
+                            bool_t_q = True
 
                         bayes_est = vv['cc_qres']
                         if np.sign(bayes_est['hdi_2.5%']) == np.sign(bayes_est['hdi_97.5%']):
@@ -101,14 +108,6 @@ def count_impacted_gages(clim_q, bayes, out):
                                 sig_t_cc_b_val = bayes_est['mean']
                                 sig_t_cc_b.append(sig_t_cc_b_val)
                                 bool_t_cc = True
-
-                            bayes_est = vv['time_qres']
-                            if np.sign(bayes_est['hdi_2.5%']) == np.sign(bayes_est['hdi_97.5%']):
-                                sig_t_q_gages.append(k)
-                                sig_t_q_ct += 1
-                                sig_t_q_b_val = bayes_est['mean']
-                                sig_t_q_b.append(sig_t_q_b_val)
-                                bool_t_q = True
 
                         if all([bool_q_cc, bool_t_cc, bool_t_q]):
                             if k not in coincident_impacts.keys():
@@ -262,12 +261,12 @@ def count_coincident_trends_impacts(metadata):
 
 if __name__ == '__main__':
     rt = '/media/research/IrrigationGIS/gages/station_metadata'
-    climr = os.path.join(rt, 'basin_climate_response_all.json')
-    bayes_ = os.path.join(rt, 'cci_impacted_bayes_ccerr_0.233_qreserr_0.17.json')
-    out_ = os.path.join(rt, 'cci_impacted_bayes_ccerr_0.233_qreserr_0.17_mixSign.json')
+    climr = os.path.join(rt, 'basin_climate_response_summerflow_7_10_20MAY2022.json')
+    bayes_ = os.path.join(rt, 'bayes_impacts_summerflow_7_10_summer_qnorm_qreserr_0.233.json')
+    out_ = os.path.join(rt, 'impacts_summerflow_7_10_out.json')
     count_impacted_gages(climr, bayes_, out_)
 
     # count_coincident_trends_impacts(out_)
 
-    mixed_impacts(out_)
+    # mixed_impacts(out_)
 # ========================= EOF ====================================================================
