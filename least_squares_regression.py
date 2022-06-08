@@ -35,8 +35,8 @@ def climate_flow_correlation(climate_dir, in_json, out_json, plot_r=None, spec_t
         years = [x for x in range(1991, 2021)]
 
         flow_periods = []
-        max_len = 5
-        rr = [x for x in range(7, 11)]
+        max_len = 12
+        rr = [x for x in range(1, 13)]
         for n in range(1, max_len + 1):
             for i in range(max_len):
                 per = rr[i: i + n]
@@ -354,13 +354,17 @@ if __name__ == '__main__':
     i_json = os.path.join(root, 'station_metadata/station_metadata.json')
     fig_dir_ = os.path.join(root, 'figures/clim_q_correlations')
 
-    for m in range(7, 11):
+    for m in range(1, 13):
         mo_tupe = (m, m)
         clim_resp = os.path.join(root, 'station_metadata/basin_climate_response_{}_7JUN2022.json'.format(m))
+        if os.path.exists(clim_resp):
+            continue
         climate_flow_correlation(climate_dir=clim_dir, in_json=i_json,
                                  out_json=clim_resp, plot_r=None, spec_time=mo_tupe)
 
         f_json = os.path.join(root, 'station_metadata', 'impacts_summerflow_{}.json'.format(m))
+        if os.path.exists(f_json):
+            continue
         get_sig_irr_impact(clim_resp, ee_data, f_json, climate_sig_only=True)
 
 # ========================= EOF ====================================================================

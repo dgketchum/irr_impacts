@@ -2,6 +2,7 @@ import os
 import json
 
 import numpy as np
+import matplotlib.pyplot as plt
 
 from gage_analysis import EXCLUDE_STATIONS
 
@@ -142,7 +143,9 @@ def count_impacted_gages(clim_q, bayes, out):
     cc_ct_mo = {i: np.count_nonzero(cc_months == i) for i in np.unique(cc_months)}
 
     # sum([1 if x > 0.0 else 0 for x in sig_t_cc_b]) / float(len(sig_t_cc_b))
-
+    plt.hist(sig_t_q_b)
+    plt.savefig(os.path.join('/home/dgketchum/Downloads', os.path.basename(clim_q).replace('.json', '.png')))
+    plt.close()
     print()
 
 
@@ -260,11 +263,14 @@ def count_coincident_trends_impacts(metadata):
 
 
 if __name__ == '__main__':
-    rt = '/media/research/IrrigationGIS/gages/station_metadata'
-    climr = os.path.join(rt, 'basin_climate_response_summerflow_7_10_20MAY2022.json')
-    bayes_ = os.path.join(rt, 'bayes_impacts_summerflow_7_10_summer_qnorm_qreserr_0.233.json')
-    out_ = os.path.join(rt, 'impacts_summerflow_7_10_out.json')
-    count_impacted_gages(climr, bayes_, out_)
+    rt = '/media/research/IrrigationGIS/gages/station_metadata/summerflow'
+    # climr = os.path.join(rt, 'basin_climate_response_summerflow_7_10_20MAY2022.json')
+    for m in range(7, 11):
+
+        climr = os.path.join(rt, 'basin_climate_response_{}_7JUN2022.json'.format(m))
+        bayes_ = os.path.join(rt, 'bayes_impacts_summerflow_{}_qnorm_{}_qreserr_0.17.json'.format(m, m))
+        out_ = os.path.join(rt, 'impacts_summerflow_{}_out.json'.format(m))
+        count_impacted_gages(climr, bayes_, out_)
 
     # count_coincident_trends_impacts(out_)
 

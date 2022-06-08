@@ -208,7 +208,7 @@ if __name__ == '__main__':
     qres_err_ = '0.17'
     # state = 'ccerr_{}_qreserr_{}'.format(str(cc_err_), str(qres_err_))
 
-    for m in range(7, 11):
+    for m in range(1, 13):
 
         state = 'qnorm_{}_qreserr_{}'.format(m, str(qres_err_))
         trace_dir = os.path.join(root, 'bayes', 'traces', state)
@@ -225,6 +225,6 @@ if __name__ == '__main__':
         if not os.path.exists(o_fig):
             os.makedirs(o_fig)
         o_json = os.path.join(root, 'station_metadata', 'bayes_impacts_summerflow_{}_{}.json'.format(m, state))
-        # bayes_sig_irr_impact(f_json, trace_dir, o_json, update=False)
+        # bayes_sig_irr_impact(f_json, trace_dir, o_json, update=True)
 
 # ========================= EOF ====================================================================
