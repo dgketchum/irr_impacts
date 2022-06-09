@@ -213,7 +213,7 @@ if __name__ == '__main__':
         state = 'qnorm_{}_qreserr_{}'.format(m, str(qres_err_))
         trace_dir = os.path.join(root, 'bayes', 'traces', state)
 
-        f_json = os.path.join(root, 'station_metadata', 'impacts_summerflow_{}.json'.format(m))
+        f_json = os.path.join(root, 'station_metadata', 'flowtrends', 'impacts_summerflow_{}.json'.format(m))
 
         if not os.path.exists(trace_dir):
             os.makedirs(trace_dir)
@@ -224,7 +224,8 @@ if __name__ == '__main__':
         o_fig = os.path.join(root, 'figures', 'slope_trace_{}'.format(var), state)
         if not os.path.exists(o_fig):
             os.makedirs(o_fig)
-        o_json = os.path.join(root, 'station_metadata', 'bayes_impacts_summerflow_{}_{}.json'.format(m, state))
+        o_json = os.path.join(root, 'station_metadata', 'flowtrends',
+                              'bayes_impacts_summerflow_{}_{}.json'.format(m, state))
         # bayes_sig_irr_impact(f_json, trace_dir, o_json, update=True)
 
 # ========================= EOF ====================================================================

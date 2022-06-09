@@ -166,13 +166,14 @@ def get_sig_irr_impact(metadata, ee_series, out_jsn=None, fig_dir=None, gage_exa
                     cc_periods.append(per)
 
             # iterate over crop consumption windows
-            for cc_period in cc_periods:
+            for cc_period in cc_periods[:1]:
                 cc_start, cc_end = cc_period[0], cc_period[-1]
 
-                if cc_end > q_end:
-                    continue
-                if cc_start > q_start:
-                    continue
+                # override this for qres-only analysis
+                # if cc_end > q_end:
+                #     continue
+                # if cc_start > q_start:
+                #     continue
 
                 month_end = monthrange(2000, cc_end)[1]
                 cc_dates = [(date(y, cc_start, 1), date(y, cc_end, month_end)) for y in years]
@@ -355,16 +356,18 @@ if __name__ == '__main__':
     fig_dir_ = os.path.join(root, 'figures/clim_q_correlations')
 
     for m in range(1, 13):
-        mo_tupe = (m, m)
-        clim_resp = os.path.join(root, 'station_metadata/basin_climate_response_{}_7JUN2022.json'.format(m))
-        if os.path.exists(clim_resp):
-            continue
-        climate_flow_correlation(climate_dir=clim_dir, in_json=i_json,
-                                 out_json=clim_resp, plot_r=None, spec_time=mo_tupe)
 
-        f_json = os.path.join(root, 'station_metadata', 'impacts_summerflow_{}.json'.format(m))
-        if os.path.exists(f_json):
-            continue
+        mo_tupe = (m, m)
+        clim_resp = os.path.join(root, 'station_metadata', 'flowtrends',
+                                 'basin_climate_response_{}_7JUN2022.json'.format(m))
+
+        if not os.path.exists(clim_resp):
+            climate_flow_correlation(climate_dir=clim_dir, in_json=i_json,
+                                     out_json=clim_resp, plot_r=None, spec_time=mo_tupe)
+
+        f_json = os.path.join(root, 'station_metadata', 'flowtrends', 'impacts_summerflow_{}.json'.format(m))
+        # if os.path.exists(f_json):
+        #     continue
         get_sig_irr_impact(clim_resp, ee_data, f_json, climate_sig_only=True)
 
 # ========================= EOF ====================================================================
