@@ -3,8 +3,88 @@ import json
 
 import numpy as np
 import matplotlib.pyplot as plt
+import fiona
+import geopandas as gpd
+from shapely.geometry import shape
 
 from gage_analysis import EXCLUDE_STATIONS
+
+
+def delta_cn_q_kde(bayes_, in_shp, out_shp):
+    with fiona.open(in_shp, 'r') as src:
+        meta = src.meta
+        feats = [f for f in src]
+
+    geo = {f['properties']['STAID']: shape(f['geometry']) for f in feats}
+    areas = {f['properties']['STAID']: f['properties']['AREA'] for f in feats}
+
+    trends_dct = {}
+
+    for m in range(1, 13):
+
+        trends = bayes_.format(m, m)
+
+        with open(trends, 'r') as qcc:
+            cc_dct = json.load(qcc)
+
+        sig_t_q_gages, sig_t_q_ct, sig_t_q_b, = [], 0, []
+
+        for k, v in cc_dct.items():
+
+            if k in EXCLUDE_STATIONS:
+                continue
+
+            if isinstance(v, dict):
+                for kk, vv in v.items():
+
+                    if isinstance(vv, dict):
+                        bayes_est = vv['time_qres']
+                        if np.sign(bayes_est['hdi_2.5%']) == np.sign(bayes_est['hdi_97.5%']):
+                            sig_t_q_gages.append(k)
+                            sig_t_q_ct += 1
+                            sig_t_q_b_val = bayes_est['mean']
+
+                            if k not in trends_dct.keys():
+                                trends_dct.update({k: {m: sig_t_q_b_val}})
+                            else:
+                                trends_dct[k].update({m: sig_t_q_b_val})
+
+                            sig_t_q_b.append((sig_t_q_b_val, v['AREA']))
+                        else:
+                            if k not in trends_dct.keys():
+                                trends_dct.update({k: {m: np.nan}})
+                            else:
+                                trends_dct[k].update({m: np.nan})
+    for k, v in trends_dct.items():
+        l = []
+        for m in range(1, 13):
+            if m not in v.keys():
+                trends_dct[k].update({m: np.nan})
+            l.append(trends_dct[k][m])
+        trends_dct[k]['cntrnd_mn'] = np.nanmean(l)
+
+    for k, v in trends_dct.items():
+        for kk, vv in v.items():
+            if kk == 'cntrnd_mn':
+                continue
+            if np.isnan(vv):
+                trends_dct[k][kk] = 0.0
+
+    gdf = gpd.GeoDataFrame(data=trends_dct).transpose()
+    gdf['AREA'] = [areas[_id] for _id in gdf.index]
+    gdf.geometry = [geo[_id] for _id in gdf.index]
+
+    feats = [f for f in feats if f['properties']['STAID'] in trends_dct]
+    [meta['schema']['properties'].update({'cntrnd_{}'.format(m): 'float:19.11'}) for m in range(1, 13)]
+    meta['schema']['properties'].update({'cntrnd_mn': 'float:19.11'})
+    with fiona.open(outshp, 'w', **meta) as dst:
+        for f in feats:
+            sid = f['properties']['STAID']
+            f['properties'].update({'cntrnd_{}'.format(k): v for k, v in trends_dct[sid].items() if isinstance(k, int)})
+            f['properties'].update({'cntrnd_mn': trends_dct[sid]['cntrnd_mn']})
+            dst.write(f)
+
+
 
 
 def count_impacted_gages(clim_q, bayes, out):
@@ -75,6 +155,7 @@ def count_impacted_gages(clim_q, bayes, out):
                             sig_t_q_b_val = bayes_est['mean']
                             sig_t_q_b.append(sig_t_q_b_val)
                             bool_t_q = True
+                            continue
 
                         bayes_est = vv['cc_qres']
                         if np.sign(bayes_est['hdi_2.5%']) == np.sign(bayes_est['hdi_97.5%']):
@@ -263,16 +344,14 @@ def count_coincident_trends_impacts(metadata):
 
 
 if __name__ == '__main__':
-    rt = '/media/research/IrrigationGIS/gages/station_metadata/summerflow'
-    # climr = os.path.join(rt, 'basin_climate_response_summerflow_7_10_20MAY2022.json')
-    for m in range(7, 11):
+    root = '/media/research/IrrigationGIS/gages'
+    if not os.path.exists(root):
+        root = '/home/dgketchum/data/IrrigationGIS/gages'
 
-        climr = os.path.join(rt, 'basin_climate_response_{}_7JUN2022.json'.format(m))
-        bayes_ = os.path.join(rt, 'bayes_impacts_summerflow_{}_qnorm_{}_qreserr_0.17.json'.format(m, m))
-        out_ = os.path.join(rt, 'impacts_summerflow_{}_out.json'.format(m))
-        count_impacted_gages(climr, bayes_, out_)
+    inshp = '/media/research/IrrigationGIS/gages/gage_loc_usgs/selected_gages.shp'
+    outshp = '/media/research/IrrigationGIS/gages/watersheds/monthly_cn_trends_wgs_points.shp'
+    bayes_res = os.path.join(root, 'station_metadata', 'flowtrends',
+                             'bayes_impacts_summerflow_{}_qnorm_{}_qreserr_0.17.json')
 
-    # count_coincident_trends_impacts(out_)
-
-    # mixed_impacts(out_)
+    delta_cn_q_kde(bayes_res, inshp, outshp)
 # ========================= EOF ====================================================================
