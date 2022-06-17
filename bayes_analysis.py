@@ -2,11 +2,10 @@ import os
 import sys
 import json
 import pickle
-from multiprocessing import Pool, cpu_count
+from multiprocessing import Pool
 
 import numpy as np
 import arviz as az
-import matplotlib.pyplot as plt
 from bayes_models import LinearRegressionwithErrors, LinearModel
 import bayes_models
 
@@ -50,8 +49,6 @@ def run_bayes_regression(traces_dir, stations, multiproc=False):
 
         covered.append(sid)
 
-        print(sid)
-
         if not multiproc:
             bayes_linear_regression(sid, rec, per, float(qres_err_),
                                     float(cc_err_), trace_dir, 4)
@@ -66,10 +63,9 @@ def run_bayes_regression(traces_dir, stations, multiproc=False):
 
 def bayes_linear_regression(station, records, period, qres_err, cc_err, trc_dir, cores):
     try:
-        print('\n{}, p = {:.3f}'.format(station, records['res_sig']))
-
         cc = np.array(records['cc_data']).reshape(1, len(records['cc_data']))
         qres = np.array(records['q_resid'])
+        ai = np.array(records['ai_data'])
 
         qres = (qres - qres.min()) / (qres.max() - qres.min()) + 0.001
         years = (np.linspace(0, 1, len(qres)) + 0.001).reshape(1, -1) + 0.001
@@ -88,9 +84,10 @@ def bayes_linear_regression(station, records, period, qres_err, cc_err, trc_dir,
 
         regression_combs = [(cc, qres, cc_err, qres_err),
                             (years, cc, None, cc_err),
-                            (years, qres, None, qres_err)]
+                            (years, qres, None, qres_err),
+                            (years, ai, None, qres_err)]
 
-        trc_subdirs = ['cc_qres', 'time_cc', 'time_qres']
+        trc_subdirs = ['cc_qres', 'time_cc', 'time_qres', 'time_ai']
 
         for subdir in trc_subdirs:
             model_dir = os.path.join(trc_dir, subdir)
@@ -105,10 +102,11 @@ def bayes_linear_regression(station, records, period, qres_err, cc_err, trc_dir,
                                                                                     period,
                                                                                     records['q_window']))
             if os.path.isfile(save_model):
-                print('{} exists'.format(subdir))
+                print('{} exists'.format(os.path.basename(save_model)))
                 continue
             else:
-                print('\nsampling {}'.format(subdir))
+                print('\n==================== sampling q {} at {}, p = {:.3f} ======================='.format(
+                    records['q_window'], station, records['res_sig']))
 
             if subdir == 'cc_qres':
                 model = LinearRegressionwithErrors()
@@ -144,7 +142,7 @@ def bayes_sig_irr_impact(metadata, trc_dir, out_json, update=False):
             records = data[period]
             print('\n', station, period)
 
-            trc_subdirs = ['cc_qres', 'time_cc', 'time_qres']
+            trc_subdirs = ['cc_qres', 'time_cc', 'time_qres', 'time_ai']
 
             for subdir in trc_subdirs:
 
@@ -210,7 +208,9 @@ if __name__ == '__main__':
 
     for m in range(1, 13):
 
-        state = 'qnorm_{}_qreserr_{}'.format(m, str(qres_err_))
+        # state = 'ai_1_12_qreserr_{}'.format(str(qres_err_))
+        state = 'ai_{}_qreserr_{}'.format(m, str(qres_err_))
+
         trace_dir = os.path.join(root, 'bayes', 'traces', state)
 
         f_json = os.path.join(root, 'station_metadata', 'flowtrends', 'impacts_summerflow_{}.json'.format(m))
@@ -218,14 +218,14 @@ if __name__ == '__main__':
         if not os.path.exists(trace_dir):
             os.makedirs(trace_dir)
 
-        run_bayes_regression(trace_dir, f_json, multiproc=True)
+        # run_bayes_regression(trace_dir, f_json, multiproc=True)
 
         var = 'cci'
         o_fig = os.path.join(root, 'figures', 'slope_trace_{}'.format(var), state)
         if not os.path.exists(o_fig):
             os.makedirs(o_fig)
         o_json = os.path.join(root, 'station_metadata', 'flowtrends',
-                              'bayes_impacts_summerflow_{}_{}.json'.format(m, state))
-        # bayes_sig_irr_impact(f_json, trace_dir, o_json, update=True)
+                              'bayes_trend_{}.json'.format(state))
+        bayes_sig_irr_impact(f_json, trace_dir, o_json, update=False)
 
 # ========================= EOF ====================================================================

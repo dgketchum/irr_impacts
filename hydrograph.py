@@ -32,5 +32,49 @@ def hydrograph(c):
 
 
 if __name__ == '__main__':
+    root = '/media/research/IrrigationGIS/gages/'
+    if not os.path.exists(root):
+        root = '/home/dgketchum/data/IrrigationGIS/gages/'
+
+    hydro = os.path.join(root, 'hydrographs', 'daily_q')
+    stations_ = ['13317000', '13307000', '13310199']
+    first = True
+    for s in stations_:
+        if first:
+            df = hydrograph('{}.csv'.format(os.path.join(hydro, s)))
+            df.rename(columns={'q': s}, inplace=True)
+            first = False
+        else:
+            c = hydrograph('{}.csv'.format(os.path.join(hydro, s)))
+            c.rename(columns={'q': s}, inplace=True)
+            df = concat([df, c], axis=1)
+    s = df[['13307000', '13310199']].sum(axis=1)
+    frac = df[['13307000', '13310199']].sum(axis=1) / df['13317000']
+    max_tuple, fractions = [], []
+    for y in range(2003, 2021):
+        d = s.loc['{}-01-01'.format(y): '{}-12-31'.format(y)]
+        max_tuple.append((d.iloc[d.argmax()], int(datetime.strftime(d.index[d.argmax()], '%j'))))
+        d = frac.loc['{}-01-01'.format(y): '{}-12-31'.format(y)]
+        fractions.append(np.mean(d))
+
+    a = date(2021, 1, 1)
+    b = date(2021, 12, 31)
+    years = [x for x in range(2003, 2021)]
+
+    dct = {'median': []}
+    dtime = []
+    fracs = []
+    for dt in rrule(DAILY, dtstart=a, until=b):
+        dates = [date(year, dt.month, dt.day).strftime('%Y-%m-%d') for year in years]
+        vals = s.loc[dates].values
+        frac_ = frac.loc[dates].values
+
+        fracs.append(np.median(frac_))
+        median_ = np.median(vals)
+
+        dct['median'].append(median_)
+        dtime.append('{}-{}'.format(dt.month, dt.day))
+
+        med = DataFrame(data=dct, index=dtime)
     pass
 # ========================= EOF ====================================================================

@@ -24,6 +24,10 @@ def climate_flow_correlation(climate_dir, in_json, out_json, plot_r=None, spec_t
     windows = {}
     with open(in_json, 'r') as f:
         metadata = json.load(f)
+
+    if abs(spec_time[1] - spec_time[0]) > 0:
+        spec_time = tuple([x for x in range(spec_time[0], spec_time[1] + 1)])
+
     for csv in l:
         sid = os.path.basename(csv).strip('.csv')
         s_meta = metadata[sid]
@@ -49,6 +53,7 @@ def climate_flow_correlation(climate_dir, in_json, out_json, plot_r=None, spec_t
         response_d = {}
         ind = None
         r_dct = {}
+
         for q_win in flow_periods:
 
             if spec_time:
@@ -114,6 +119,7 @@ def climate_flow_correlation(climate_dir, in_json, out_json, plot_r=None, spec_t
 def get_sig_irr_impact(metadata, ee_series, out_jsn=None, fig_dir=None, gage_example=None, climate_sig_only=False):
     ct, irr_ct, irr_sig_ct, ct_tot = 0, 0, 0, 0
     slp_pos, slp_neg = 0, 0
+    q_window = None
     sig_stations = {}
     impacted_gages = []
     with open(metadata, 'r') as f:
@@ -143,7 +149,10 @@ def get_sig_irr_impact(metadata, ee_series, out_jsn=None, fig_dir=None, gage_exa
             r, p, lag, q_window = (v[s] for s in ['r', 'pval', 'lag', 'q_window'])
             q_start, q_end = q_window[0], q_window[-1]
 
-            if p > 0.05 or v['irr_pct'] < 0.001:
+            if v['irr_pct'] < 0.001:
+                continue
+
+            if p > 0.05 and not climate_sig_only:
                 continue
 
             cdf['cci'] = cdf['cc'] / cdf['irr']
@@ -195,8 +204,8 @@ def get_sig_irr_impact(metadata, ee_series, out_jsn=None, fig_dir=None, gage_exa
                 irr_ct += 1
                 # obj.item() to python objects
                 clim_p = (fit_clim.pvalues[1]).item()
-                if clim_p > p and clim_p > 0.05:
-                    print('\n', sid, v['STANAME'], '{:.3f} p {:.3f} clim p'.format(p, clim_p), '\n')
+                # if clim_p > p and clim_p > 0.05:
+                #     print('\n', sid, v['STANAME'], '{:.3f} p {:.3f} clim p'.format(p, clim_p), '\n')
                 ct += 1
                 resid = fit_clim.resid
                 _cc_c = sm.add_constant(cci)
@@ -230,7 +239,7 @@ def get_sig_irr_impact(metadata, ee_series, out_jsn=None, fig_dir=None, gage_exa
                                                                                        v['irr_pct'],
                                                                                        slope_resid)
 
-                    print(desc_str)
+                    # print(desc_str)
                     irr_sig_ct += 1
                     if fig_dir:
                         plot_clim_q_resid(q=q, ai=ai, clim_line=clim_line, desc_str=desc_str, years=years, cc=cci,
@@ -273,12 +282,13 @@ def get_sig_irr_impact(metadata, ee_series, out_jsn=None, fig_dir=None, gage_exa
     if out_jsn:
         with open(out_jsn, 'w') as f:
             json.dump(sig_stations, f, indent=4, sort_keys=False)
-    pprint(list(sig_stations.keys()))
+    # pprint(list(sig_stations.keys()))
+    print('q window {}'.format(q_window))
     print('{} climate-sig, {} irrigated, {} irr imapacted periods, {} total'.format(ct, irr_ct, irr_sig_ct,
                                                                                     ct_tot))
-    print('{} positive slope, {} negative'.format(slp_pos, slp_neg))
-    print('total impacted gages: {}'.format(len(impacted_gages)))
-    pprint(impacted_gages)
+    # print('{} positive slope, {} negative'.format(slp_pos, slp_neg))
+    # print('total impacted gages: {}'.format(len(impacted_gages)))
+    # pprint(impacted_gages)
 
 
 def basin_trends(key, metadata, ee_series, start_mo, end_mo, out_jsn=None, fig_dir=None, significant=True):
@@ -355,19 +365,19 @@ if __name__ == '__main__':
     i_json = os.path.join(root, 'station_metadata/station_metadata.json')
     fig_dir_ = os.path.join(root, 'figures/clim_q_correlations')
 
-    for m in range(1, 13):
+    # for m in range(1, 13):
 
-        mo_tupe = (m, m)
-        clim_resp = os.path.join(root, 'station_metadata', 'flowtrends',
-                                 'basin_climate_response_{}_7JUN2022.json'.format(m))
+    mo_tupe = (1, 12)
+    clim_resp = os.path.join(root, 'station_metadata', 'flowtrends',
+                             'basin_climate_response_1_12_7JUN2022.json')
 
-        if not os.path.exists(clim_resp):
-            climate_flow_correlation(climate_dir=clim_dir, in_json=i_json,
-                                     out_json=clim_resp, plot_r=None, spec_time=mo_tupe)
+    if not os.path.exists(clim_resp):
+        climate_flow_correlation(climate_dir=clim_dir, in_json=i_json,
+                                 out_json=clim_resp, plot_r=None, spec_time=mo_tupe)
 
-        f_json = os.path.join(root, 'station_metadata', 'flowtrends', 'impacts_summerflow_{}.json'.format(m))
-        # if os.path.exists(f_json):
-        #     continue
-        get_sig_irr_impact(clim_resp, ee_data, f_json, climate_sig_only=True)
+    f_json = os.path.join(root, 'station_metadata', 'flowtrends', 'impacts_annual_1_12_.json')
+    # if os.path.exists(f_json):
+    #     continue
+    get_sig_irr_impact(clim_resp, ee_data, f_json, climate_sig_only=True)
 
 # ========================= EOF ====================================================================

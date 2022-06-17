@@ -2,15 +2,20 @@ import os
 import sys
 import json
 import pickle
+from itertools import product
 
 import numpy as np
 from scipy.stats.stats import linregress
 
-from matplotlib import cm
+import fiona
+import geopandas as gpd
+from shapely.geometry import shape
+from scipy.interpolate import make_interp_spline
+
+from matplotlib import cm, colors
 from matplotlib import pyplot as plt
 import seaborn as sns
 import arviz as az
-import arviz.plots.backends.matplotlib.posteriorplot as posterior
 
 from gage_analysis import EXCLUDE_STATIONS
 from figs.regression_figs import plot_regression_from_trace
@@ -26,6 +31,26 @@ SELECTED_SYSTEMS = ['06109500', '06329500', '09180500', '09315000',
                     '09379500', '09466500', '12389000', '12510500',
                     '13269000', '13317000', '14048000',
                     '14103000', '14211720']
+
+large = 22
+med = 16
+small = 12
+params = {'axes.titlesize': large,
+          'legend.fontsize': med,
+          'figure.figsize': (16, 10),
+          'axes.labelsize': med,
+          'xtick.labelsize': med,
+          'ytick.labelsize': med,
+          'figure.titlesize': large,
+          'xtick.color': 'black',
+          'ytick.color': 'black',
+          'xtick.direction': 'out',
+          'ytick.direction': 'out',
+          'xtick.bottom': True,
+          'xtick.top': False,
+          'ytick.left': True,
+          'ytick.right': False,
+          }
 
 
 def response_time_to_area(climate_resp, fig_dir):
@@ -419,35 +444,252 @@ def trends_panel(irr_impact, clim_flow_d, png, x_err, y_err, filter_json=None):
                     print(e)
 
 
+def delta_cn_q_map_annual(bayes_, in_shp, out_shp, polys, variable):
+    study_area = gpd.read_file(polys)
+
+    with fiona.open(in_shp, 'r') as src:
+        meta = src.meta
+        feats = [f for f in src]
+
+    geo = {f['properties']['STAID']: shape(f['geometry']) for f in feats}
+    areas = {f['properties']['STAID']: f['properties']['AREA'] for f in feats}
+
+    trends_dct = {}
+
+    with open(bayes_, 'r') as qcc:
+        cc_dct = json.load(qcc)
+
+    for k, v in cc_dct.items():
+
+        if k in EXCLUDE_STATIONS:
+            continue
+
+        if isinstance(v, dict):
+            for kk, vv in v.items():
+
+                if isinstance(vv, dict):
+                    try:
+                        bayes_est = vv[variable]
+                        if np.sign(bayes_est['hdi_2.5%']) == np.sign(bayes_est['hdi_97.5%']):
+                            sig_t_q_b_val = bayes_est['mean']
+                            trends_dct.update({k: sig_t_q_b_val})
+                        else:
+                            trends_dct.update({k: np.nan})
+
+                    except KeyError:
+                        trends_dct.update({k: np.nan})
+
+    marker_min = 1
+    marker_max = 40
+
+    data, columns = [x[1] for x in trends_dct.items()], [x[0] for x in trends_dct.items()]
+    gdf = gpd.GeoDataFrame(data=data, index=columns, columns=['vals'])
+    gdf['AREA'] = [areas[_id] for _id in gdf.index]
+    gdf.geometry = [geo[_id] for _id in gdf.index]
+    gdf.dropna(subset=['vals'], inplace=True)
+    cmap = 'coolwarm_r'
+    fig, ax = plt.subplots()
+
+    areas = np.log(gdf['AREA'])
+    areas = (areas - areas.min()) / (areas.max() - areas.min()) * marker_max + marker_min
+    study_area.plot(ax=ax, **{'edgecolor': 'k', 'facecolor': (0, 0, 0, 0)})
+    gdf.plot('vals', cmap=cmap, norm=colors.CenteredNorm(), s=areas.values, ax=ax)
+
+    plt.savefig('/home/dgketchum/Downloads/{}.png'.format(os.path.basename(out_shp).replace('.shp', '.png')))
+    plt.close()
+    pass
+
+
+def delta_cn_q_map_monthly(bayes_, in_shp, out_shp, polys, var='qnorm'):
+    study_area = gpd.read_file(polys)
+
+    with fiona.open(in_shp, 'r') as src:
+        meta = src.meta
+        feats = [f for f in src]
+
+    geo = {f['properties']['STAID']: shape(f['geometry']) for f in feats}
+    areas = {f['properties']['STAID']: f['properties']['AREA'] for f in feats}
+
+    trends_dct = {}
+
+    if var == 'time_qres':
+        file_form = 'bayes_impacts_summerflow_{}_qnorm_qreserr_0.17.json'
+    elif var == 'time_ai':
+        file_form = 'bayes_trend_ai_{}_qreserr_0.17.json'
+
+    for m in range(1, 13):
+
+        trends = os.path.join(bayes_, file_form.format(m))
+
+        with open(trends, 'r') as qcc:
+            cc_dct = json.load(qcc)
+
+        sig_t_q_gages, sig_t_q_ct, sig_t_q_b, = [], 0, []
+
+        for k, v in cc_dct.items():
+
+            if k in EXCLUDE_STATIONS:
+                continue
+
+            if isinstance(v, dict):
+                for kk, vv in v.items():
+
+                    if isinstance(vv, dict):
+                        try:
+                            bayes_est = vv[var]
+                        except KeyError as e:
+                            # print(e, k, m)
+                            pass
+                        if np.sign(bayes_est['hdi_2.5%']) == np.sign(bayes_est['hdi_97.5%']):
+                            sig_t_q_gages.append(k)
+                            sig_t_q_ct += 1
+                            sig_t_q_b_val = bayes_est['mean']
+
+                            if k not in trends_dct.keys():
+                                trends_dct.update({k: {m: sig_t_q_b_val}})
+                            else:
+                                trends_dct[k].update({m: sig_t_q_b_val})
+
+                            sig_t_q_b.append((sig_t_q_b_val, v['AREA']))
+                        else:
+                            if k not in trends_dct.keys():
+                                trends_dct.update({k: {m: np.nan}})
+                            else:
+                                trends_dct[k].update({m: np.nan})
+
+    for k, v in trends_dct.items():
+        l = []
+        for m in range(1, 13):
+            if m not in v.keys():
+                trends_dct[k].update({m: np.nan})
+            l.append(trends_dct[k][m])
+        trends_dct[k]['cntrnd_mn'] = np.nanmean(l)
+
+    for k, v in trends_dct.items():
+        for kk, vv in v.items():
+            if kk == 'cntrnd_mn':
+                continue
+            if np.isnan(vv):
+                trends_dct[k][kk] = 0.0
+
+    marker_min = 1
+    marker_max = 40
+
+    gdf = gpd.GeoDataFrame(data=trends_dct).transpose()
+    gdf['AREA'] = [areas[_id] for _id in gdf.index]
+    gdf.geometry = [geo[_id] for _id in gdf.index]
+    cmap = 'coolwarm_r'
+    rows, cols = 4, 3
+    fig, ax = plt.subplots(rows, cols, figsize=(20, 20))
+    idxs = [i for i in product([i for i in range(rows)], [i for i in range(cols)])]
+
+    for idx, m in zip(idxs, range(1, 13)):
+        areas = np.log(gdf['AREA'])
+        areas = (areas - areas.min()) / (areas.max() - areas.min()) * marker_max + marker_min
+        study_area.plot(ax=ax[idx], **{'edgecolor': 'k', 'facecolor': (0, 0, 0, 0)})
+        gdf.plot(m, cmap=cmap, norm=colors.CenteredNorm(), s=areas.values, ax=ax[idx])
+
+    plt.savefig('/home/dgketchum/Downloads/{}_trend_1_12.png'.format(var))
+    plt.close()
+    pass
+
+
+def delta_cn_q_kde(bayes_, climate_, out_png):
+    plt.rcParams.update(params)
+    plt.style.use('seaborn-whitegrid')
+    sns.set_theme(style="white")
+
+    for i, (bayes, climate) in enumerate(zip(bayes_, climate_)):
+
+        with open(climate, 'r') as clm:
+            clim_dct = json.load(clm)
+
+        with open(bayes, 'r') as qcc:
+            cc_dct = json.load(qcc)
+
+        cc_gages = list(cc_dct)
+
+        sig_clim_q_gages, sig_clim_q_ct, lag = [], 0, []
+        area = []
+        for k, v in clim_dct.items():
+            if k not in cc_gages:
+                continue
+            if isinstance(v, dict):
+                for kk, vv in v.items():
+                    if isinstance(vv, dict):
+                        if vv['pval'] < 0.05:
+                            sig_clim_q_ct += 1
+                            sig_clim_q_gages.append(k)
+                            lag.append(vv['lag'])
+                            area.append(v['SQMI'])
+        q_clim_set = set(sig_clim_q_gages)
+        print('{} gages'.format(len(q_clim_set)))
+        sig_t_q_gages, sig_t_q_ct, sig_t_q_b, = [], 0, []
+
+        for k, v in cc_dct.items():
+
+            if k in EXCLUDE_STATIONS:
+                continue
+
+            if isinstance(v, dict):
+                for kk, vv in v.items():
+
+                    if isinstance(vv, dict):
+                        bayes_est = vv['time_qres']
+                        if np.sign(bayes_est['hdi_2.5%']) == np.sign(bayes_est['hdi_97.5%']):
+                            sig_t_q_gages.append(k)
+                            sig_t_q_ct += 1
+                            sig_t_q_b_val = bayes_est['mean']
+                            sig_t_q_b.append((sig_t_q_b_val, v['AREA']))
+
+        bins = np.linspace(-1, 1, 21)
+        sums_ = np.array([0 for _ in bins])
+        for v, a in sig_t_q_b:
+            idx = np.argmin(abs(v - bins))
+            sums_[idx] += a
+        dens = (sums_ - min(sums_)) / (max(sums_) - min(sums_))
+        spline = make_interp_spline(bins, dens)
+        x = np.linspace(bins.min(), bins.max(), 500)
+        y = spline(x)
+        plt.plot(y + i, x)
+
+    plt.hlines(0, 0, 12, linestyles='dashed')
+    plt.savefig(out_png)
+    plt.close()
+    print()
+
+
 if __name__ == '__main__':
     root = '/media/research/IrrigationGIS/gages'
     if not os.path.exists(root):
         root = '/home/dgketchum/data/IrrigationGIS/gages'
 
     figs = os.path.join(root, 'figures')
+    climr = [os.path.join(root, 'station_metadata', 'flowtrends',
+                          'basin_climate_response_{}_7JUN2022.json'.format(m)) for m in range(1, 13)]
+    bayes_ = [os.path.join(root, 'station_metadata', 'flowtrends',
+                           'bayes_impacts_summerflow_{}_qnorm_{}_qreserr_0.17.json'.format(m, m)) for m in range(1, 13)]
 
-    # cc_frac_json = os.path.join(root, 'station_metadata/basin_cc_ratios.json')
-    # basin_json = os.path.join(root, 'station_metadata/basin_sort.json')
-    # heat_figs = os.path.join(figs, 'heat_bars_largeSystems_singlemonth')
-    # for sk in ['IAREA', 'ai', 'AREA']:  # 'cc_ppt', 'cc_q', 'cci', 'q_ppt']
-    #     impact_time_series_bars(cc_frac_json, basin_json,
-    #                             heat_figs, min_area=2000., sort_key=sk, x_key='cci')
+    out_ = os.path.join('/home/dgketchum/Downloads', 'basin_delQ_7JUN2022.png')
+    # delta_cn_q_kde(bayes_, climr, out_)
 
-    # i_json = '/media/research/IrrigationGIS/gages/station_metadata/irr_impacted_all.json'
-    # c_json = '/media/research/IrrigationGIS/gages/station_metadata/basin_climate_response_irr.json'
-    # scatter_figs = os.path.join(figs, 'scatter_area_v_climate_response')
-    # response_time_to_area(c_json, fig_dir=figs)
+    study_area_ = '/media/research/IrrigationGIS/gages/figures/fig_shapes/study_basins.shp'
 
-    cc_err_ = '0.233'
-    qres_err_ = '0.17'
+    inshp = '/media/research/IrrigationGIS/gages/gage_loc_usgs/selected_gages.shp'
+    aa = '/media/research/IrrigationGIS/gages/watersheds/bayes_trend_ai_1_12.shp'
+    a = os.path.join(root, 'station_metadata', 'flowtrends')
+    # vars = ['time_ai', 'time_qres']
 
-    state = 'ccerr_{}_qreserr_{}'.format(str(cc_err_), str(qres_err_))
-    filter = os.path.join(root, 'station_metadata', 'cci_impacted_bayes_{}_forShape.json'.format(state))
-    irr_resp = os.path.join(root, 'station_metadata', 'cci_impacted_bayes.json')
-    clim_resp = os.path.join(root, 'station_metadata', 'basin_climate_response_27APR2022.json')
-    fig_dir = os.path.join(figs, 'cci_bayes')
+    delta_cn_q_map_monthly(a, inshp, aa, polys=study_area_, var='time_qres')
 
-    trends_panel(irr_impact=irr_resp, clim_flow_d=clim_resp, png=fig_dir,
-                 x_err=float(qres_err_), y_err=float(cc_err_), filter_json=filter)
+    # climr = os.path.join(root, 'station_metadata', 'flowtrends', 'basin_climate_response_1_12_7JUN2022.json')
+    # a = os.path.join(root, 'station_metadata', 'flowtrends', 'bayes_trend_ai_1_12_qreserr_0.17.json')
+    # b = os.path.join(root, 'station_metadata', 'flowtrends', 'bayes_trend_qnorm_1_12_qreserr_0.17.json')
+    #
+    # bb = '/media/research/IrrigationGIS/gages/watersheds/bayes_trend_qnorm_1_12.shp'
+    #
+    #
+    # for trend, outshp, var in zip([a, b], [aa, bb], vars):
+    #     delta_cn_q_map_annual(trend, inshp, outshp, polys=study_area_, variable=var)
 
 # ========================= EOF ====================================================================
