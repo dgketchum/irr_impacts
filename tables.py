@@ -6,7 +6,8 @@ from pandas import read_csv, concat, errors, DataFrame, DatetimeIndex, date_rang
 from hydrograph import hydrograph
 
 
-def merge_ssebop_tc_q(extracts, out_dir, flow_dir, glob='glob', division='basins', join_key='STAID'):
+def merge_ssebop_tc_gridmet_q(extracts, out_dir, flow_dir, gridmet=None, glob='glob', division='basins',
+                              join_key='STAID'):
     missing, missing_ct, processed_ct = [], 0, 0
 
     l = [os.path.join(extracts, x) for x in os.listdir(extracts) if glob in x]
@@ -16,6 +17,7 @@ def merge_ssebop_tc_q(extracts, out_dir, flow_dir, glob='glob', division='basins
     for csv in l:
         splt = os.path.basename(csv).split('_')
         y, m = int(splt[-2]), int(splt[-1].split('.')[0])
+
         try:
             if first:
                 df = read_csv(csv, index_col=join_key)
@@ -31,6 +33,13 @@ def merge_ssebop_tc_q(extracts, out_dir, flow_dir, glob='glob', division='basins
                 cols = list(c.columns)
                 c.columns = ['{}_{}_{}'.format(col, y, m) for col in cols]
                 df = concat([df, c], axis=1)
+            if gridmet:
+                gm_file = os.path.join(gridmet, 'gridmet_{}_{}.csv'.format(y, str(m).rjust(2, '0')))
+                gm_csv = read_csv(gm_file, index_col=join_key)
+                cols = list(gm_csv.columns)
+                gm_csv.columns = ['gm_{}_{}_{}'.format(col, y, m) for col in cols]
+                df = concat([df, gm_csv], axis=1)
+
         except errors.EmptyDataError:
             print('{} is empty'.format(csv))
             pass
@@ -112,15 +121,11 @@ if __name__ == '__main__':
     root = '/media/research/IrrigationGIS'
     if not os.path.exists(root):
         root = '/home/dgketchum/data/IrrigationGIS'
-    # gage_src = os.path.join(root, 'gages/hydrographs/q_monthly')
-    # extract_ = os.path.join(root, 'gages/ee_exports/monthly/IrrMapperComp_21DEC2021')
-    # out_dir = os.path.join(root, 'gages/merged_q_ee/monthly_ssebop_tc_q_Comp_21DEC2021')
-    # g = 'Comp_21DEC2021'
-    # merge_ssebop_tc_q(extracts=extract_, flow_dir=gage_src,
-    #                   out_dir=out_dir, glob=g, division='basins')
-
-    extract_ = os.path.join(root, 'time_series/counties_IrrMapperComp_21DEC2021/ee_export')
-    out = os.path.join(root, 'time_series/counties_IrrMapperComp_21DEC2021/county_monthly')
-    g = 'County_Comp_21DEC2021'
-    merge_ssebop_tc_q(extract_, out_dir=out, flow_dir=None, glob=g, division='county', join_key='GEOID')
+    gage_src = os.path.join(root, 'gages/hydrographs/q_monthly')
+    gridmet_ = os.path.join(root, 'gages/ee_exports/gridmet/monthly')
+    extract_ = os.path.join(root, 'gages/ee_exports/monthly/IrrMapperComp_21DEC2021')
+    out_dir = os.path.join(root, 'gages/merged_q_ee/monthly_ssebop_tc_gm_q_Comp_21DEC2021')
+    g = 'Comp_21DEC2021'
+    merge_ssebop_tc_gridmet_q(extracts=extract_, out_dir=out_dir, flow_dir=gage_src, gridmet=gridmet_, glob=g,
+                              division='basins')
 # ========================= EOF ====================================================================
