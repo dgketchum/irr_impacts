@@ -42,6 +42,9 @@ def plot_saved_traces(impacts_json, trc_dir, fig_dir, cc_err, qres_err, overwrit
             qres = np.array(records['q_resid'])
             years_ = [x for x in range(1991, 2021)]
 
+            if cc.shape[1] < len(years_):
+                years_ = years_[1:]
+
             cc = (cc - cc.min()) / (cc.max() - cc.min()) + 0.001
             qres = (qres - qres.min()) / (qres.max() - qres.min()) + 0.001
 
@@ -136,25 +139,29 @@ def plot_trace(x, y, x_err, y_err, model, ols, fig_dir, desc_str, fig_file=None)
 
 
 if __name__ == '__main__':
-    root = '/media/research/IrrigationGIS'
+    root = '/media/research/IrrigationGIS/gages/gridmet_analysis'
     if not os.path.exists(root):
-        root = '/home/dgketchum/data/IrrigationGIS'
+        root = '/home/dgketchum/data/IrrigationGIS/gages/gridmet_analysis'
 
     cc_err_ = '0.233'
     qres_err_ = '0.17'
 
-    for var in ['cci']:
-        state = 'ccerr_{}_qreserr_{}'.format(str(cc_err_), str(qres_err_))
-        # trace_dir = os.path.join(root, 'gages', 'bayes', 'traces', state)
-        trace_dir = os.path.join(root, 'gages', 'bayes', 'traces', 'summer_qnorm_qreserr_0.233')
+    for m in range(1, 13):
+
+        state = 'm_{}_cc_{}_qreserr_{}'.format(m, str(cc_err_), str(qres_err_))
+
+        trace_dir = os.path.join(root, 'traces', state)
+
         if not os.path.exists(trace_dir):
             os.makedirs(trace_dir)
 
-        # _json = os.path.join(root, 'gages', 'station_metadata', '{}_impacted.json'.format(var))
-        _json = os.path.join(root, 'gages', 'station_metadata', 'impacts_summerflow_7_10.json'.format(var))
+        _json = os.path.join(root, 'analysis', 'impacts_{}_cc_test.json'.format(m))
 
-        # o_fig = os.path.join(root, 'gages', 'figures', 'slope_trace_{}'.format(var), state)
-        o_fig = os.path.join(root, 'gages', 'figures', 'summer_qres'.format(var), state)
+        var = 'cc'
+
+        o_fig = os.path.join(root, 'figures', 'slope_trace_{}'.format(var), state)
+        if not os.path.exists(o_fig):
+            os.makedirs(o_fig)
 
         plot_saved_traces(_json, trace_dir, o_fig, qres_err=float(qres_err_) / 2,
                           cc_err=float(cc_err_) / 2, overwrite=True)

@@ -8,6 +8,7 @@ import numpy as np
 from scipy.stats.stats import linregress
 
 import fiona
+from pandas import DataFrame, concat
 import geopandas as gpd
 from shapely.geometry import shape
 from scipy.interpolate import make_interp_spline
@@ -659,37 +660,82 @@ def delta_cn_q_kde(bayes_, climate_, out_png):
     print()
 
 
+def trends_lr(regressions_dir, in_shape, study_area, out_fig):
+    study_area = gpd.read_file(study_area)
+
+    with fiona.open(in_shape, 'r') as src:
+        meta = src.meta
+        feats = [f for f in src]
+
+    geo = {f['properties']['STAID']: shape(f['geometry']) for f in feats}
+    areas = {f['properties']['STAID']: f['properties']['AREA'] for f in feats}
+
+    trends_dct = {}
+
+    l = [os.path.join(regressions_dir, x) for x in os.listdir(regressions_dir) if 'linear_regressions' in x]
+
+    for f in l:
+        m = int(os.path.basename(f).split('.')[0].split('_')[-1])
+        with open(f, 'r') as _file:
+            dct = json.load(_file)
+
+        trends_dct.update({m: dct})
+
+    marker_min = 1
+    marker_max = 40
+
+    trc_subdirs = ['time_cc', 'time_qres', 'time_ai', 'time_q']
+
+    for var in trc_subdirs:
+        first = True
+        for m in range(1, 13):
+            d = trends_dct[m]
+            data = {k: v[var]['b'] if v[var]['p'] < 0.05 else 0.0 for k, v in d.items()}
+            index, data = [i[0] for i in data.items()], [i[1] for i in data.items()]
+            if first:
+                df = DataFrame(data=data, index=index, columns=[m])
+                first = False
+            else:
+                c = DataFrame(data=data, index=index, columns=[m])
+                df = concat([df, c], axis=1)
+
+        gdf = gpd.GeoDataFrame(df)
+        gdf['AREA'] = [areas[_id] for _id in gdf.index]
+        gdf.geometry = [geo[_id] for _id in gdf.index]
+
+        if var in ['time_q', 'time_qres']:
+            cmap = 'coolwarm_r'
+        else:
+            cmap = 'coolwarm'
+
+        rows, cols = 4, 3
+        fig, ax = plt.subplots(rows, cols, figsize=(20, 20))
+        idxs = [i for i in product([i for i in range(rows)], [i for i in range(cols)])]
+
+        for idx, m in zip(idxs, range(1, 13)):
+            areas = np.log(gdf['AREA'])
+            areas = (areas - areas.min()) / (areas.max() - areas.min()) * marker_max + marker_min
+            study_area.plot(ax=ax[idx], **{'edgecolor': 'k', 'facecolor': (0, 0, 0, 0)})
+            gdf.plot(m, cmap=cmap, norm=colors.CenteredNorm(), s=areas.values, ax=ax[idx])
+
+        fig_file = os.path.join(out_fig, '{}.png'.format(var))
+        plt.savefig(fig_file)
+        plt.close()
+
+    pass
+
+
 if __name__ == '__main__':
     root = '/media/research/IrrigationGIS/gages'
     if not os.path.exists(root):
         root = '/home/dgketchum/data/IrrigationGIS/gages'
 
-    figs = os.path.join(root, 'figures')
-    climr = [os.path.join(root, 'station_metadata', 'flowtrends',
-                          'basin_climate_response_{}_7JUN2022.json'.format(m)) for m in range(1, 13)]
-    bayes_ = [os.path.join(root, 'station_metadata', 'flowtrends',
-                           'bayes_impacts_summerflow_{}_qnorm_{}_qreserr_0.17.json'.format(m, m)) for m in range(1, 13)]
+    figs = os.path.join(root, 'gridmet_analysis', 'figures')
 
-    out_ = os.path.join('/home/dgketchum/Downloads', 'basin_delQ_7JUN2022.png')
-    # delta_cn_q_kde(bayes_, climr, out_)
+    study_area_ = os.path.join(root, 'figures', 'fig_shapes', 'study_basins.shp')
+    inshp = os.path.join(root, 'gage_loc_usgs', 'selected_gages.shp')
+    lr_ = os.path.join(root, 'gridmet_analysis', 'analysis')
 
-    study_area_ = '/media/research/IrrigationGIS/gages/figures/fig_shapes/study_basins.shp'
-
-    inshp = '/media/research/IrrigationGIS/gages/gage_loc_usgs/selected_gages.shp'
-    aa = '/media/research/IrrigationGIS/gages/watersheds/bayes_trend_ai_1_12.shp'
-    a = os.path.join(root, 'station_metadata', 'flowtrends')
-    # vars = ['time_ai', 'time_qres']
-
-    delta_cn_q_map_monthly(a, inshp, aa, polys=study_area_, var='time_qres')
-
-    # climr = os.path.join(root, 'station_metadata', 'flowtrends', 'basin_climate_response_1_12_7JUN2022.json')
-    # a = os.path.join(root, 'station_metadata', 'flowtrends', 'bayes_trend_ai_1_12_qreserr_0.17.json')
-    # b = os.path.join(root, 'station_metadata', 'flowtrends', 'bayes_trend_qnorm_1_12_qreserr_0.17.json')
-    #
-    # bb = '/media/research/IrrigationGIS/gages/watersheds/bayes_trend_qnorm_1_12.shp'
-    #
-    #
-    # for trend, outshp, var in zip([a, b], [aa, bb], vars):
-    #     delta_cn_q_map_annual(trend, inshp, outshp, polys=study_area_, variable=var)
+    trends_lr(lr_, inshp, study_area_, figs)
 
 # ========================= EOF ====================================================================

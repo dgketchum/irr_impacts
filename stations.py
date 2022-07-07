@@ -154,5 +154,8 @@ def get_station_daterange_data(year_start, daily_q_dir, aggregate_q_dir, start_m
 
 
 if __name__ == '__main__':
-    pass
+    root = '/media/research/IrrigationGIS/gages'
+    src = os.path.join(root, 'hydrographs/daily_q')
+    dst = os.path.join(root, 'hydrographs/q_monthly')
+    get_station_daterange_data(1986, src, dst, resample_freq='M')
 # ========================= EOF ====================================================================

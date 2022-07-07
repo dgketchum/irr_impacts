@@ -38,6 +38,7 @@ def merge_ssebop_tc_gridmet_q(extracts, out_dir, flow_dir, gridmet=None, glob='g
                 gm_csv = read_csv(gm_file, index_col=join_key)
                 cols = list(gm_csv.columns)
                 gm_csv.columns = ['gm_{}_{}_{}'.format(col, y, m) for col in cols]
+                gm_csv *= 0.001
                 df = concat([df, gm_csv], axis=1)
 
         except errors.EmptyDataError:
@@ -65,6 +66,8 @@ def merge_ssebop_tc_gridmet_q(extracts, out_dir, flow_dir, gridmet=None, glob='g
             else:
                 sta = d['GEOID_STR']
 
+            if sta == '05015500':
+                a = 1
             # handle pre-1991 and off-growing season KeyError
             irr, cc, et = [], [], []
             for y, m in months:
@@ -91,9 +94,12 @@ def merge_ssebop_tc_gridmet_q(extracts, out_dir, flow_dir, gridmet=None, glob='g
                 continue
 
             ppt = [d['ppt_{}_{}'.format(y, m)] for y, m in months], 'ppt'
+            gm_ppt = [d['gm_ppt_{}_{}'.format(y, m)] for y, m in months], 'gm_ppt'
             etr = [d['etr_{}_{}'.format(y, m)] for y, m in months], 'etr'
-            sm = [d['swb_aet_{}_{}'.format(y, m)] for y, m in months], 'sm'
-            recs = DataFrame(dict([(x[1], x[0]) for x in [irr, et, cc, ppt, etr, sm]]), index=idx)
+            gm_etr = [d['gm_etr_{}_{}'.format(y, m)] for y, m in months], 'gm_etr'
+            sm = [d['swb_aet_{}_{}'.format(y, m)] for y, m in months], 'swb'
+            recs = DataFrame(dict([(x[1], x[0]) for x in [irr, et, cc, ppt, etr, sm, gm_ppt,
+                                                          gm_etr]]), index=idx)
 
             if division == 'basins':
                 q_file = os.path.join(flow_dir, '{}.csv'.format(sta))
@@ -105,6 +111,7 @@ def merge_ssebop_tc_gridmet_q(extracts, out_dir, flow_dir, gridmet=None, glob='g
             file_name = os.path.join(out_dir, '{}.csv'.format(sta))
             h.to_csv(file_name)
             processed_ct += 1
+
             print(file_name)
 
         except FileNotFoundError:

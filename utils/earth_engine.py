@@ -5,7 +5,7 @@ from calendar import monthrange
 import fiona
 from pandas import concat, to_datetime
 import ee
-from utils.assets import is_authorized
+from utils.earth_engine_assets import is_authorized
 import numpy as np
 from pandas import read_csv
 
@@ -46,7 +46,8 @@ def extract_terraclimate_monthly(tables, years, description):
 
             bands = pet.addBands([soil, ppt])
             data = bands.reduceRegions(collection=fc,
-                                       reducer=ee.Reducer.sum())
+                                       reducer=ee.Reducer.sum(),
+                                       scale=1000)
 
             out_desc = '{}_{}_{}'.format(description, yr, m_str)
             task = ee.batch.Export.table.toCloudStorage(
@@ -56,6 +57,39 @@ def extract_terraclimate_monthly(tables, years, description):
                 fileNamePrefix=out_desc,
                 fileFormat='CSV',
                 selectors=['STAID', 'etr', 'sm', 'ppt'])
+
+            task.start()
+            print(out_desc)
+
+
+def extract_gridmet_monthly(tables, years, description):
+    fc = ee.FeatureCollection(tables)
+    for yr in years:
+        for m in range(1, 13):
+            m_str, m_str_next = str(m).rjust(2, '0'), str(m + 1).rjust(2, '0')
+            if m == 12:
+                dataset = ee.ImageCollection('IDAHO_EPSCOR/GRIDMET').filterDate('{}-{}-01'.format(yr, m_str),
+                                                                                '{}-{}-31'.format(yr, m_str))
+            else:
+                dataset = ee.ImageCollection('IDAHO_EPSCOR/GRIDMET').filterDate('{}-{}-01'.format(yr, m_str),
+                                                                                '{}-{}-01'.format(yr, m_str_next))
+            area = ee.Image.pixelArea()
+            pet = dataset.select('etr').sum().multiply(area).rename('etr')
+            ppt = dataset.select('pr').sum().multiply(area).rename('ppt')
+
+            bands = pet.addBands([ppt])
+            data = bands.reduceRegions(collection=fc,
+                                       reducer=ee.Reducer.sum(),
+                                       scale=1000)
+
+            out_desc = '{}_{}_{}'.format(description, yr, m_str)
+            task = ee.batch.Export.table.toCloudStorage(
+                data,
+                description=out_desc,
+                bucket='wudr',
+                fileNamePrefix=out_desc,
+                fileFormat='CSV',
+                selectors=['STAID', 'etr', 'ppt'])
 
             task.start()
             print(out_desc)
@@ -252,8 +286,9 @@ def extract_flux_stations(flux_dir, shp, pixels=1):
 
 
 if __name__ == '__main__':
-    # extract_gridded_data(COUNTIES, years=[i for i in range(1986, 2021)],
-    #                      description='County_Comp_21DEC2021', min_years=0,
-    #                      basins=False)
-    extract_flux_stations(FLUX_DIR, FLUX_SHP, pixels=10)
+    extract_gridded_data(BASINS, years=[i for i in range(1986, 2021)],
+                         description='Basins_Comp_30JUN2022', min_years=5,
+                         basins=True)
+
+    # extract_flux_stations(FLUX_DIR, FLUX_SHP, pixels=10)
 # ========================= EOF ================================================================================
