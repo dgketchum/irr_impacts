@@ -1,10 +1,22 @@
 import os
 import json
+from copy import deepcopy
+
 import fiona
 import hydrofunctions as hf
+import numpy as np
 from pandas import date_range, DatetimeIndex, DataFrame
 from collections import OrderedDict
 from hydrograph import hydrograph
+import matplotlib.pyplot as plt
+
+
+class AmbiguousColumns(Exception):
+    pass
+
+
+class MissingValues(Exception):
+    pass
 
 
 def station_basin_designations(in_shp, out_meta):
@@ -90,31 +102,81 @@ def get_station_watersheds(stations_source, watersheds_source, out_stations, out
     print(len(selected_points))
 
 
-def get_station_daily_data(param, start, end, stations_shapefile, out_dir, freq='dv'):
+def get_station_daily_data(param, start, end, out_dir, freq='dv', stations_shapefile=None,
+                           plot_dir=None, targets=None, overwrite=False):
     if param not in ['00010', 'discharge']:
         raise ValueError('Use param = 00010 or discharge.')
-    with fiona.open(stations_shapefile, 'r') as src:
-        station_ids = [f['properties']['STAID'] for f in src]
+    ct, successes = 0, []
+    if stations_shapefile:
+        with fiona.open(stations_shapefile, 'r') as src:
+            station_ids = [f['properties']['STAID'] for f in src]
+    elif targets:
+        station_ids = targets
+    else:
+        raise NotImplementedError
 
+    daily_values = len(date_range(start, end, freq='D'))
     for sid in station_ids:
+        if sid != '13266000':
+            continue
+        if freq == 'iv':
+            out_file = os.path.join(out_dir, '{}_{}.csv'.format(sid, start[:4]))
+        else:
+            out_file = os.path.join(out_dir, '{}.csv'.format(sid))
+        if os.path.exists(out_file) and not overwrite:
+            print(sid, 'exists, skipping')
+            continue
+
         try:
             nwis = hf.NWIS(sid, freq, start_date=start, end_date=end)
             df = nwis.df(param)
-            if freq == 'iv':
-                out_file = os.path.join(out_dir, '{}_{}.csv'.format(sid, start[:4]))
-            else:
-                out_file = os.path.join(out_dir, '{}.csv'.format(sid))
+
+            potential_q_cols = [x for x in list(df.columns) if '00060' in x]
+
+            if len(potential_q_cols) == 0:
+                raise AmbiguousColumns
+
+            q_col = potential_q_cols[0]
+            df.loc[:, 'Date'] = deepcopy(df.index)
+            df = df.rename(columns={q_col: 'q'})
+            df = df[['q', 'Date']]
+            nan_count = np.count_nonzero(np.isnan(df['q']))
+            if nan_count > 0:
+                s = df['q']
+                s = s.interpolate(limit=7, method='linear')
+                if np.count_nonzero(np.isnan(s.values)) > 0:
+                    raise MissingValues
+                else:
+                    df['q'] = deepcopy(s.values)
+
+            if df.shape[0] < daily_values:
+                raise MissingValues
+
             df.to_csv(out_file)
-            print(out_file)
+            ct += 1
+            print(ct, out_file)
+
         except ValueError as e:
             print(e)
+            continue
         except hf.exceptions.HydroNoDataError:
             print('no data for {} to {}'.format(start, end))
-            pass
+            continue
+        except AmbiguousColumns:
+            print(sid, 'ambiguous columns')
+            continue
+        except MissingValues:
+            print(sid, 'missing values')
+            continue
+
+        if plot_dir:
+            df.plot('Date', 'q')
+            plt.savefig(os.path.join(plot_dir, '{}.png'.format(sid)))
+            plt.close()
 
 
 def get_station_daterange_data(year_start, daily_q_dir, aggregate_q_dir, start_month=None, end_month=None,
-                               resample_freq='A', convert_to_mcube=True):
+                               resample_freq='A', convert_to_mcube=True, plot_dir=None):
     q_files = [os.path.join(daily_q_dir, x) for x in os.listdir(daily_q_dir)]
     sids = [os.path.basename(c).split('.')[0] for c in q_files]
     s, e = '{}-01-01'.format(year_start), '2020-12-31'
@@ -122,8 +184,8 @@ def get_station_daterange_data(year_start, daily_q_dir, aggregate_q_dir, start_m
     idx = DatetimeIndex(daterange, tz=None)
 
     out_records, short_records = [], []
-    for c in q_files:
-        sid = os.path.basename(c).split('.')[0]
+    for sid, c in zip(sids, q_files):
+
         df = hydrograph(c)
 
         if start_month or end_month:
@@ -141,21 +203,37 @@ def get_station_daterange_data(year_start, daily_q_dir, aggregate_q_dir, start_m
             df = df.reindex(idx)
 
         # cfs to m ^3 d ^-1
+        df = df['q']
         if convert_to_mcube:
             df = df * 2446.58
         df = df.resample(resample_freq).agg(DataFrame.sum, skipna=False)
+        dates = deepcopy(df.index)
 
         out_file = os.path.join(aggregate_q_dir, '{}.csv'.format(sid))
         df.to_csv(out_file)
         out_records.append(sid)
         print(sid)
 
+        if plot_dir:
+            pdf = DataFrame(data={'Date': dates, 'q': df.values})
+            pdf.plot('Date', 'q')
+            plt.savefig(os.path.join(plot_dir, '{}.png'.format(sid)))
+            plt.close()
+
     print('{} processed'.format(len(out_records)))
+    print(out_records)
 
 
 if __name__ == '__main__':
-    root = '/media/research/IrrigationGIS/gages'
+    root = '/media/research/IrrigationGIS/gages/'
+    if not os.path.exists(root):
+        root = '/home/dgketchum/data/IrrigationGIS/gages/'
     src = os.path.join(root, 'hydrographs/daily_q')
+    stations_ = '/media/research/IrrigationGIS/gages/gage_loc_usgs/selected_gages.shp'
+    ofig = os.path.join(root, 'figures/complete_daily_hydrographs')
+    # get_station_daily_data('discharge', '1986-01-01', '2020-12-31', src, freq='dv', targets=TARGET_GAGES,
+    #                        plot_dir=ofig, overwrite=False)
     dst = os.path.join(root, 'hydrographs/q_monthly')
-    get_station_daterange_data(1986, src, dst, resample_freq='M')
+    ofig = os.path.join(root, 'figures/complete_monthly_hydrographs')
+    get_station_daterange_data(1986, src, dst, resample_freq='M', plot_dir=ofig)
 # ========================= EOF ====================================================================
