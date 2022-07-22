@@ -1,12 +1,9 @@
 import os
-from pprint import pprint
-from random import sample
 
 import numpy as np
 import fiona
 from shapely.geometry import shape
 from pandas import concat, read_csv, to_datetime, date_range
-import matplotlib.pyplot as plt
 
 from utils.thredds import GridMet
 
