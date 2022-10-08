@@ -2,12 +2,9 @@ import os
 import json
 import datetime
 
-from pandas import read_csv, DataFrame
+from pandas import DataFrame
 import numpy as np
 import ee
-import geopandas as gpd
-import fiona
-from shapely.geometry import shape
 
 from station_lists import STATION_BASINS
 
@@ -34,6 +31,10 @@ BASIN_YEARS = {'missouri': [2003, 2008, 2009, 2010, 2011, 2012, 2013, 2015],
 BASIN_F1 = {'missouri': 0.8985,
             'colorado': 0.8345,
             'columbia': 0.8649}
+
+BASIN_CC_ERR = {'missouri': {'rmse': 0.19, 'bias': 0.06},
+                'colorado': {'rmse': 0.28, 'bias': -0.14},
+                'columbia': {'rmse': 0.23, 'bias': -0.02}}
 
 
 def confusion(irr_labels, unirr_labels, irr_image, unirr_image, sid, yr, clip=False):
@@ -268,7 +269,7 @@ def basin_accuracy(_dir, all_stations, out_json):
                             'conf': None}
 
     with open(out_json, 'w') as fp:
-        json.dump(dct, fp, indent=4)
+        json.dump(out_acc, fp, indent=4)
 
 
 if __name__ == '__main__':
@@ -277,7 +278,7 @@ if __name__ == '__main__':
         root = '/home/dgketchum/data/IrrigationGIS'
 
     # j = os.path.join(root, 'gages', 'watershed_irr_accuracy', 'watershed_irr_training_years.json')
-    j_out = os.path.join(root, 'gages', 'watershed_irr_accuracy', 'watershed_accuracy.json')
+    j_out = os.path.join(root, 'gages', 'gridmet_analysis', 'watershed_accuracy.json')
     j_meta = os.path.join(root, 'gages', 'gridmet_analysis', 'station_metadata.json')
     # j = os.path.join(root, 'gages', 'watershed_irr_accuracy', 'superbasin_irr_training_years.json')
     acc = os.path.join(root, 'gages', 'watershed_irr_accuracy')

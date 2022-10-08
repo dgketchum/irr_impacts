@@ -4,6 +4,7 @@ import numpy as np
 from pandas import read_csv, concat, errors, DataFrame, DatetimeIndex, date_range
 
 from hydrograph import hydrograph
+from station_lists import VERIFIED_IRRIGATED_HYDROGRAPHS
 
 
 def merge_ssebop_tc_gridmet_q(extracts, out_dir, flow_dir, gridmet=None, glob='glob', division='basins',
@@ -66,8 +67,6 @@ def merge_ssebop_tc_gridmet_q(extracts, out_dir, flow_dir, gridmet=None, glob='g
             else:
                 sta = d['GEOID_STR']
 
-            if sta == '05015500':
-                a = 1
             # handle pre-1991 and off-growing season KeyError
             irr, cc, et = [], [], []
             for y, m in months:

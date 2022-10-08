@@ -26,7 +26,6 @@ def dominance_analysis(_dir, target, predictors):
                 keys, vals = [k for k in incremental_r_sq.keys()], [v for k, v in incremental_r_sq.items()]
                 idx = np.argmax(np.array(vals))
                 target_d[m][predictors[idx]] += 1
-
     pass
 
 
@@ -36,5 +35,6 @@ if __name__ == '__main__':
         root = '/home/dgketchum/data/IrrigationGIS/gages'
 
     analysis_d = os.path.join(root, 'gridmet_analysis', 'analysis')
-    dominance_analysis(analysis_d, target='q_data', predictors=['irr_data', 'aim_data', 'cc_data'])
+    dominance_analysis(analysis_d, target='q_data', predictors=['aim_data', 'cc_data'])
+    # dominance_analysis(analysis_d, target='cc_data', predictors=['irr_data', 'aim_data'])
 # ========================= EOF ====================================================================

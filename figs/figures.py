@@ -1,14 +1,13 @@
 import os
-import sys
 import json
 import pickle
 from itertools import product
 
 import numpy as np
 from scipy.stats.stats import linregress
+from pandas import DataFrame, concat, isna
 
 import fiona
-from pandas import DataFrame, concat
 import geopandas as gpd
 from shapely.geometry import shape
 from scipy.interpolate import make_interp_spline
@@ -17,21 +16,11 @@ from matplotlib import cm, colors
 from matplotlib import pyplot as plt
 import seaborn as sns
 import arviz as az
+import matplotlib.ticker as ticker
 
 from gage_analysis import EXCLUDE_STATIONS
+from hydrograph import hydrograph
 from figs.regression_figs import plot_regression_from_trace
-import bayes_analysis
-
-# temporary hack to open pickled model with renamed module
-sys.modules['linear_regression_errors'] = bayes_analysis
-
-SYSTEM_STATIONS = ['06109500', '06329500', '09180500', '09315000',
-                   '09379500', '12396500', '13269000', '13317000']
-
-SELECTED_SYSTEMS = ['06109500', '06329500', '09180500', '09315000',
-                    '09379500', '09466500', '12389000', '12510500',
-                    '13269000', '13317000', '14048000',
-                    '14103000', '14211720']
 
 large = 22
 med = 16
@@ -52,6 +41,137 @@ params = {'axes.titlesize': large,
           'ytick.left': True,
           'ytick.right': False,
           }
+
+
+def write_all_hydrographs(analysis, climate_dir, ofig_dir, glob=None):
+    """Find linear relationship between climate and flow in an expanding time window"""
+
+    l = [os.path.join(analysis, x) for x in os.listdir(analysis) if glob in x]
+    target_gages = []
+    for f in l:
+        with open(f, 'r') as _file:
+            dct = json.load(_file)
+
+        [target_gages.append(k) for k, v in dct.items() if k not in target_gages]
+
+    l = sorted([os.path.join(climate_dir, x) for x in os.listdir(climate_dir)])
+
+    for csv in l:
+        sid = os.path.basename(csv).strip('.csv')
+        if sid != '06018500':
+            continue
+        print(sid)
+        if sid in EXCLUDE_STATIONS:
+            continue
+        df = hydrograph(csv)
+        df.plot()
+        plt.savefig(os.path.join(ofig_dir, '{}.png'.format(sid)))
+        plt.close()
+
+
+def qres_to_cc_magnitude(_dir, out_fig_dir):
+    cc_mag, qres_mag = [], []
+    for m in range(1, 13):
+        _file = os.path.join(_dir, 'qres_cc_{}.json'.format(m))
+        with open(_file, 'r') as fp:
+            dct = json.load(fp)
+
+        diter = [[(kk, k, r) for k, r in vv.items() if isinstance(r, dict)] for kk, vv in dct.items()]
+        diter = [i for ll in diter for i in ll]
+
+        for sid, cc_per, data in diter:
+            if sid in EXCLUDE_STATIONS:
+                continue
+            cc_mag.append(np.log10(np.mean(np.abs(data['cc_data']))))
+            qres_mag.append(np.log10(np.mean(np.abs(data['qres_data']))))
+
+    plt.plot([x for x in range(3, 10)], [x for x in range(3, 10)], c='r')
+    plt.scatter(qres_mag, cc_mag)
+    plt.xlabel('log volume residual flow')
+    plt.ylabel('log volume crop consumption')
+    plt.show()
+
+
+def cc_to_q_magnitude(_dir, out_fig_dir):
+    ratios = {}
+    for sid in SYSTEM_STATIONS:
+        cc, q = np.zeros((12, 1)), np.zeros((12, 1))
+        for m in range(1, 13):
+            _file = os.path.join(_dir, 'trend_data_{}.json'.format(m))
+            with open(_file, 'r') as fp:
+                dct = json.load(fp)
+
+            data = dct[sid]['{}-{}'.format(m, m)]
+            q_ = np.array(data['q_data'])
+            q += q_
+            if m in [x for x in range(4, 11)]:
+                cc_ = np.mean(np.abs(data['cc_data']))
+                cc += cc_
+
+        cc, q = np.sum(cc), np.sum(q)
+        ratio = cc / q
+        ratios[sid] = ratio
+    pass
+
+
+def delta_cc_delta_q_scatter(_dir, out_fig_dir, glob=None, ignore_insignificant=True):
+    trends_dct = {}
+
+    l = [os.path.join(_dir, x) for x in os.listdir(_dir) if glob in x]
+
+    for f in l:
+        m = int(os.path.basename(f).split('.')[0].split('_')[-1])
+        with open(f, 'r') as _file:
+            dct = json.load(_file)
+
+        trends_dct.update({m: dct})
+
+    first = True
+    change_dct = {}
+    params = ['time_irr', 'time_q', 'time_ai']
+    for var in params:
+        df = None
+        for m in range(1, 13):
+
+            d = trends_dct[m]
+
+            if var == 'time_cc' and m in [1, 2, 3, 11, 12]:
+                data = {k: 0.0 for k, v in d.items() if k not in EXCLUDE_STATIONS}
+            elif ignore_insignificant:
+                data = {k: v[var]['b'] for k, v in d.items() if k not in EXCLUDE_STATIONS}
+            else:
+                data = {k: v[var]['b'] if v[var]['p'] < 0.05 else 0.0 for k, v in d.items() if
+                        k not in EXCLUDE_STATIONS}
+
+            index, data = [i[0] for i in data.items()], [i[1] for i in data.items()]
+            if first:
+                df = DataFrame(data=data, index=index, columns=['{}_{}'.format(var, m)])
+                first = False
+            else:
+                c = DataFrame(data=data, index=index, columns=['{}_{}'.format(var, m)])
+                df = concat([df, c], axis=1)
+        change_dct[var] = df
+
+    medians = {}
+    for var in params:
+        vals = change_dct[var].values
+        vals[np.isnan(vals)] = 0.0
+        median = np.median(vals, axis=1)
+        medians[var] = median
+
+    fig, ax = plt.subplots(1, 2, figsize=(20, 10))
+    ai, q, cc = medians['time_ai'], medians['time_q'], medians['time_irr']
+    stack = np.vstack((cc, q, ai)).transpose()
+    ax[0].scatter(ai, q)
+    ax[0].set_xlim([min(ai), max(ai)])
+    ax[0].set_ylim([min(q), max(q)])
+    ax[0].set(xlabel='delta aridity', ylabel='delta flow')
+    ax[1].scatter(cc, q)
+    ax[1].set_xlim([min(cc), max(cc)])
+    ax[1].set_ylim([min(q), max(q)])
+    ax[1].set(xlabel='delta crop consumption', ylabel='delta flow')
+    plt.savefig('/home/dgketchum/Downloads/cc_q_ai_deltas.png')
+    pass
 
 
 def response_time_to_area(climate_resp, fig_dir):
@@ -660,82 +780,50 @@ def delta_cn_q_kde(bayes_, climate_, out_png):
     print()
 
 
-def trends_lr(regressions_dir, in_shape, study_area, out_fig):
-    study_area = gpd.read_file(study_area)
-
-    with fiona.open(in_shape, 'r') as src:
-        meta = src.meta
-        feats = [f for f in src]
-
-    geo = {f['properties']['STAID']: shape(f['geometry']) for f in feats}
-    areas = {f['properties']['STAID']: f['properties']['AREA'] for f in feats}
-
-    trends_dct = {}
-
-    l = [os.path.join(regressions_dir, x) for x in os.listdir(regressions_dir) if 'linear_regressions' in x]
-
-    for f in l:
-        m = int(os.path.basename(f).split('.')[0].split('_')[-1])
-        with open(f, 'r') as _file:
-            dct = json.load(_file)
-
-        trends_dct.update({m: dct})
-
-    marker_min = 1
-    marker_max = 40
-
-    trc_subdirs = ['time_cc', 'time_qres', 'time_ai', 'time_q']
-
-    for var in trc_subdirs:
-        first = True
-        for m in range(1, 13):
-            d = trends_dct[m]
-            data = {k: v[var]['b'] if v[var]['p'] < 0.05 else 0.0 for k, v in d.items()}
-            index, data = [i[0] for i in data.items()], [i[1] for i in data.items()]
-            if first:
-                df = DataFrame(data=data, index=index, columns=[m])
-                first = False
-            else:
-                c = DataFrame(data=data, index=index, columns=[m])
-                df = concat([df, c], axis=1)
-
-        gdf = gpd.GeoDataFrame(df)
-        gdf['AREA'] = [areas[_id] for _id in gdf.index]
-        gdf.geometry = [geo[_id] for _id in gdf.index]
-
-        if var in ['time_q', 'time_qres']:
-            cmap = 'coolwarm_r'
-        else:
-            cmap = 'coolwarm'
-
-        rows, cols = 4, 3
-        fig, ax = plt.subplots(rows, cols, figsize=(20, 20))
-        idxs = [i for i in product([i for i in range(rows)], [i for i in range(cols)])]
-
-        for idx, m in zip(idxs, range(1, 13)):
-            areas = np.log(gdf['AREA'])
-            areas = (areas - areas.min()) / (areas.max() - areas.min()) * marker_max + marker_min
-            study_area.plot(ax=ax[idx], **{'edgecolor': 'k', 'facecolor': (0, 0, 0, 0)})
-            gdf.plot(m, cmap=cmap, norm=colors.CenteredNorm(), s=areas.values, ax=ax[idx])
-
-        fig_file = os.path.join(out_fig, '{}.png'.format(var))
-        plt.savefig(fig_file)
-        plt.close()
-
-    pass
+def hydrograph_vs_crop_consumption(ee_data, sid, out_fig):
+    _file = os.path.join(ee_data, '{}.csv'.format(sid))
+    df = hydrograph(_file)
+    df[np.isnan(df)] = 0.0
+    df = df.resample('A').agg(DataFrame.sum, skipna=False)
+    df = df.loc['1991-01-01': '2020-12-31']
+    df /= 1e9
+    # df[:] = np.log10(df.values)
+    plt_cols = ['cc', 'q']
+    df = df[plt_cols]
+    df = df.rename(columns={'cc': 'Crop Consumption', 'q': 'Flow'})
+    blue = tuple(np.array([43, 131, 186]) / 256.)
+    orange = tuple(np.array([253, 174, 97]) / 256.)
+    y_err = [x * 0.19 for x in df['Crop Consumption']]
+    ax = df.plot(kind='bar', stacked=False, color=[orange, blue], width=0.9, yerr=y_err)
+    # plt.suptitle('Snake River Flow and Crop Consumption')
+    plt.ylabel('Cubic Kilometers')
+    plt.xlabel('Year')
+    ticks = [str(x) for x in range(1991, 2021)]
+    ticks = ['' if x not in ['1991', '2000', '2010', '2020'] else x for x in ticks]
+    ax.xaxis.set_major_formatter(ticker.FixedFormatter(ticks))
+    plt.tight_layout()
+    # plt.savefig(out_fig)
+    plt.show()
 
 
 if __name__ == '__main__':
-    root = '/media/research/IrrigationGIS/gages'
+    root = '/media/research/IrrigationGIS/gages/gridmet_analysis'
     if not os.path.exists(root):
-        root = '/home/dgketchum/data/IrrigationGIS/gages'
+        root = '/home/dgketchum/data/IrrigationGIS/gages/gridmet_analysis'
+    figs = os.path.join(root, 'figures')
+    analysis_d = os.path.join(root, 'analysis')
+    meta_data = os.path.join(root, 'station_metadata.json')
+    # qres_to_cc_magnitude(analysis_d, figs)
+    # cc_to_q_magnitude(analysis_d, figs)
 
-    figs = os.path.join(root, 'gridmet_analysis', 'figures')
+    figs = os.path.join(root, 'figures', 'scatter')
+    # delta_cc_delta_q_scatter(analysis_d, figs, glob='trends_', ignore_insignificant=True)
+    hydrograph_figs = '/media/research/IrrigationGIS/gages/figures/complete_daily_hydrographs'
+    clim_dir = '/media/research/IrrigationGIS/gages/merged_q_ee/monthly_ssebop_tc_gm_q_Comp_21DEC2021'
+    daily_q = '/media/research/IrrigationGIS/gages/hydrographs/daily_q'
+    # write_all_hydrographs(analysis_d, daily_q, hydrograph_figs, glob='trends_')
 
-    study_area_ = os.path.join(root, 'figures', 'fig_shapes', 'study_basins.shp')
-    inshp = os.path.join(root, 'gage_loc_usgs', 'selected_gages.shp')
-    lr_ = os.path.join(root, 'gridmet_analysis', 'analysis')
-
-    trends_lr(lr_, inshp, study_area_, figs)
-
+    figs = os.path.join(root, 'figures', 'cc_ratios')
+    o_fig = os.path.join(figs, 'hydro_vs_cc_time.png')
+    hydrograph_vs_crop_consumption(clim_dir, '13172500', o_fig)
 # ========================= EOF ====================================================================

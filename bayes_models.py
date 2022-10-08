@@ -124,6 +124,7 @@ class LinearModel(LinearRegression):
             if save_model:
                 with open(save_model, 'wb') as buff:
                     pickle.dump({'model': self, 'trace': self.trace}, buff)
+                    print('saving', save_model)
 
         return self
 

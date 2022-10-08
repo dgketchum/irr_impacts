@@ -117,8 +117,7 @@ def get_station_daily_data(param, start, end, out_dir, freq='dv', stations_shape
 
     daily_values = len(date_range(start, end, freq='D'))
     for sid in station_ids:
-        if sid != '13266000':
-            continue
+
         if freq == 'iv':
             out_file = os.path.join(out_dir, '{}_{}.csv'.format(sid, start[:4]))
         else:

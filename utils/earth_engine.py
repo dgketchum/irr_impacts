@@ -27,6 +27,18 @@ FLUX_DIR = '/media/research/IrrigationGIS/ameriflux/ec_data'
 
 ET_ASSET = ee.ImageCollection('users/dgketchum/ssebop/cmbrb')
 
+BOZEMAN = ee.Geometry.Polygon([[-111.19206055457778, 45.587493372544984],
+                               [-110.91946228797622, 45.587493372544984],
+                               [-110.91946228797622, 45.754947053477565],
+                               [-111.19206055457778, 45.754947053477565],
+                               [-111.19206055457778, 45.587493372544984]])
+
+NAVAJO = ee.Geometry.Polygon([[-108.50192867920967, 36.38701227276218],
+                              [-107.92995297120186, 36.38701227276218],
+                              [-107.92995297120186, 36.78068624960868],
+                              [-108.50192867920967, 36.78068624960868],
+                              [-108.50192867920967, 36.38701227276218]])
+
 
 def extract_terraclimate_monthly(tables, years, description):
     fc = ee.FeatureCollection(tables)
@@ -123,7 +135,7 @@ def extract_gridded_data(tables, years=None, description=None,
     # sum = remap.sum().mask(irr_mask)
 
     for yr in years:
-        for month in range(1, 13):
+        for month in range(4, 11):
             s = '{}-{}-01'.format(yr, str(month).rjust(2, '0'))
             end_day = monthrange(yr, month)[1]
             e = '{}-{}-{}'.format(yr, str(month).rjust(2, '0'), end_day)
@@ -201,6 +213,115 @@ def extract_gridded_data(tables, years=None, description=None,
                 selectors=select_)
             task.start()
             print(out_desc)
+
+
+def export_et_images(polygon, tables, years=None, description=None,
+                     min_years=0, basins=True):
+    """
+    Reduce Regions, i.e. zonal stats: takes a statistic from a raster within the bounds of a vector.
+    Use this to get e.g. irrigated area within a county, HUC, or state. This can mask based on Crop Data Layer,
+    and can mask data where the sum of irrigated years is less than min_years. This will output a .csv to
+    GCS wudr bucket.
+    :param tables: vector data over which to take raster statistics
+    :param years: years over which to run the stats
+    :param description: export name append str
+    :param cdl_mask:
+    :param min_years:
+    :return:
+    """
+    fc = ee.FeatureCollection(tables)
+    cmb_clip = ee.FeatureCollection(CMBRB_CLIP)
+    umrb_clip = ee.FeatureCollection(UMRB_CLIP)
+    corb_clip = ee.FeatureCollection(CORB_CLIP)
+
+    # fc = ee.FeatureCollection(ee.FeatureCollection(tables).filter(ee.Filter.eq('STAID', '12484500')))
+
+    irr_coll = ee.ImageCollection(RF_ASSET)
+    coll = irr_coll.filterDate('1991-01-01', '2020-12-31').select('classification')
+    remap = coll.map(lambda img: img.lt(1))
+    irr_min_yr_mask = remap.sum().gt(min_years)
+    # sum = remap.sum().mask(irr_mask)
+
+    for yr in years:
+        for month in range(4, 5):
+            s = '{}-{}-01'.format(yr, str(month).rjust(2, '0'))
+            end_day = monthrange(yr, month)[1]
+            e = '{}-{}-{}'.format(yr, str(month).rjust(2, '0'), end_day)
+
+            irr = irr_coll.filterDate('{}-01-01'.format(yr), '{}-12-31'.format(yr)).select('classification').mosaic()
+            irr_mask = irr_min_yr_mask.updateMask(irr.lt(1))
+
+            annual_coll = ee.ImageCollection('users/dgketchum/ssebop/cmbrb').merge(
+                ee.ImageCollection('users/hoylmanecohydro2/ssebop/cmbrb'))
+            et_coll = annual_coll.filter(ee.Filter.date(s, e))
+            et_cmb = et_coll.sum().multiply(0.00001).clip(cmb_clip.geometry())
+
+            annual_coll = ee.ImageCollection('users/kelseyjencso/ssebop/corb').merge(
+                ee.ImageCollection('users/dgketchum/ssebop/corb')).merge(
+                ee.ImageCollection('users/dpendergraph/ssebop/corb'))
+            et_coll = annual_coll.filter(ee.Filter.date(s, e))
+            et_corb = et_coll.sum().multiply(0.00001).clip(corb_clip.geometry())
+
+            annual_coll_ = ee.ImageCollection('projects/usgs-ssebop/et/umrb')
+            et_coll = annual_coll_.filter(ee.Filter.date(s, e))
+            et_umrb = et_coll.sum().multiply(0.00001).clip(umrb_clip.geometry())
+
+            et_sum = ee.ImageCollection([et_cmb, et_corb, et_umrb]).mosaic()
+            et = et_sum.mask(irr_mask)
+
+            tclime = ee.ImageCollection("IDAHO_EPSCOR/TERRACLIMATE").filterDate(s, e).select('pr', 'pet', 'aet')
+            tclime_red = ee.Reducer.sum()
+            tclime_sums = tclime.select('pr', 'pet', 'aet').reduce(tclime_red)
+            ppt = tclime_sums.select('pr_sum').multiply(0.001)
+            etr = tclime_sums.select('pet_sum').multiply(0.0001)
+            swb_aet = tclime_sums.select('aet_sum').mask(irr_mask).multiply(0.0001)
+
+            irr_mask = irr_mask.reproject(crs='EPSG:5070', scale=30)
+            et = et.reproject(crs='EPSG:5070', scale=30).resample('bilinear')
+            ppt = ppt.reproject(crs='EPSG:5070', scale=30).resample('bilinear')
+            etr = etr.reproject(crs='EPSG:5070', scale=30).resample('bilinear')
+            swb_aet = swb_aet.reproject(crs='EPSG:5070', scale=30).resample('bilinear')
+
+            cc = et.subtract(swb_aet)
+
+            area = ee.Image.pixelArea()
+            irr = irr_mask.multiply(area).rename('irr')
+            et = et.multiply(area).rename('et')
+            cc = cc.multiply(area).rename('cc')
+            ppt = ppt.multiply(area).rename('ppt')
+            etr = etr.multiply(area).rename('etr')
+            swb_aet = swb_aet.multiply(area).rename('swb_aet')
+
+            v = [irr]  # , cc, ppt, etr, swb_aet]
+            s = ['irr']  # , 'cc', 'ppt', 'etr', 'swb_aet']
+
+            for var_, st in zip(v, s):
+                out_desc = '{}_{}_{}_{}'.format(description, st, yr, month)
+                task = ee.batch.Export.image.toCloudStorage(
+                    var_,
+                    description=out_desc,
+                    bucket='wudr',
+                    fileNamePrefix=out_desc,
+                    region=polygon,
+                    scale=30,
+                    maxPixels=1e13,
+                    crs='EPSG:5071')
+                task.start()
+                print(out_desc)
+
+
+def export_naip(region):
+    dataset = ee.ImageCollection('USDA/NAIP/DOQQ').filter(ee.Filter.date('2017-01-01', '2018-12-31')).mosaic()
+    task = ee.batch.Export.image.toCloudStorage(
+        dataset,
+        description='NAIP_Navajo',
+        bucket='wudr',
+        fileNamePrefix='NAIP_Navajo',
+        region=region,
+        scale=30,
+        maxPixels=1e13,
+        crs='EPSG:5071')
+    task.start()
 
 
 def extract_flux_stations(flux_dir, shp, pixels=1):
@@ -286,9 +407,15 @@ def extract_flux_stations(flux_dir, shp, pixels=1):
 
 
 if __name__ == '__main__':
-    extract_gridded_data(BASINS, years=[i for i in range(1986, 2021)],
-                         description='Basins_Comp_30JUN2022', min_years=5,
-                         basins=True)
+    # export_et_images(NAVAJO, BASINS, years=[i for i in range(1986, 2022)],
+    #                  description='Navajo', min_years=5,
+    #                  basins=True)
+
+    export_naip(NAVAJO)
+
+    # export_et_images(BASINS, years=[i for i in range(1991, 2021)],
+    #                  description='DNRC_Basins_30SSEPT2022', min_years=5,
+    #                  basins=True)
 
     # extract_flux_stations(FLUX_DIR, FLUX_SHP, pixels=10)
 # ========================= EOF ================================================================================

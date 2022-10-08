@@ -176,9 +176,7 @@ def map_fig_two_triple_panel(basins_shp, irrmap, gages_shp, states, all_gages, p
     plt.close()
 
 
-def monthly_trends_lr(regressions_dir, in_shape, study_area, out_fig, glob=None, summarize=True, out_shape=None,
-                      bayes=True):
-    study_area = gpd.read_file(study_area)
+def monthly_trends(regressions_dir, in_shape, glob=None, out_shape=None, bayes=True):
 
     with fiona.open(in_shape, 'r') as src:
         feats = [f for f in src]
@@ -189,7 +187,7 @@ def monthly_trends_lr(regressions_dir, in_shape, study_area, out_fig, glob=None,
 
     trends_dct = {}
 
-    l = [os.path.join(regressions_dir, x) for x in os.listdir(regressions_dir) if glob in x]
+    l = [os.path.join(regressions_dir, x) for x in os.listdir(regressions_dir) if x.startswith(glob)]
 
     for f in l:
         m = int(os.path.basename(f).split('.')[0].split('_')[-1])
@@ -198,27 +196,35 @@ def monthly_trends_lr(regressions_dir, in_shape, study_area, out_fig, glob=None,
 
         trends_dct.update({m: dct})
 
-    marker_min = 10
-    marker_max = 50
-
     if bayes:
         trc_subdirs = ['time_cc', 'time_qres', 'time_ai', 'time_q']
     else:
         trc_subdirs = ['time_cc', 'time_qres', 'time_ai', 'time_aim', 'time_q', 'time_etr', 'time_ppt', 'time_irr']
 
+    range_ = [x for x in range(1, 13)]
     for var in trc_subdirs:
-        if var != 'time_ppt':
-            continue
+        # if var != 'time_qres':
+        #     continue
         first = True
-        for m in range(1, 13):
+        for m in range_:
 
             d = trends_dct[m]
 
             if var == 'time_cc' and m in [1, 2, 3, 11, 12]:
                 data = {k: 0.0 for k, v in d.items() if k not in EXCLUDE_STATIONS}
             else:
-                data = {k: v[var]['b'] if v[var]['p'] < 0.05 else 0.0 for k, v in d.items() if
-                        k not in EXCLUDE_STATIONS}
+                if bayes:
+                    data = {}
+                    for k, v in d.items():
+                        if not v[var]:
+                            data[k] = 0
+                        elif np.sign(v[var]['hdi_2.5%']) == np.sign(v[var]['hdi_97.5%']):
+                            data[k] = v[var]['mean']
+                        else:
+                            data[k] = 0
+                else:
+                    data = {k: v[var]['b'] if v[var]['p'] < 0.05 else 0.0 for k, v in d.items() if
+                            k not in EXCLUDE_STATIONS}
 
             index, data = [i[0] for i in data.items()], [i[1] for i in data.items()]
             if first:
@@ -236,77 +242,27 @@ def monthly_trends_lr(regressions_dir, in_shape, study_area, out_fig, glob=None,
         gdf['STANAME'] = [names[_id] for _id in gdf.index]
         geo = [geo_[_id] for _id in gdf.index]
 
-        if var in ['time_q', 'time_qres', 'time_ppt']:
-            cmap = 'coolwarm_r'
-        else:
-            cmap = 'coolwarm'
-
-        rows, cols = 4, 3
-        fig, ax = plt.subplots(rows, cols, figsize=(20, 20))
-        idxs = [i for i in product([i for i in range(rows)], [i for i in range(cols)])]
-        areas_ = np.array([v for k, v in areas.items()]) * marker_max + marker_min
-
-        for idx, m in zip(idxs, range(1, 13)):
-            study_area.plot(ax=ax[idx], **{'edgecolor': 'k', 'facecolor': (0, 0, 0, 0)})
-            gdf['geometry'] = geo
-            if np.all(gdf[m].values == 0.0):
-                gdf.plot(m, c='grey', s=areas_, ax=ax[idx])
-            elif var == 'time_cc' and m in [1, 2, 3, 11, 12]:
-                gdf.plot(m, c='grey', s=areas_, ax=ax[idx])
-            else:
-                gdf.plot(m, cmap=cmap, norm=colors.CenteredNorm(), s=areas_, ax=ax[idx])
+        gdf.drop(columns=['STANAME'], inplace=True)
 
         if bayes:
-            fig_file = os.path.join(out_fig, '{}_bayes.png'.format(var))
+            shp_file = os.path.join(out_shape, '{}_median_bayes.shp'.format(var))
         else:
-            fig_file = os.path.join(out_fig, '{}.png'.format(var))
+            shp_file = os.path.join(out_shape, '{}_median_mk.shp'.format(var))
 
-        plt.savefig(fig_file)
-        plt.close()
-
-        gdf.drop(columns=['geometry', 'STANAME'], inplace=True)
-
-        if summarize:
-            fig, ax = plt.subplots(1, 1, figsize=(20, 20))
-            nan_idx = gdf[[i for i in range(1, 13)]] == 0.0
-            gdf[nan_idx] = np.nan
-            gdf['median'] = gdf[[i for i in range(1, 13)]].median(axis=1)
-            gdf['median'][isna(gdf['median'])] = 0.0
-            gdf['STANAME'] = [names[_id] for _id in gdf.index]
-            gdf['AREA'] = [areas[_id] for _id in gdf.index]
-            study_area.plot(ax=ax, **{'edgecolor': 'k', 'facecolor': (0, 0, 0, 0)})
-            marker_max = 80
-            gdf['geometry'] = geo
-            gdf.plot('median', cmap=cmap, norm=colors.CenteredNorm(), s=areas_, ax=ax)
-
-            if bayes:
-                fig_file = os.path.join(out_fig, '{}_median_bayes.png'.format(var))
-            else:
-                fig_file = os.path.join(out_fig, '{}_median.png'.format(var))
-
-            plt.savefig(fig_file)
-            plt.close()
-
-        if out_shape:
-            gdf.drop(columns=['AREA', 'geometry', 'STANAME'], inplace=True)
-
-            if bayes:
-                shp_file = os.path.join(out_shape, '{}_median_bayes.shp'.format(var))
-            else:
-                shp_file = os.path.join(out_shape, '{}_median.shp'.format(var))
-
-            gdf.loc[:, :] = np.where(np.isfinite(gdf.values), gdf.values, np.zeros_like(gdf.values))
-            gdf['geometry'] = geo
-            gdf['STANAME'] = [names[_id] for _id in gdf.index]
-            gdf['AREA'] = [areas[_id] for _id in gdf.index]
-            cols = [str(c) for c in gdf.columns]
-            gdf.columns = cols
-            gdf.to_file(shp_file)
+        gdf[gdf[[i for i in range(1, 13)]] == 0.0] = np.nan
+        gdf['median'] = gdf[[i for i in range(1, 13)]].median(axis=1)
+        gdf['median'][isna(gdf['median'])] = 0.0
+        gdf.loc[:, :] = np.where(np.isfinite(gdf.values), gdf.values, np.zeros_like(gdf.values))
+        gdf['geometry'] = geo
+        gdf['AREA'] = [areas[_id] for _id in gdf.index]
+        gdf['STANAME'] = [names[_id] for _id in gdf.index]
+        cols = [str(c) for c in gdf.columns]
+        gdf.columns = cols
+        gdf.to_file(shp_file, crs='epsg:4326')
+        print(shp_file)
 
 
-def monthly_cc_qres_lr(regressions_dir, in_shape, study_area, out_fig, glob=None,
-                       summarize=True, out_shape=None, bayes=False):
-    study_area = gpd.read_file(study_area)
+def monthly_cc_qres(regressions_dir, in_shape, glob=None, out_shape=None, bayes=False):
 
     with fiona.open(in_shape, 'r') as src:
         feats = [f for f in src]
@@ -320,7 +276,7 @@ def monthly_cc_qres_lr(regressions_dir, in_shape, study_area, out_fig, glob=None
     l = [os.path.join(regressions_dir, x) for x in os.listdir(regressions_dir) if glob in x]
 
     for f in l:
-        m = int(os.path.basename(f).split('.')[0].split('_')[-1])
+        m = int(os.path.basename(f).split('_acc.')[0].split('_')[-1])
         with open(f, 'r') as _file:
             dct = json.load(_file)
 
@@ -373,59 +329,26 @@ def monthly_cc_qres_lr(regressions_dir, in_shape, study_area, out_fig, glob=None
         df[np.isnan(df)] = 0.0
 
     gdf = gpd.GeoDataFrame(df)
-    gdf['AREA'] = [areas[_id] for _id in gdf.index]
     gdf.geometry = [geo[_id] for _id in gdf.index]
 
-    marker_min = 10
-    marker_max = 50
+    area_arr = np.array([areas[_id] for _id in gdf.index])
+    areas = {k: (a - min(area_arr)) / (max(area_arr) - min(area_arr)) for k, a in areas.items()}
+    gdf['AREA'] = [areas[_id] for _id in gdf.index]
 
-    cmap = 'coolwarm_r'
-    rows, cols = 4, 3
-    fig, ax = plt.subplots(rows, cols, figsize=(20, 20))
-    idxs = [i for i in product([i for i in range(rows)], [i for i in range(cols)])]
+    shp_file = os.path.join(out_shape, '{}_median_acc.shp'.format(glob))
 
-    for idx, m in zip(idxs, range(1, 13)):
-        areas = np.log(gdf['AREA'])
-        area_scale = (areas - areas.min()) / (areas.max() - areas.min()) * marker_max + marker_min
-        gdf.plot(m, cmap=cmap, norm=colors.CenteredNorm(), s=area_scale.values, ax=ax[idx])
-        study_area.plot(ax=ax[idx], **{'edgecolor': 'k', 'facecolor': (0, 0, 0, 0)})
-
-    fig_file = os.path.join(out_fig, 'cc_qres.png')
-    plt.savefig(fig_file)
-    plt.close()
-
-    if summarize:
-        fig, ax = plt.subplots(1, 1, figsize=(20, 20))
-        gdf[gdf[[i for i in range(1, 13)]] == 0.0] = np.nan
-        gdf['median'] = gdf[[i for i in range(1, 13)]].median(axis=1)
-        gdf['median'][isna(gdf['median'])] = 0.0
-        marker_max = 80
-        area_scale = (areas - areas.min()) / (areas.max() - areas.min()) * marker_max + marker_min
-        gdf.plot('median', cmap=cmap, norm=colors.CenteredNorm(), s=area_scale.values, ax=ax)
-        study_area.plot(ax=ax, **{'edgecolor': 'k', 'facecolor': (0, 0, 0, 0)})
-
-        if bayes:
-            fig_file = os.path.join(out_fig, '{}_median_bayes.png'.format(glob))
-        else:
-            fig_file = os.path.join(out_fig, '{}_median.png'.format(glob))
-
-        plt.savefig(fig_file)
-        plt.close()
-
-    if out_shape:
-        if bayes:
-            shp_file = os.path.join(out_shape, '{}_median_bayes.shp'.format(glob))
-        else:
-            shp_file = os.path.join(out_shape, '{}_median.shp'.format(glob))
-        geo = gdf['geometry']
-        gdf.drop(columns=['AREA', 'geometry'], inplace=True)
-        gdf.loc[:, :] = np.where(np.isfinite(gdf.values), gdf.values, np.zeros_like(gdf.values))
-        gdf['geometry'] = geo
-        gdf['STANAME'] = [names[_id] for _id in gdf.index]
-        gdf['AREA'] = [areas[_id] for _id in gdf.index]
-        cols = [str(c) for c in gdf.columns]
-        gdf.columns = cols
-        gdf.to_file(shp_file)
+    geo = gdf['geometry']
+    gdf.drop(columns=['AREA', 'geometry'], inplace=True)
+    gdf[gdf[[i for i in range(1, 13)]] == 0.0] = np.nan
+    gdf['median'] = gdf[[i for i in range(1, 13)]].median(axis=1)
+    gdf['median'][isna(gdf['median'])] = 0.0
+    gdf.loc[:, :] = np.where(np.isfinite(gdf.values), gdf.values, np.zeros_like(gdf.values))
+    gdf['geometry'] = geo
+    gdf['AREA'] = [areas[_id] for _id in gdf.index]
+    gdf['STANAME'] = [names[_id] for _id in gdf.index]
+    cols = [str(c) for c in gdf.columns]
+    gdf.columns = cols
+    gdf.to_file(shp_file, crs='epsg:4326')
 
 
 def sustainability_trends(q_data, cc_data):
@@ -434,11 +357,12 @@ def sustainability_trends(q_data, cc_data):
     geo = [x for x in cdf['geometry']]
     sdf = gpd.GeoDataFrame(data=[0 for _ in cdf['median']], geometry=geo)
     sdf.columns = ['sign', 'geometry']
-    sdf['sign'][(qdf['median'] < 0) & (cdf['median'] > 0)] = -1
-    sdf['sign'][(qdf['median'] > 0) & (cdf['median'] < 0)] = 1
-    sdf['sign'][(qdf['median'] > 0) & (cdf['median'] > 0)] = 2
-    sdf['sign'][(qdf['median'] < 0) & (cdf['median'] < 0)] = -2
-    _file = os.path.join(os.path.dirname(q_data), 'sustainability.shp')
+    sdf['sign'][(qdf['median'] < 0) & (cdf['median'] > 0)] = 'neg q, pos cc'
+    sdf['sign'][(qdf['median'] > 0) & (cdf['median'] < 0)] = 'pos q, neg cc'
+    sdf['sign'][(qdf['median'] > 0) & (cdf['median'] > 0)] = 'pos q, pos cc'
+    sdf['sign'][(qdf['median'] < 0) & (cdf['median'] < 0)] = 'neg q, neg cc'
+    sdf['AREA'] = cdf['AREA']
+    _file = os.path.join(os.path.dirname(q_data), 'sustainability_qres.shp')
     sdf.to_file(_file, crs='EPSG:4326')
 
 
@@ -461,16 +385,18 @@ if __name__ == '__main__':
 
     out_shp = os.path.join(root, 'gridmet_analysis', 'fig_shapes')
     figs = os.path.join(root, 'gridmet_analysis', 'figures', 'trends_maps')
-    # monthly_trends_lr(lr_, inshp, study_area_, figs, glob='trends_', summarize=True,
-    #                   out_shape=out_shp, bayes=False)
+    # glb = 'mk_trends_'
+    # glb = 'trends_'
+    glb = 'bayes_trend_'
+    # monthly_trends(lr_, inshp, glob=glb, out_shape=out_shp, bayes=True)
 
-    q_trend = os.path.join(root, 'gridmet_analysis', 'fig_shapes', 'time_q_median.shp')
-    cc_trend = os.path.join(root, 'gridmet_analysis', 'fig_shapes', 'time_cc_median.shp')
-    sustainability_trends(q_trend, cc_trend)
-
+    glb = 'bayes_cc_qres'
     figs = os.path.join(root, 'gridmet_analysis', 'figures', 'cc_qres_maps')
-    # monthly_cc_qres_lr(lr_, inshp, study_area_, figs, glob='qres_cc_', summarize=True, out_shape=out_shp, bayes=True)
-    # monthly_cc_qres_lr(lr_, inshp, study_area_, figs, glob='qres_ccres_',
-    #                    summarize=True, out_shape=out_shp, bayes=False)
+    monthly_cc_qres(lr_, inshp, glob=glb, out_shape=out_shp, bayes=True)
+
+    q_trend = os.path.join(root, 'gridmet_analysis', 'fig_shapes', 'time_qres_median_bayes.shp')
+    cc_trend = os.path.join(root, 'gridmet_analysis', 'fig_shapes', 'time_cc_median_bayes.shp')
+    # sustainability_trends(q_trend, cc_trend)
+
 
 # ========================= EOF ====================================================================

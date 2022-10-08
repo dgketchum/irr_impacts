@@ -265,9 +265,9 @@ def count_coincident_trends_impacts(metadata):
 
 
 if __name__ == '__main__':
-    rt = '/media/research/IrrigationGIS/gages/station_metadata'
+    rt = '/media/research/IrrigationGIS/gages/gridmet_analysis'
     if not os.path.exists(rt):
-        rt = '/home/dgketchum/data/IrrigationGIS/gages/station_metadata'
+        rt = '/home/dgketchum/data/IrrigationGIS/gages/gridmet_analysis'
 
     climr = os.path.join(rt, 'basin_climate_response_all.json')
     bayes_ = os.path.join(rt, 'cci_impacted_bayes_ccerr_0.233_qreserr_0.17.json')
