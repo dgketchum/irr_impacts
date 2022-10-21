@@ -1,4 +1,9 @@
 import os
+import pandas as pd
+import numpy as np
+from state_county_names_codes import county_code_name, state_name_abbreviation, state_county_code
+
+TARGET_STATES = ['AZ', 'CA', 'CO', 'ID', 'MT', 'NM', 'NV', 'OR', 'UT', 'WA', 'WY']
 
 
 def included_counties():
@@ -227,5 +232,39 @@ def included_counties():
 
 
 if __name__ == '__main__':
-    pass
+    file_ = '/home/dgketchum/Downloads/bae_gdp_county.csv'
+    df = pd.read_csv(file_, header=0)
+    df = df[['name', 'prod']]
+    st_nm_abrv = {v: k for k, v in state_name_abbreviation().items()}
+    state_names = [k for k, v in st_nm_abrv.items()]
+    st_co_name_code = {k: {vv['NAME']: vv['GEOID'] for kk, vv in v.items()} for k, v in state_county_code().items()}
+    inlc_co = included_counties()
+    state, name = None, None
+    tdf = pd.DataFrame(columns=['name', 'prod', 'st'])
+    for i, r in df.iterrows():
+        if np.isnan(r['prod']):
+            nanrow = True
+            continue
+        name = r['name']
+        if name in state_names and nanrow:
+            state = name
+            state_abv = st_nm_abrv[state]
+            nanrow = False
+            continue
+        if state_abv in TARGET_STATES:
+            try:
+                code = st_co_name_code[state_abv][name]
+            except KeyError:
+                print(state_abv, name)
+                if state_abv == 'CO':
+                    a = 1
+            if code in inlc_co:
+                tdf.loc[code] = {'name': name, 'prod': r['prod'], 'st': state}
+        pass
+
+    cos = included_counties()
+    names = [v for k, v in county_code_name().items() if k in cos]
+
+    print(tdf['prod'].sum())
+
 # ========================= EOF ====================================================================
