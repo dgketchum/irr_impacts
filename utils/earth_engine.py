@@ -2,28 +2,17 @@ import os
 import sys
 from calendar import monthrange
 
-import fiona
-from pandas import concat, to_datetime
 import ee
-from utils.earth_engine_assets import is_authorized
-import numpy as np
-from pandas import read_csv
-
-is_authorized()
 
 sys.path.insert(0, os.path.abspath('../..'))
 sys.setrecursionlimit(5000)
 
 RF_ASSET = 'projects/ee-dgketchum/assets/IrrMapper/IrrMapperComp'
-# RF_ASSET = 'users/dgketchum/IrrMapper/IrrMapper_sw'
 BASINS = 'users/dgketchum/gages/gage_basins'
-COUNTIES = 'users/dgketchum/boundaries/western_11_co_study'
 UMRB_CLIP = 'users/dgketchum/boundaries/umrb_ylstn_clip'
 CMBRB_CLIP = 'users/dgketchum/boundaries/CMB_RB_CLIP'
 CORB_CLIP = 'users/dgketchum/boundaries/CO_RB'
-
-FLUX_SHP = '/media/research/IrrigationGIS/ameriflux/select_flux_sites/select_flux_sites_impacts_ECcorrrected.shp'
-FLUX_DIR = '/media/research/IrrigationGIS/ameriflux/ec_data'
+BUCKET = 'wudr'
 
 ET_ASSET = ee.ImageCollection('users/dgketchum/ssebop/cmbrb')
 
@@ -40,75 +29,8 @@ NAVAJO = ee.Geometry.Polygon([[-108.50192867920967, 36.38701227276218],
                               [-108.50192867920967, 36.38701227276218]])
 
 
-def extract_terraclimate_monthly(tables, years, description):
-    fc = ee.FeatureCollection(tables)
-    for yr in years:
-        for m in range(1, 13):
-            m_str, m_str_next = str(m).rjust(2, '0'), str(m + 1).rjust(2, '0')
-            if m == 12:
-                dataset = ee.ImageCollection('IDAHO_EPSCOR/TERRACLIMATE').filterDate('{}-{}-01'.format(yr, m_str),
-                                                                                     '{}-{}-31'.format(yr, m_str))
-            else:
-                dataset = ee.ImageCollection('IDAHO_EPSCOR/TERRACLIMATE').filterDate('{}-{}-01'.format(yr, m_str),
-                                                                                     '{}-{}-01'.format(yr, m_str_next))
-            area = ee.Image.pixelArea()
-            pet = dataset.select('pet').first().multiply(0.1).multiply(area).rename('etr')
-            soil = dataset.select('soil').first().multiply(0.1).multiply(area).rename('sm')
-            ppt = dataset.select('pr').first().multiply(area).rename('ppt')
-
-            bands = pet.addBands([soil, ppt])
-            data = bands.reduceRegions(collection=fc,
-                                       reducer=ee.Reducer.sum(),
-                                       scale=1000)
-
-            out_desc = '{}_{}_{}'.format(description, yr, m_str)
-            task = ee.batch.Export.table.toCloudStorage(
-                data,
-                description=out_desc,
-                bucket='wudr',
-                fileNamePrefix=out_desc,
-                fileFormat='CSV',
-                selectors=['STAID', 'etr', 'sm', 'ppt'])
-
-            task.start()
-            print(out_desc)
-
-
-def extract_gridmet_monthly(tables, years, description):
-    fc = ee.FeatureCollection(tables)
-    for yr in years:
-        for m in range(1, 13):
-            m_str, m_str_next = str(m).rjust(2, '0'), str(m + 1).rjust(2, '0')
-            if m == 12:
-                dataset = ee.ImageCollection('IDAHO_EPSCOR/GRIDMET').filterDate('{}-{}-01'.format(yr, m_str),
-                                                                                '{}-{}-31'.format(yr, m_str))
-            else:
-                dataset = ee.ImageCollection('IDAHO_EPSCOR/GRIDMET').filterDate('{}-{}-01'.format(yr, m_str),
-                                                                                '{}-{}-01'.format(yr, m_str_next))
-            area = ee.Image.pixelArea()
-            pet = dataset.select('etr').sum().multiply(area).rename('etr')
-            ppt = dataset.select('pr').sum().multiply(area).rename('ppt')
-
-            bands = pet.addBands([ppt])
-            data = bands.reduceRegions(collection=fc,
-                                       reducer=ee.Reducer.sum(),
-                                       scale=1000)
-
-            out_desc = '{}_{}_{}'.format(description, yr, m_str)
-            task = ee.batch.Export.table.toCloudStorage(
-                data,
-                description=out_desc,
-                bucket='wudr',
-                fileNamePrefix=out_desc,
-                fileFormat='CSV',
-                selectors=['STAID', 'etr', 'ppt'])
-
-            task.start()
-            print(out_desc)
-
-
-def extract_gridded_data(tables, years=None, description=None,
-                         min_years=0, basins=True):
+def export_gridded_data(tables, years=None, description=None,
+                        min_years=0, basins=True):
     """
     Reduce Regions, i.e. zonal stats: takes a statistic from a raster within the bounds of a vector.
     Use this to get e.g. irrigated area within a county, HUC, or state. This can mask based on Crop Data Layer,
@@ -207,7 +129,7 @@ def extract_gridded_data(tables, years=None, description=None,
             task = ee.batch.Export.table.toCloudStorage(
                 data,
                 description=out_desc,
-                bucket='wudr',
+                bucket=BUCKET,
                 fileNamePrefix=out_desc,
                 fileFormat='CSV',
                 selectors=select_)
@@ -216,7 +138,7 @@ def extract_gridded_data(tables, years=None, description=None,
 
 
 def export_et_images(polygon, tables, years=None, description=None,
-                     min_years=0, basins=True):
+                     min_years=0):
     """
     Reduce Regions, i.e. zonal stats: takes a statistic from a raster within the bounds of a vector.
     Use this to get e.g. irrigated area within a county, HUC, or state. This can mask based on Crop Data Layer,
@@ -300,7 +222,7 @@ def export_et_images(polygon, tables, years=None, description=None,
                 task = ee.batch.Export.image.toCloudStorage(
                     var_,
                     description=out_desc,
-                    bucket='wudr',
+                    bucket=BUCKET,
                     fileNamePrefix=out_desc,
                     region=polygon,
                     scale=30,
@@ -315,7 +237,7 @@ def export_naip(region):
     task = ee.batch.Export.image.toCloudStorage(
         dataset,
         description='NAIP_Navajo',
-        bucket='wudr',
+        bucket=BUCKET,
         fileNamePrefix='NAIP_Navajo',
         region=region,
         scale=30,
@@ -324,98 +246,17 @@ def export_naip(region):
     task.start()
 
 
-def extract_flux_stations(flux_dir, shp, pixels=1):
-    with fiona.open(shp, 'r') as src:
-        dct = {}
-        for feat in src:
-            p = feat['properties']
-            if p['basin'] == 'umrb':
-                dct[p['site_id']] = p
-                dct[p['site_id']]['clip_feat'] = UMRB_CLIP
-                dct[p['site_id']]['geo'] = feat['geometry']['coordinates']
-            elif p['basin'] == 'cmbrb':
-                dct[p['site_id']] = p
-                dct[p['site_id']]['clip_feat'] = CMBRB_CLIP
-                dct[p['site_id']]['geo'] = feat['geometry']['coordinates']
-            elif p['basin'] == 'corb':
-                dct[p['site_id']] = p
-                dct[p['site_id']]['clip_feat'] = CORB_CLIP
-                dct[p['site_id']]['geo'] = feat['geometry']['coordinates']
-            else:
-                raise ValueError('invalid collection')
-
-    et_comp_all, adf = [], None
-    first = True
-    for site, props in dct.items():
-
-        if props['basin'] == 'cmbrb':
-            annual_coll = ee.ImageCollection('users/dgketchum/ssebop/cmbrb').merge(
-                ee.ImageCollection('users/hoylmanecohydro2/ssebop/cmbrb'))
-        elif props['basin'] == 'umrb':
-            annual_coll = ee.ImageCollection('projects/usgs-ssebop/et/umrb')
-        elif props['basin'] == 'corb':
-            annual_coll = ee.ImageCollection('users/kelseyjencso/ssebop/corb').merge(
-                ee.ImageCollection('users/dgketchum/ssebop/corb')).merge(
-                ee.ImageCollection('users/dpendergraph/ssebop/corb'))
-        else:
-            raise ValueError('invalid collection')
-
-        _file = '{}_monthly_data.csv'.format(props['site_id'])
-        csv = os.path.join(flux_dir, 'monthly', _file)
-        df = read_csv(csv, infer_datetime_format=True, parse_dates=True)
-        df = df[df['ET_corr'].notna()]
-        et_ssebop = []
-        dates = [('{}-01'.format(x[:7]), x) for x in df.date.values]
-        df['date'] = to_datetime(df['date'])
-        df['site'] = [site for x in range(len(dates))]
-        et_corr = [x for x in df['ET_corr'].values]
-
-        geo = ee.Geometry.Point(props['geo'][0], props['geo'][1]).buffer(pixels * 30.0)
-
-        for et_ec, (s, e) in zip(et_corr, dates):
-            et_coll = annual_coll.filter(ee.Filter.date(s, e))
-            et = et_coll.sum().multiply(0.01)
-
-            data = et.reduceRegion(geometry=geo,
-                                   reducer=ee.Reducer.mean(),
-                                   scale=30)
-            try:
-                ee_obj = data.getInfo()
-                et_extract = ee_obj['et']
-                if et_extract is None:
-                    et_extract = np.nan
-            except (ee.EEException, KeyError):
-                et_extract = np.nan
-
-            et_ssebop.append(et_extract)
-            if not np.any(np.isnan([et_ec, et_extract])):
-                et_comp_all.append((et_ec, et_extract))
-
-            # print('{}: {:.2f} et, {:.2f} ssebop, {}'.format(site, et_ec, et_extract, s))
-
-        df['et_ssebop'] = et_ssebop
-        if first:
-            adf = df
-            first = False
-        else:
-            adf = concat([df, adf], axis=0, ignore_index=True)
-        _file = '{}_monthly_data_ee.csv'.format(props['site_id'])
-        csv = os.path.join(flux_dir, 'monthly', _file)
-        df.to_csv(csv)
-
-    adf.to_csv(os.path.join(flux_dir, 'ec_ssebop_comp.csv'))
+def is_authorized():
+    try:
+        ee.Initialize()  # investigate (use_cloud_api=True)
+        print('Authorized')
+        return True
+    except Exception as e:
+        print('You are not authorized: {}'.format(e))
+        return False
 
 
 if __name__ == '__main__':
-    # export_et_images(NAVAJO, BASINS, years=[i for i in range(1986, 2022)],
-    #                  description='Navajo', min_years=5,
-    #                  basins=True)
+    is_authorized()
 
-    export_naip(NAVAJO)
-
-    # export_et_images(BASINS, years=[i for i in range(1991, 2021)],
-    #                  description='DNRC_Basins_30SSEPT2022', min_years=5,
-    #                  basins=True)
-
-    # extract_flux_stations(FLUX_DIR, FLUX_SHP, pixels=10)
 # ========================= EOF ================================================================================
