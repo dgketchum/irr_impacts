@@ -1,12 +1,10 @@
 import os
 import json
-import datetime
 
-from pandas import DataFrame
 import numpy as np
 import ee
 
-from station_lists import STATION_BASINS
+from gage_lists import STATION_BASINS
 
 ee.Initialize()
 BOUNDARIES = 'users/dgketchum/boundaries'
