@@ -36,12 +36,13 @@ NAVAJO = ee.Geometry.Polygon([[-108.50192867920967, 36.38701227276218],
 TEST_POINT = ee.Geometry.Point(-111.19206055457778, 45.587493372544984)
 
 
-def export_gridded_data(tables, bucket, years, description, min_years=0, debug=False):
+def export_gridded_data(tables, bucket, years, description, features=None, min_years=0, debug=False):
     """
     Reduce Regions, i.e. zonal stats: takes a statistic from a raster within the bounds of a vector.
     Use this to get e.g. irrigated area within a county, HUC, or state. This can mask based on Crop Data Layer,
     and can mask data where the sum of irrigated years is less than min_years. This will output a .csv to
     GCS wudr bucket.
+    :param features:
     :param bucket:
     :param tables: vector data over which to take raster statistics
     :param years: years over which to run the stats
@@ -51,6 +52,8 @@ def export_gridded_data(tables, bucket, years, description, min_years=0, debug=F
     :return:
     """
     fc = ee.FeatureCollection(tables)
+    if features:
+        fc = fc.filter(ee.Filter.inList('STAID', features))
     cmb_clip = ee.FeatureCollection(CMBRB_CLIP)
     umrb_clip = ee.FeatureCollection(UMRB_CLIP)
     corb_clip = ee.FeatureCollection(CORB_CLIP)

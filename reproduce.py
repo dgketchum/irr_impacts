@@ -1,4 +1,7 @@
 import os
+import json
+
+import numpy as np
 
 from gage_data import get_station_daily_data, get_station_daterange_data
 from gridded_data import export_gridded_data
@@ -34,19 +37,21 @@ def get_gage_data():
 basins = 'users/dgketchum/gages/gage_basins'
 bucket = 'wudr'
 desc = 'export_ee_gridded_21OCT2022'
+with open(gages_metadata, 'r') as fp:
+    stations = json.load(fp)
 
 
 def get_gridded_data():
     # extract SSEBop ET, irrigation status, and TerraClimate at monthly time-step from Earth Engine
     # precede gage data by five years so climate-flow correlation can look back 60 months before first discharge month
-    extract_years = list(range(1982, 1985))
-    export_gridded_data(basins, bucket, extract_years, min_years=5, description=desc, debug=False)
+    extract_years = np.arange(start_yr - 5, end_yr + 1)
+    basin_ids = [station_id for station_id, _ in stations.items()]
+    export_gridded_data(basins, bucket, extract_years, features=basin_ids, min_years=5, description=desc, debug=False)
     # transfer gridded data from GCS bucket to local system
 
 
 extracts = os.path.join(root, 'ee_exports', 'IrrMapperComp_21DEC2021')
-# data_tables = os.path.join(root, 'compiled_tables', 'IrrMapperComp_21DEC2021')
-data_tables = os.path.join(old_root, 'merged_q_ee', 'monthly_ssebop_tc_gm_q_Comp_21DEC2021_unfiltered_q')
+data_tables = os.path.join(root, 'compiled_tables', 'IrrMapperComp_21DEC2021')
 
 
 def build_tables():
@@ -109,7 +114,7 @@ def irrigation_impacts():
 
 if __name__ == '__main__':
     # get_gage_data()
-    get_gridded_data()
-    # build_tables()
-    climate_flow_correlations()
+    # get_gridded_data()
+    build_tables()
+    # climate_flow_correlations()
 # ========================= EOF ====================================================================
