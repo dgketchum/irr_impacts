@@ -1,14 +1,15 @@
 import os
-from subprocess import check_call
 
-from pandas import Series, to_datetime, DatetimeIndex, read_csv, date_range, isna
+from pandas import Series, to_datetime, DatetimeIndex, date_range, isna
 import numpy as np
 import rasterio
 from PIL import Image, ImageDraw, ImageFont
+import matplotlib
 import matplotlib.pyplot as plt
-from matplotlib import animation
+import matplotlib.dates as mdates
+from matplotlib.animation import FuncAnimation
 
-VIRIDIS = np.loadtxt('vir.txt').astype(int)
+from gage_data import hydrograph
 
 
 def build_et_gif(_dir, jpeg, gif, background=None, overwrite=False, freq='monthly', out_series=None):
@@ -74,8 +75,9 @@ def build_et_gif(_dir, jpeg, gif, background=None, overwrite=False, freq='monthl
                 img = Image.fromarray(rgba)
 
                 draw = ImageDraw.Draw(img)
-                font = ImageFont.truetype("arial.ttf", 60, encoding="unic")
-                draw.text((data.shape[2] * 0.1, data.shape[1] * 0.85), u"{}".format(y), font=font)
+                font = ImageFont.truetype('Ubuntu-R.ttf', 60, encoding='unic')
+                draw.text((data.shape[2] * 0.1, data.shape[1] * 0.85), u'{}'.format(y), font=font)
+                img.thumbnail((int(img.height * 5 / 7), int(img.width * 5 / 7)))
                 img.save(out_j)
                 jp_l.append(out_j)
                 print(os.path.basename(out_j))
@@ -98,13 +100,15 @@ def build_et_gif(_dir, jpeg, gif, background=None, overwrite=False, freq='monthl
     im1.save(gif, save_all=True, append_images=frames, duration=durations)
 
 
-def build_irr_gif(_dir, jpeg, gif, theme='cummulative', background=None, overwrite=False):
+def build_irr_gif(_dir, jpeg, gif, theme='cumulative', background=None, overwrite=False, paste_cmap=None):
     l = [os.path.join(_dir, x) for x in os.listdir(_dir) if x.endswith('.tif')]
     l = sorted(l, key=lambda n: int(os.path.basename(n).split('.')[0].split('_')[2]), reverse=False)
     jp_l = []
-    max_cummulative = 36.
+    max_cumulative = 36.
     first = True
     years = [y for y in range(1986, 2022)]
+    if paste_cmap:
+        paste_img = Image.open(paste_cmap)
     for f, yr in zip(l, years):
         out_j = os.path.join(jpeg, os.path.basename(f).replace('.tif', '.png'))
         if os.path.exists(out_j) and not overwrite:
@@ -117,7 +121,7 @@ def build_irr_gif(_dir, jpeg, gif, theme='cummulative', background=None, overwri
                 data = src.read()
                 data[data > 0] = 1
                 data = data.astype(np.uint8)
-                max_cummulative = np.ones_like(data) * max_cummulative
+                max_cumulative = np.ones_like(data) * max_cumulative
 
                 if background:
                     with rasterio.open(background, 'r') as bck:
@@ -129,16 +133,16 @@ def build_irr_gif(_dir, jpeg, gif, theme='cummulative', background=None, overwri
                 tif = src.read()
                 tif[tif > 0] = 1
                 tif = tif.astype(np.uint8)
-                if theme == 'cummulative':
+                if theme == 'cumulative':
                     data = np.append(data, tif, axis=0)
 
             data[np.isnan(data)] = 0.0
             data[data < 0] = 0.0
 
             zeros = np.array(data[-1, :, :] == 0)
-            if theme == 'cummulative':
+            if theme == 'cumulative':
                 rl_sum = data.sum(axis=0)
-                arr = rl_sum / max_cummulative
+                arr = rl_sum / max_cumulative
 
             cm = plt.get_cmap('jet_r')
             colored_image = cm(arr)[0, :, :, :]
@@ -153,9 +157,18 @@ def build_irr_gif(_dir, jpeg, gif, theme='cummulative', background=None, overwri
                 img = Image.fromarray(rgba)
                 img.info['transparency'] = 0
 
+            if paste_cmap:
+                ratio = 1 / 4.
+                h = ratio * img.size[0]
+                w = paste_img.size[1] * (h / paste_img.size[0])
+                paste_img.thumbnail((h, w))
+                img.paste(paste_img, (int(data.shape[2] * 0.05), int(data.shape[1] * 0.75)))
+
             draw = ImageDraw.Draw(img)
-            font = ImageFont.truetype("arial.ttf", 60, encoding="unic")
-            draw.text((data.shape[2] * 0.1, data.shape[1] * 0.85), u"{}".format(yr), font=font)
+            font = ImageFont.truetype('Ubuntu-R.ttf', size=70, encoding='unic')
+            draw.text((data.shape[2] * 0.135, data.shape[1] * 0.77), u'{}'.format(yr),
+                      font=font, fill=(0, 0, 0, 255))
+
             img.save(out_j)
             jp_l.append(out_j)
             print('{} to png'.format(os.path.basename(out_j)))
@@ -173,52 +186,106 @@ def build_irr_gif(_dir, jpeg, gif, theme='cummulative', background=None, overwri
             first = False
         else:
             frames.append(gen_frame(f))
-    durations = [300 for _ in range(len(frames))] + [7000]
+    durations = [200 for _ in range(len(frames))] + [3000]
     im1.save(gif, save_all=True, append_images=frames, loop=5, duration=durations)
 
 
-def et_time_series(csv, gif):
-    series = read_csv(csv, index_col=0, parse_dates=True, infer_datetime_format=True)
-    idx = date_range(series.index[0], series.index[-1], freq='D')
-    series = series.reindex(idx)
-    series = series.interpolate('linear', limit=32)
-    series = series.fillna(0.0)
-    x = [i for i in range(len(series.index))]
-    y = series.values
-    fig, ax = plt.subplots(1, 1, figsize=(6, 6))
+def et_time_series(csv, mp4, daily_q=None):
+    df = hydrograph(csv)
+    df['cwb'] = df['gm_ppt'] - df['gm_etr']
+    df = df.loc['1991-01-01': '2020-12-31', ['cwb', 'et', 'q']]
 
-    def animate(i):
-        ax.clear()
-        ax.plot(x[:i], y[:i])
-        ax.set_xlim([x[0], x[-1]])
-        ax.set_ylim([1.1 * np.min(y), 1.1 * np.max(y)])
+    idx = date_range(df.index[0], df.index[-1], freq='D')
+    df = df.reindex(idx)
+    df = df.interpolate('linear', limit=32, axis=0)
+    df.loc[isna(df['et']), ['et']] = 0.0
+    if daily_q:
+        q = hydrograph(daily_q).loc['1991-01-31': '2020-12-31']
+        q.drop(columns=['Date'], inplace=True)
 
-    anim = animation.FuncAnimation(fig, animate, frames=len(x) + 1, interval=200, blit=False)
-    plt.show()
+    # log of cfs to cubic meter per month
+    df['q'] = np.log10(q['q'])
+
+    y_lims = df['q'].min(), df['q'].max()
+
+    idx = [to_datetime(i) for i in df.index]
+    cols = list(df.columns)
+    data = df.T.values
+    data[data == 0.] = np.nan
+
+    data = data[-1:, 5000:]
+
+    fig, ax = plt.subplots(nrows=1, ncols=1, frameon=False, figsize=(10, 3))
+
+    lines = []
+    X = [_ for _ in range(data.shape[-1])]
+    for i in range(len(data)):
+        line, = ax.plot(X, data[i], color=None)
+        lines.append(line)
+
+    xfmt = mdates.DateFormatter('%b - %Y')
+
+    def update(ii, *args):
+        for i in range(len(data)):
+            ax.set_ylim(y_lims[0], y_lims[1])
+            ax.xaxis.set_major_formatter(xfmt)
+            ax.xaxis.set_major_locator(mdates.MonthLocator(interval=1))
+
+            if ii < 365:
+                x = [_ for _ in idx[:365]]
+                lines[i].set_xdata(x)
+                yl = list(data[i, :ii + 1]) + [None for _ in range(365)]
+                y = yl[:365]
+                lines[i].set_ydata(y)
+                ax.set_xlim(left=x[0], right=x[-1])
+            else:
+                x = idx[ii - 365: ii + 1]
+                lines[i].set_xdata(x)
+                y = list(data[i, ii - 365:ii + 1])
+                lines[i].set_ydata(y)
+                ax.set_xlim(left=x[0], right=x[-1])
+
+            plt.setp(ax.xaxis.get_majorticklabels(), rotation=45)
+            plt.subplots_adjust(left=0.1, top=0.9, right=0.9, bottom=0.4, hspace=0.5, wspace=0.5)
+            plt.ylabel('log (Q) [cfs]')
+            plt.xlabel('Date')
+
+        return lines
+
+    fig.tight_layout()
+    ani = FuncAnimation(
+        fig, update, interval=10, blit=True, frames=data.shape[1])
+    ani.save(mp4, dpi=300, writer='ffmpeg')
+    # plt.gcf().autofmt_xdate()
+    # plt.show()
 
 
 if __name__ == '__main__':
+    matplotlib.use('TkAgg')
     root = '/media/research/IrrigationGIS/gages/gridmet_analysis'
     if not os.path.exists(root):
         root = '/home/dgketchum/data/IrrigationGIS/gages/gridmet_analysis'
 
     flder = os.path.join(root, 'figures', 'animation')
     _d = os.path.join(flder, 'tif', 'et')
-    # out_jp = os.path.join(flder, 'monthly_et_png')
-    out_jp = os.path.join(flder, 'monthly_et_png')
-    _gif = os.path.join(flder, 'et_monthly.gif')
-    csv_ = os.path.join(flder, 'et_monthly.csv')
 
-    naip = os.path.join(flder, 'NAIP_Bozeman.tif')
-    # build_et_gif(_d, out_jp, _gif, background=naip, overwrite=True, freq='monthly', out_series=csv_)
+    # out_jp = os.path.join(flder, 'monthly_et_png')
+    # _gif = os.path.join(flder, 'et_monthly_small.gif')
+    # # csv_ = os.path.join(flder, 'et_monthly.csv')
+    # naip = os.path.join(flder, 'NAIP_Bozeman.tif')
+    # build_et_gif(_d, out_jp, _gif, background=naip, overwrite=True, freq='monthly')
 
     # _d = os.path.join(flder, 'tif', 'irr_navajo')
-    # out_jp = os.path.join(flder, 'cummulative_irr_navajo')
-    # _gif = os.path.join(flder, 'irr_cummulative_navajo.gif')
+    # out_jp = os.path.join(flder, 'cumulative_irr_navajo')
+    # _gif = os.path.join(flder, 'irr_cumulative_navajo.gif')
 
     # naip = os.path.join(flder, 'NAIP_Navajo.tif')
-    # build_irr_gif(_d, out_jp, _gif, background=naip, overwrite=True)
+    # paste_cmap_ = 'jet_r_ramp.png'
+    # build_irr_gif(_d, out_jp, _gif, background=naip, overwrite=True, paste_cmap=paste_cmap_)
 
-    line_gif = os.path.join(flder, 'et_time_series.gif')
-    et_time_series(csv_, line_gif)
+    csv_ = os.path.join('/media/research/IrrigationGIS/gages/merged_q_ee/'
+                        'monthly_ssebop_tc_gm_q_Comp_21DEC2021/06052500.csv')
+    line_gif = os.path.join(flder, 'et_time_series.mp4')
+    dq = '/media/research/IrrigationGIS/gages/hydrographs/daily_q/06052500.csv'
+    et_time_series(csv_, line_gif, daily_q=dq)
 # ========================= EOF ====================================================================

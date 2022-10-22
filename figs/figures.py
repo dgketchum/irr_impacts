@@ -5,7 +5,7 @@ from itertools import product
 
 import numpy as np
 from scipy.stats.stats import linregress
-from pandas import DataFrame, concat, isna
+from pandas import DataFrame, concat
 
 import fiona
 import geopandas as gpd
@@ -18,9 +18,9 @@ import seaborn as sns
 import arviz as az
 import matplotlib.ticker as ticker
 
-from gage_analysis import EXCLUDE_STATIONS
-from hydrograph import hydrograph
-from figs.regression_figs import plot_regression_from_trace
+from utils.gage_lists import EXCLUDE_STATIONS, VERIFIED_IRRIGATED_HYDROGRAPHS
+from gage_data import hydrograph
+from figs.trace_figs import plot_regression_from_trace
 
 large = 22
 med = 16
@@ -85,7 +85,7 @@ def qres_to_cc_magnitude(_dir, out_fig_dir):
             cc_mag.append(np.log10(np.mean(np.abs(data['cc_data']))))
             qres_mag.append(np.log10(np.mean(np.abs(data['qres_data']))))
 
-    plt.plot([x for x in range(3, 10)], [x for x in range(3, 10)], c='r')
+    plt.plot(np.arange(3, 10), np.arange(3, 10), c='r')
     plt.scatter(qres_mag, cc_mag)
     plt.xlabel('log volume residual flow')
     plt.ylabel('log volume crop consumption')
@@ -94,7 +94,7 @@ def qres_to_cc_magnitude(_dir, out_fig_dir):
 
 def cc_to_q_magnitude(_dir, out_fig_dir):
     ratios = {}
-    for sid in SYSTEM_STATIONS:
+    for sid in VERIFIED_IRRIGATED_HYDROGRAPHS:
         cc, q = np.zeros((12, 1)), np.zeros((12, 1))
         for m in range(1, 13):
             _file = os.path.join(_dir, 'trend_data_{}.json'.format(m))
@@ -104,7 +104,7 @@ def cc_to_q_magnitude(_dir, out_fig_dir):
             data = dct[sid]['{}-{}'.format(m, m)]
             q_ = np.array(data['q_data'])
             q += q_
-            if m in [x for x in range(4, 11)]:
+            if m in np.arange(4, 11):
                 cc_ = np.mean(np.abs(data['cc_data']))
                 cc += cc_
 
@@ -243,7 +243,7 @@ def impact_time_series_bars(sig_stations, basin_designations, figures, min_area=
     if min_area:
         filtered_stations = [k for k, v in stations.items() if v['AREA'] > min_area]
     else:
-        filtered_stations = SELECTED_SYSTEMS
+        filtered_stations = VERIFIED_IRRIGATED_HYDROGRAPHS
 
     for basin, _stations in basins.items():
 
@@ -289,7 +289,7 @@ def impact_time_series_bars(sig_stations, basin_designations, figures, min_area=
             if np.all(slopes == 0.0) or not slopes:
                 continue
             center = dct[x_key]
-            months, locations = [x for x in range(5, 11)], list(np.linspace(h_increment * 0.5, -h_increment * 0.5, 6))
+            months, locations = np.arange(5, 11), list(np.linspace(h_increment * 0.5, -h_increment * 0.5, 6))
             for m, p in zip(months, locations):
                 if m in periods:
                     s = slopes[periods.index(m)]
@@ -308,7 +308,7 @@ def impact_time_series_bars(sig_stations, basin_designations, figures, min_area=
 
         plt.yticks(ytick, ylab)
         # x_tick = list(np.linspace(5.5, 11.5, 6))
-        # x_tick_lab = [x for x in range(5, 11)]
+        # x_tick_lab = np.arange(5, 11)]
         # plt.yticks(ytick, ylab)
         # plt.xticks(x_tick, x_tick_lab)
         plt.xlabel(x_key)
@@ -345,7 +345,7 @@ def trends_panel(irr_impact, clim_flow_d, png, x_err, y_err, filter_json=None):
     clime_slope, resid_slope, clim_r, resid_r = [], [], [], []
     t_cci_r_, t_cci_slope_ = [], []
     t_q_r_, t_q_slope_ = [], []
-    years = np.array([x for x in range(1991, 2021)])
+    years = np.arange(1991, 2022)
 
     clim_slope_insig, resid_slope_insig, t_cci_slope_insig, t_q_slope_insig = [], [], [], []
     for s, d in clim_flow_d.items():

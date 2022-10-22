@@ -6,9 +6,8 @@ from matplotlib import rcParams, pyplot as plt
 from pandas import read_csv
 import numpy as np
 
-from hydrograph import hydrograph
-from utils.county_list import included_counties
-from utils.state_county_names_codes import state_fips_code, state_county_code
+from gage_data import hydrograph
+from utils.geo_codes import state_fips_code, state_county_code, included_counties
 
 
 def plot_clim_q_resid(q, ai, clim_line, desc_str, years, cc, resid, resid_line, fig_d, cci_per, flow_per):
@@ -72,7 +71,7 @@ def nass_irrmapper_climate(irr_dir, nass_c, fig_dir, countywise=True):
     ndf.index = ndf['GEOID']
 
     m_start, m_end = 10, 9
-    years = [x for x in range(1997, 2017)]
+    years = np.arange(1997, 2017)
     clim_dates = [(date(y, 4, 1),  date(y, 9, monthrange(y, m_end)[1])) for y in years]
     cc_dates = [(date(y, 5, 1), date(y, 10, 31)) for y in years]
     irr_dates = [(date(y, 7, 1), date(y, 7, 31)) for y in years]
