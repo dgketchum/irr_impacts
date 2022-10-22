@@ -4,13 +4,9 @@ import json
 import numpy as np
 import ee
 
-from gage_lists import STATION_BASINS
+from utils.gage_lists import STATION_BASINS
 
 ee.Initialize()
-BOUNDARIES = 'users/dgketchum/boundaries'
-
-TARGET_STATES = ['AZ', 'CA', 'CO', 'ID', 'MT', 'NM', 'NV', 'OR', 'UT', 'WA', 'WY']
-E_STATES = ['ND', 'SD', 'NE', 'KS', 'OK', 'TX']
 
 BASIN = ['users/dgketchum/boundaries/umrb_ylstn_clip',
          'users/dgketchum/boundaries/CMB_RB_CLIP',
@@ -33,6 +29,10 @@ BASIN_F1 = {'missouri': 0.8985,
 BASIN_CC_ERR = {'missouri': {'rmse': 0.19, 'bias': 0.06},
                 'colorado': {'rmse': 0.28, 'bias': -0.14},
                 'columbia': {'rmse': 0.23, 'bias': -0.02}}
+
+QRES_ERR = 0.174
+PPT_ERR = 0.091
+ETR_ERR = 0.083
 
 
 def confusion(irr_labels, unirr_labels, irr_image, unirr_image, sid, yr, clip=False):
@@ -185,16 +185,5 @@ def basin_accuracy(_dir, all_stations, out_json):
 
 
 if __name__ == '__main__':
-    root = '/media/research/IrrigationGIS'
-    if not os.path.exists(root):
-        root = '/home/dgketchum/data/IrrigationGIS'
-
-    # j = os.path.join(root, 'gages', 'watershed_irr_accuracy', 'watershed_irr_training_years.json')
-    j_out = os.path.join(root, 'gages', 'gridmet_analysis', 'watershed_accuracy.json')
-    j_meta = os.path.join(root, 'gages', 'gridmet_analysis', 'station_metadata.json')
-    # j = os.path.join(root, 'gages', 'watershed_irr_accuracy', 'superbasin_irr_training_years.json')
-    acc = os.path.join(root, 'gages', 'watershed_irr_accuracy')
-    # accuracy_by_watershed(j, out_acc, super_basin=True)
-
-    basin_accuracy(acc, j_meta, j_out)
+    pass
 # ========================= EOF ====================================================================
