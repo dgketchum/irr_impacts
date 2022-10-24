@@ -41,8 +41,6 @@ def hydrograph(c):
 
 
 def get_station_daily_data(start, end, stations, out_dir, plot_dir=None, overwrite=False):
-    ct = 0
-
     dt_range = pd.date_range(start, end, freq='D')
     ct_df = pd.DataFrame(index=pd.DatetimeIndex(dt_range), data=np.arange(len(dt_range)))
     ct_df = ct_df.groupby([ct_df.index.year, ct_df.index.month]).agg('count')
@@ -59,13 +57,15 @@ def get_station_daily_data(start, end, stations, out_dir, plot_dir=None, overwri
             continue
 
         df = nwis.get_record(sites=sid, service='dv', start=start, end=end, parameterCd='00060')
+        df = df.tz_convert(None)
+
         if df.empty:
             print(sid, ' is empty')
             continue
 
         q_col = '00060_Mean'
         df = df.rename(columns={q_col: 'q'})
-        df = df.reindex(pd.DatetimeIndex(dt_range, tz='UTC'), axis=0)
+        df = df.reindex(pd.DatetimeIndex(dt_range), axis=0)
 
         df['q'] = np.where(df['q'] < 0, np.zeros_like(df['q']) * np.nan, df['q'])
         nan_count = np.count_nonzero(np.isnan(df['q']))
@@ -77,23 +77,21 @@ def get_station_daily_data(start, end, stations, out_dir, plot_dir=None, overwri
             record_ct = df['q'].groupby([df.index.year, df.index.month]).agg('count')
             records = [r for i, r in record_ct.items()]
             mask = [int(a == b) for a, b in zip(records, counts)]
-            print('missing {} months'.format(len(counts) - sum(mask)))
-            mask = pd.Series(index=pd.DatetimeIndex(pd.date_range(start, end, freq='M'), tz='UTC'),
+            missing_mo = len(counts) - sum(mask)
+            mask = pd.Series(index=pd.DatetimeIndex(pd.date_range(start, end, freq='M')),
                              data=mask).resample('D').bfill()
             df = df.loc[mask[mask == 1].index, 'q']
+            print('write {:.1f}'.format(data['AREA']), sid, 'missing {} months'.format(missing_mo), data['STANAME'])
         else:
             df = df['q']
+            print('write {:.1f}'.format(data['AREA']), sid, data['STANAME'])
 
         df.to_csv(out_file)
-        ct += 1
-        print(ct, 'write {:.1f}'.format(data['AREA']),
-              data['STANAME'])
 
         if plot_dir:
             plt.plot(df.index, df)
             plt.savefig(os.path.join(plot_dir, '{}.png'.format(sid)))
             plt.close()
-
 
 
 def get_station_daterange_data(daily_q_dir, aggregate_q_dir, resample_freq='A', convert_to_mcube=True, plot_dir=None):
