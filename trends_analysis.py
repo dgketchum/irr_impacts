@@ -10,8 +10,11 @@ import numpy as np
 from scipy.stats.stats import linregress
 import pymannkendall as mk
 
-from utils.gage_lists import VERIFIED_IRRIGATED_HYDROGRAPHS
-from utils.gage_lists import STATION_BASINS
+import matplotlib.pyplot as plt
+
+import warnings
+warnings.simplefilter(action='ignore', category=FutureWarning)
+
 
 from utils.uncertainty import BASIN_CC_ERR, BASIN_F1, QRES_ERR, PPT_ERR, ETR_ERR
 
@@ -24,65 +27,101 @@ SAMPLE_KWARGS = {'draws': 1000,
                  'return_inferencedata': False}
 
 
-def initial_trends_test(in_json, out_json):
+def initial_trends_test(in_json, out_json, month, plot_dir=None):
     with open(in_json, 'r') as f:
         stations = json.load(f)
 
-    diter = [[(kk, k, r) for k, r in vv.items() if isinstance(r, dict)] for kk, vv in stations.items()]
-    diter = [i for ll in diter for i in ll]
+    regressions, counts = {}, None
 
-    regressions = {}
+    for station, records in stations.items():
 
-    trc_subdirs = ['time_cc', 'time_qres', 'time_ai', 'time_aim', 'time_q', 'time_etr', 'time_ppt', 'time_irr']
-    counts = {k: [0, 0] for k in trc_subdirs}
-
-    deltas = {'time_ai': [], 'time_q': [], 'time_cc': []}
-
-    for station, period, records in diter:
-        if station not in VERIFIED_IRRIGATED_HYDROGRAPHS:
+        try:
+            q = np.array(records['q'])
+        except KeyError:
             continue
 
-        q = np.array(records['q'])
         qres = np.array(records['qres'])
         ai = np.array(records['ai'])
 
         cc = np.array(records['cc_month'])
         aim = np.array(records['ai_month'])
-        etr = np.array(records['etr_month'])
-        ppt = np.array(records['ppt_month'])
+        etr_m = np.array(records['etr_month'])
+        etr = np.array(records['etr'])
+        ppt_m = np.array(records['ppt_month'])
+        ppt = np.array(records['ppt'])
         irr = np.array(records['irr'])
 
-        years = (np.linspace(0, 1, len(qres)) + 0.001) + 0.001
+        years = np.array(records['years'])
 
-        regression_combs = [(years, cc),
-                            (years, qres),  # deceptive as this is only looking at same-month cc and q
-                            (years, ai),
-                            (years, aim),
-                            (years, q),
-                            (years, etr),
-                            (years, ppt),
-                            (years, irr)]
+        regression_combs = [(years, cc, 'time_cc'),
+                            (years, qres, 'time_qres'),
+                            (years, ai, 'time_ai'),
+                            (years, aim, 'time_aim'),
+                            (years, q, 'time_q'),
+                            (years, etr, 'time_etr'),
+                            (years, ppt, 'time_ppt'),
+                            (years, etr_m, 'time_etrm'),
+                            (years, ppt_m, 'time_pptm'),
+                            (years, irr, 'time_irr')]
+
+        if not counts:
+            counts = {k[2]: [0, 0] for k in regression_combs}
 
         regressions[station] = records
 
-        for (x, y), subdir in zip(regression_combs, trc_subdirs):
+        for x, y, subdir in regression_combs:
+
+            if month not in range(4, 11) and subdir in ['time_irr', 'time_cc']:
+                continue
 
             if subdir == 'time_q':
                 mk_test = mk.hamed_rao_modification_test(y)
+                y_pred = x * mk_test.slope + mk_test.intercept
                 mk_slope_std = mk_test.slope * np.std(x) / np.std(y)
-                regressions[station][subdir] = {'test': 'mk',
-                                                'b': mk_slope_std,
-                                                'p': mk_test.p, 'rsq': r}
+                p = mk_test.p
+                if p < 0.05:
+                    if mk_slope_std > 0:
+                        counts[subdir][1] += 1
+                    else:
+                        counts[subdir][0] += 1
+                    regressions[station][subdir] = {'test': 'mk',
+                                                    'b': mk_slope_std,
+                                                    'p': p, 'rsq': r}
 
             else:
                 lr = linregress(x, y)
-                b, inter, r, p = lr.slope, lr.intercept, lr.rvalue, lr.pvalue
-                b = b * np.std(x) / np.std(y)
-                regressions[station][subdir] = {'test': 'ols',
-                                                'b': b, 'p': p, 'rsq': r}
+                b, inter, r, p = lr.slope, lr.intercept.item(), lr.rvalue, lr.pvalue
+                y_pred = x * b + inter
+                b_norm = b * np.std(x) / np.std(y)
+                if p < 0.05:
+                    if b_norm > 0:
+                        counts[subdir][1] += 1
+                    else:
+                        counts[subdir][0] += 1
+                    regressions[station][subdir] = {'test': 'ols',
+                                                    'b': b,
+                                                    'inter': inter,
+                                                    'p': p,
+                                                    'rsq': r,
+                                                    'b_norm': b_norm}
 
-            if subdir in deltas.keys():
-                deltas[subdir].append(b)
+            if plot_dir:
+                d = os.path.join(plot_dir, str(month), subdir)
+
+                if not os.path.exists(d):
+                    os.makedirs(d)
+
+                plt.scatter(x, y)
+                yvar = subdir.split('_')[1]
+                if yvar != 'q':
+                    plt.plot(x, y_pred)
+                plt.xlabel('time')
+                plt.ylabel(yvar)
+                desc = '{} {} {} {} yrs {}'.format(month, station, yvar, len(x), records['STANAME'])
+                plt.suptitle(desc)
+                f = os.path.join(d, '{}.png'.format(desc))
+                plt.savefig(f)
+                plt.close()
 
     print('\n {}'.format(in_json))
     pprint(counts)
@@ -92,7 +131,7 @@ def initial_trends_test(in_json, out_json):
         json.dump(regressions, f, indent=4, sort_keys=False)
 
 
-def run_bayes_regression_trends(traces_dir, stations, multiproc=0, overwrite=False):
+def run_bayes_regression_trends(traces_dir, stations, month, multiproc=0, overwrite=False):
     if not os.path.exists(traces_dir):
         os.makedirs(traces_dir)
 
@@ -108,31 +147,32 @@ def run_bayes_regression_trends(traces_dir, stations, multiproc=0, overwrite=Fal
         if sid in covered:
             continue
 
-        rmse = BASIN_CC_ERR[STATION_BASINS[sid]]['rmse']
-        bias = BASIN_CC_ERR[STATION_BASINS[sid]]['bias']
-        irr_f1 = 1 - BASIN_F1[STATION_BASINS[sid]]
+        rmse = BASIN_CC_ERR[rec['basin']]['rmse']
+        bias = BASIN_CC_ERR[rec['basin']]['bias']
+        irr_f1 = 1 - BASIN_F1[rec['basin']]
         cc_err = (irr_f1 + rmse - abs(bias))
 
         covered.append(sid)
 
         if not multiproc:
-            bayes_linear_regression_trends(sid, rec, float(cc_err), bias, traces_dir, 4, overwrite)
+            bayes_linear_regression_trends(sid, rec, float(cc_err), bias, traces_dir, month, 4, overwrite)
         else:
             pool.apply_async(bayes_linear_regression_trends, args=(sid, rec,
-                                                                   float(cc_err), bias, traces_dir, 1, overwrite))
+                                                                   float(cc_err), bias, traces_dir, month, 1,
+                                                                   overwrite))
 
     if multiproc > 0:
         pool.close()
         pool.join()
 
 
-def bayes_linear_regression_trends(station, records, cc_err, bias, trc_dir, cores, overwrite):
+def bayes_linear_regression_trends(station, records, cc_err, bias, trc_dir, month, cores, overwrite):
     try:
-        cc = np.array(records['cc_data']) * (1 + bias)
-        qres = np.array(records['qres_data'])
-        ai = np.array(records['ai_data'])
-        ppt = np.array(records['ppt_data'])
-        etr = np.array(records['etr_data'])
+        cc = np.array(records['cc_month']) * (1 + bias)
+        qres = np.array(records['qres'])
+        ai = np.array(records['ai'])
+        irr = np.array(records['irr'])
+        years = np.array(records['years'])
 
         sample_kwargs = SAMPLE_KWARGS
         sample_kwargs['cores'] = cores
@@ -143,18 +183,15 @@ def bayes_linear_regression_trends(station, records, cc_err, bias, trc_dir, core
         qres = (qres - qres.min()) / (qres.max() - qres.min()) + 0.001
 
         qres_err = np.ones_like(qres) * QRES_ERR
-        ppt_err = np.ones_like(qres) * PPT_ERR
-        etr_err = np.ones_like(qres) * ETR_ERR
 
-        years = np.linspace(0, 1, len(qres)) + 0.001
+        years = (years - years.min()) / (years.max() - years.min()) + 0.001
 
         regression_combs = [(years, cc, None, cc_err),
                             (years, qres, None, qres_err),
                             (years, ai, None, qres_err),
-                            (years, ppt, None, ppt_err),
-                            (years, etr, None, etr_err)]
+                            (years, irr, None, err)]
 
-        trc_subdirs = ['time_cc', 'time_qres', 'time_ai', 'time_ppt', 'time_etr']
+        trc_subdirs = ['time_cc', 'time_qres', 'time_ai', 'time_irr']
 
         for subdir in trc_subdirs:
             model_dir = os.path.join(trc_dir, subdir)
@@ -163,12 +200,18 @@ def bayes_linear_regression_trends(station, records, cc_err, bias, trc_dir, core
 
         for (x, y, x_err, y_err), subdir in zip(regression_combs, trc_subdirs):
 
-            if int(records['q_window'][0]) not in range(4, 11) and subdir == 'time_cc':
+            if subdir not in records.keys():
+                continue
+            if month not in range(4, 11) and subdir == 'time_cc':
                 continue
             if records[subdir]['p'] > 0.05:
                 continue
 
-            save_model = os.path.join(trc_dir, subdir, '{}_q_{}.model'.format(station, records['q_window']))
+            model_dir = os.path.join(trc_dir, subdir)
+            if len(os.listdir(model_dir)) > 3:
+                continue
+
+            save_model = os.path.join(model_dir, '{}_q_{}.model'.format(station, month))
             save_data = save_model.replace('.model', '.data')
             dct = {'x': list(x),
                    'y': list(y),
@@ -186,24 +229,27 @@ def bayes_linear_regression_trends(station, records, cc_err, bias, trc_dir, core
                 continue
 
             else:
-                print('\n=== sampling {} {} at {}, p = {:.3f}, err: {:.3f}, bias: {} ===='.format(subdir,
-                                                                                                  records['q_window'],
-                                                                                                  station,
-                                                                                                  records[subdir]['p'],
-                                                                                                  cc_err[0],
-                                                                                                  bias))
+                print('\n=== sampling {} len {} {} at {}, p = {:.3f}, err: {:.3f}, bias: {} ===='.format(subdir,
+                                                                                                         len(x),
+                                                                                                         month,
+                                                                                                         station,
+                                                                                                         records[
+                                                                                                             subdir][
+                                                                                                             'p'],
+                                                                                                         cc_err[0],
+                                                                                                         bias))
 
-            model = LinearModel()
+                model = LinearModel()
 
-            model.fit(x, y, y_err, x_err,
-                      save_model=save_model,
-                      sample_kwargs=sample_kwargs)
+                model.fit(x, y, y_err, x_err,
+                          save_model=save_model,
+                          sample_kwargs=sample_kwargs)
 
     except Exception as e:
-        print(e, station, records['q_window'])
+        print(e, station, month)
 
 
-def bayes_write_significant_trends(metadata, trc_dir, out_json, update=False):
+def bayes_write_significant_trends(metadata, trc_dir, out_json, month, update=False):
     with open(metadata, 'r') as f:
         stations = json.load(f)
 
@@ -213,17 +259,12 @@ def bayes_write_significant_trends(metadata, trc_dir, out_json, update=False):
 
     for i, (station, data) in enumerate(stations.items()):
 
-        period = data['q_window']
-
-        out_meta[station] = {period: data}
+        out_meta[station] = {month: data}
 
         for subdir in trc_subdirs:
 
-            if update and subdir in out_meta[station][period].keys():
-                continue
-
             saved_model = os.path.join(trc_dir, subdir,
-                                       '{}_q_{}.model'.format(station, period))
+                                       '{}_q_{}.model'.format(station, month))
 
             if os.path.exists(saved_model):
                 try:
@@ -236,8 +277,6 @@ def bayes_write_significant_trends(metadata, trc_dir, out_json, update=False):
             else:
                 out_meta[station][subdir] = None
                 continue
-
-            chain_idx = [i for i in range(4)]
 
             try:
                 summary = az.summary(trace, hdi_prob=0.95, var_names=['slope'])
@@ -252,7 +291,7 @@ def bayes_write_significant_trends(metadata, trc_dir, out_json, update=False):
                 out_meta[station][subdir] = d
                 if np.sign(d['hdi_2.5%']) == np.sign(d['hdi_97.5%']):
                     print('{}, {}, {} mean: {:.2f}; hdi {:.2f} to {:.2f}'.format(station,
-                                                                                 period,
+                                                                                 month,
                                                                                  subdir,
                                                                                  d['mean'],
                                                                                  d['hdi_2.5%'],
