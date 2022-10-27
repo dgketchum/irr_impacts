@@ -1,17 +1,19 @@
 import pickle
 
 import pymc3 as pm
+from astroML.linear_model import LinearRegression
 
 
-class LinearModel:
+class LinearModel(LinearRegression):
 
     def __init__(self, fit_intercept=False, regularization='none', kwds=None):
         super().__init__(fit_intercept, regularization, kwds)
+        self.clf_ = None
         self.trace = None
 
     def fit(self, x, y, y_error=1, x_error=None, save_model=None,
             sample_kwargs=None):
-        with pm.Model() as model:
+        with pm.Model():
             intercept = pm.Normal('inter', 0, sd=20)
             gradient = pm.Normal('slope', 0, sd=20)
             true_x = pm.Normal('true_x', mu=0, sd=20, shape=len(x))
