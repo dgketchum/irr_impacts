@@ -2,8 +2,9 @@ import warnings
 from tempfile import mkdtemp
 from datetime import datetime
 from urllib.parse import urlunparse
-from pandas import date_range, DataFrame
+import pandas as pd
 from xarray import open_dataset
+import numpy as np
 
 warnings.simplefilter(action='ignore', category=DeprecationWarning)
 
@@ -42,6 +43,7 @@ class GridMet:
         self.scheme = 'http'
 
         self.temp_dir = mkdtemp()
+        self.subset = None
 
         self.variable = variable
         self.available = ['elev', 'pr', 'rmax', 'rmin', 'sph', 'srad',
@@ -52,36 +54,9 @@ class GridMet:
             Warning('Variable {} is not available'.
                     format(self.variable))
 
-        self.kwords = {'bi': 'daily_mean_burning_index_g',
-                       'elev': '',
-                       'erc': 'energy_release_component-g',
-                       'fm100': 'dead_fuel_moisture_100hr',
-                       'fm1000': 'dead_fuel_moisture_1000hr',
-                       'pdsi': 'daily_mean_palmer_drought_severity_index',
-                       'etr': 'daily_mean_reference_evapotranspiration_alfalfa',
-                       'pet': 'daily_mean_reference_evapotranspiration_grass',
-                       'pr': 'precipitation_amount',
-                       'rmax': 'daily_maximum_relative_humidity',
-                       'rmin': 'daily_minimum_relative_humidity',
-                       'sph': 'daily_mean_specific_humidity',
-                       'srad': 'daily_mean_shortwave_radiation_at_surface',
-                       'th': 'daily_mean_wind_direction',
-                       'tmmn': 'daily_minimum_temperature',
-                       'tmmx': 'daily_maximum_temperature',
-                       'vs': 'daily_mean_wind_speed', }
-
         if self.date:
             self.start = self.date
             self.end = self.date
-
-        if self.start.year < self.end.year:
-            self.single_year = False
-
-        if self.start > self.end:
-            raise ValueError('start date is after end date')
-
-        if not self.bbox and not self.lat:
-            raise AttributeError('No bbox or coordinates given')
 
     def get_point_timeseries(self):
 
@@ -95,13 +70,12 @@ class GridMet:
         subset['time'] = date_ind
         time = subset['time'].values
         series = subset[self.kwords[self.variable]].values
-        df = DataFrame(data=series, index=time)
+        df = pd.DataFrame(data=series, index=time)
         df.columns = [self.variable]
         return df
 
     def _build_url(self):
 
-        # ParseResult('scheme', 'netloc', 'path', 'params', 'query', 'fragment')
         if self.variable == 'elev':
             url = urlunparse([self.scheme, self.service,
                               '/thredds/dodsC/MET/{0}/metdata_elevationdata.nc'.format(self.variable),
@@ -114,7 +88,7 @@ class GridMet:
         return url
 
     def _date_index(self):
-        date_ind = date_range(self.start, self.end, freq='d')
+        date_ind = pd.date_range(self.start, self.end, freq='d')
 
         return date_ind
 # ========================= EOF ====================================================================
