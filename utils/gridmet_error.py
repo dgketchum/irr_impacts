@@ -7,14 +7,19 @@ import pandas as pd
 from utils.gridmet_data import GridMet
 
 
-def gridmet_ppt_error(stations, station_data, out_csv):
-    sta_names, ct, bad_ct, all_sta = [], 0, 0, []
-    pct_error = []
-    adf = pd.DataFrame(columns=['name', 'basin', 'year', 'count', 'st_ppt', 'gm_ppt'])
+def gridmet_ppt_error(stations, station_data, out_csv, basin=None):
+    adf = pd.DataFrame(columns=['name', 'basin', 'year', 'lat', 'lon', 'elev', 'count', 'st_ppt', 'gm_ppt', 'diffpct'])
     stations = pd.read_csv(stations)
-    for i, r in stations.iterrows():
 
-        lat, lon, staid, basin = r['LAT'], r['LON'], r['STAID'], r['basin']
+    if basin:
+        stations = stations[stations['basin'] == basin]
+
+    len_ = stations.shape[0]
+    for e, (i, r) in enumerate(stations.iterrows(), start=1):
+
+        lat, lon, staid, basin, elev = r['LAT'], r['LON'], r['STAID'], r['basin'], r['ELEV']
+
+        print('\n{}: {} of {} stations'.format(staid, e, len_))
 
         _file = os.path.join(station_data, '{}.csv'.format(staid))
         sta_df = pd.read_csv(_file, parse_dates=True, infer_datetime_format=True,
@@ -46,24 +51,27 @@ def gridmet_ppt_error(stations, station_data, out_csv):
             yr_idx = [x for x in df.index if x.year == y]
             if len(yr_idx) < 250:
                 continue
-            y_data = df.loc[yr_idx].sum(axis=0)
+
+            y_data = df.loc[yr_idx]
+
+            # filter out potential non-detecting stations
+            detections = np.count_nonzero(y_data['PRCP'] > 0.) / np.count_nonzero(y_data['pr'] > 0.)
+            if detections < 0.9:
+                continue
+
+            y_data = y_data.sum(axis=0)
             ghcn, grdmet = y_data['PRCP'], y_data['pr']
+            diffpct = (y_data['PRCP'] / y_data['pr']) / y_data['PRCP']
             if ghcn == 0.0:
                 continue
-            adf = adf.append({'name': staid, 'basin': basin, 'count': len(yr_idx),
-                              'year': y, 'st_ppt': ghcn, 'gm_ppt': grdmet},
+            adf = adf.append({'name': staid, 'basin': basin, 'lat': lat, 'lon': lon,
+                              'elev': elev, 'count': len(yr_idx),
+                              'year': y, 'st_ppt': ghcn, 'gm_ppt': grdmet, 'diffpct': diffpct},
                              ignore_index=True)
-
-            error = abs((grdmet - ghcn) / ghcn)
-            pct_error.append(error)
-            mean_error = np.array(pct_error).mean()
-            print('mean {:.3f} at {} station-years'.format(mean_error, len(pct_error)))
         adf.to_csv(out_csv.replace('.csv', '_.csv'))
+        get_rmse(adf)
 
     adf.to_csv(out_csv)
-
-    print('count', ct)
-    print('bad count', bad_ct)
 
 
 def gridmet_etr_error(stations, station_data, out_csv):
@@ -114,38 +122,30 @@ def gridmet_etr_error(stations, station_data, out_csv):
     print('bad count', bad_ct)
 
 
-def get_rmse(csv, vars_=['st_ppt', 'gm_ppt'], basins=False):
-    def _rmse(df):
-        rmse = np.sqrt(((df[vars_[0]] - df[vars_[1]]) ** 2).mean())
-        rmsep = np.sqrt((((df[vars_[0]] - df[vars_[1]]) / df[vars_[0]]) ** 2).mean())
+def get_rmse(csv, vars_=('st_ppt', 'gm_ppt'), basins=False):
+    def _rmse(df_):
+        rmse = np.sqrt(((df_[vars_[0]] - df_[vars_[1]]) ** 2).mean())
+        rmsep = np.sqrt((((df_[vars_[0]] - df_[vars_[1]]) / df_[vars_[0]]) ** 2).mean())
         print('rmse {:.3f} mm, {:.3f}'.format(rmse, rmsep))
 
-    df = pd.read_csv(csv)
+    if not isinstance(csv, pd.DataFrame):
+        df = pd.read_csv(csv)
+    else:
+        df = csv
+
+    df['diffpct'] = (df[vars_[0]] - df[vars_[1]]) / df[vars_[0]]
+    df = df[df['diffpct'] < 1.]
 
     if basins:
         basins_ = list(set(df['basin']))
         for b in basins_:
             print(b)
-            _rmse(df[df['basin'] == b])
+            bdf = df[(df['basin'] == b) & (df['year'] > 1989)]
+            _rmse(bdf)
     else:
         _rmse(df)
 
 
 if __name__ == '__main__':
-    root = os.path.join('/media', 'research', 'IrrigationGIS', 'climate')
-    if not os.path.exists(root):
-        root = os.path.join('/home', 'dgketchum', 'data', 'IrrigationGIS', 'climate')
-
-    stations_ = os.path.join(root, 'stations', 'study_basisns_ghcn_stations.csv')
-    station_data_ = os.path.join(root, 'ghcn', 'ghcn_daily_summaries_4FEB2022')
-    out_csv_ = os.path.join(root, 'ghcn', 'ghcn_gridmet_comp.csv')
-    # gridmet_ppt_error(stations_, station_data_, out_csv_)
-    out_csv_ = os.path.join(root, 'ghcn', 'ghcn_gridmet_com.csv')
-    # get_rmse(out_csv_, vars_=['st_ppt', 'gm_ppt'])
-
-    station_path_ = os.path.join(root, 'gridwxcomp', 'gridwxcomp_basins_all.csv')
-    etr_station_data_ = os.path.join(root, 'gridwxcomp', 'station_data')
-    etr_comp_csv = os.path.join(root, 'gridwxcomp', 'etr_comp.csv')
-    # gridmet_etr_error(station_path_, etr_station_data_, etr_comp_csv)
-    get_rmse(etr_comp_csv, vars_=['st_etr', 'gm_etr'], basins=False)
+    pass
 # ========================= EOF ====================================================================
