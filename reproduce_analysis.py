@@ -39,7 +39,7 @@ def get_gage_data():
 
 basins = 'users/dgketchum/gages/gage_basins'
 bucket = 'wudr'
-desc = 'export_cc_28OCT2022'
+desc = 'cc_static_4NOV2022'
 with open(gages_metadata, 'r') as fp:
     stations = json.load(fp)
 
@@ -47,9 +47,9 @@ with open(gages_metadata, 'r') as fp:
 def get_gridded_data():
     # extract SSEBop ET, irrigation status, and TerraClimate at monthly time-step from Earth Engine
     # precede gage data by five years so climate-flow correlation can look back 60 months before first discharge month
-    extract_years = np.arange(start_yr, end_yr + 1)
+    extract_years = np.arange(start_yr - 5, end_yr + 1)
     basin_ids = [station_id for station_id, _ in stations.items()]
-    export_gridded_data(basins, bucket, extract_years, features=basin_ids, min_years=30, description=desc, debug=False)
+    export_gridded_data(basins, bucket, extract_years, features=basin_ids, min_years=35, description=desc, debug=False)
     # transfer gridded data from GCS bucket to local system
 
 
@@ -84,15 +84,12 @@ def climate_flow_correlations():
 
 
 trends_initial = os.path.join(analysis_directory, 'trends', 'trends_initial_{}.json')
+trends_initial_figs = os.path.join(figures, 'trends_initial')
 trends_bayes = os.path.join(analysis_directory, 'trends', 'trends_bayes_{}.json')
 trends_traces = os.path.join(root, 'traces', 'trends')
-
-# trends_initial = os.path.join(analysis_directory, 'trends_static_irr', 'trends_initial_{}.json')
-# trends_initial_figs = os.path.join(figures, 'trends_static_irr_initial')
-# trends_bayes = os.path.join(analysis_directory, 'trends_static_irr', 'trends_bayes_{}.json')
 # trends_traces = os.path.join(root, 'traces', 'trends_static_irr')
 processes = 30
-overwrite_bayes = True
+overwrite_bayes = False
 
 
 def trends():
@@ -101,12 +98,13 @@ def trends():
         print('\n\n\ntrends {}'.format(m))
         in_data = climate_flow_file.format(m)
         out_data = trends_initial.format(m)
-        initial_trends_test(in_data, out_data, plot_dir=None, selectors=None)
+        initial_trends_test(in_data, out_data, plot_dir=None)
 
         in_data = out_data
         out_data = trends_bayes.format(m)
-        # run_bayes_regression_trends(trends_traces, in_data, processes, overwrite_bayes, selectors=['time_cc'])
-        bayes_write_significant_trends(in_data, trends_traces, out_data, m)
+        run_bayes_regression_trends(trends_traces, in_data, processes,
+                                    overwrite=overwrite_bayes)
+        # bayes_write_significant_trends(in_data, trends_traces, out_data, m, update_selectors=['time_ccres'])
 
 
 # crop consumption and climate-normalized flow data
@@ -123,14 +121,14 @@ ccres_qres_traces = os.path.join(root, 'traces', 'ccres_qres')
 def irrigation_impacts():
     for m in months:
         in_data = climate_flow_file.format(m)
-        print('\n\n\n cc_qres {}'.format(m))
+        # print('\n\n\n cc_qres {}'.format(m))
 
         out_data = cc_qres_file.format(m)
         # initial_impacts_test(in_data, data_tables, out_data, m, cc_res=False)
         in_data = out_data
         out_data = cc_qres_results_file.format(m)
         # run_bayes_regression_cc_qres(cc_qres_traces, in_data, processes, overwrite_bayes)
-        bayes_write_significant_cc_qres(in_data, cc_qres_traces, out_data, m)
+        # bayes_write_significant_cc_qres(in_data, cc_qres_traces, out_data, m)
 
         # use same-month climate to normalize cc
         in_data = climate_flow_file.format(m)
@@ -140,14 +138,14 @@ def irrigation_impacts():
         in_data = out_data
         out_data = ccres_qres_results_file.format(m)
         # run_bayes_regression_cc_qres(ccres_qres_traces, in_data, processes, overwrite_bayes)
-        bayes_write_significant_cc_qres(in_data, ccres_qres_traces, out_data, m)
+        # bayes_write_significant_cc_qres(in_data, ccres_qres_traces, out_data, m)
 
 
 if __name__ == '__main__':
     # get_gage_data()
-    # get_gridded_data()
+    get_gridded_data()
     # build_tables()
     # climate_flow_correlations()
-    trends()
+    # trends()
     # irrigation_impacts()
 # ========================= EOF ====================================================================

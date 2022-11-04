@@ -12,28 +12,31 @@ RF_ASSET = 'projects/ee-dgketchum/assets/IrrMapper/IrrMapperComp'
 UMRB_CLIP = 'users/dgketchum/boundaries/umrb_ylstn_clip'
 CMBRB_CLIP = 'users/dgketchum/boundaries/CMB_RB_CLIP'
 CORB_CLIP = 'users/dgketchum/boundaries/CO_RB'
+WESTERN_11_STATES = 'users/dgketchum/boundaries/western_11_union'
 
-try:
-    ee.Initialize()
-    print('Authorized')
-except Exception as e:
-    print('You are not authorized: {}'.format(e))
 
-ET_ASSET = ee.ImageCollection('users/dgketchum/ssebop/cmbrb')
+def get_geomteries():
+    bozeman = ee.Geometry.Polygon([[-111.19206055457778, 45.587493372544984],
+                                   [-110.91946228797622, 45.587493372544984],
+                                   [-110.91946228797622, 45.754947053477565],
+                                   [-111.19206055457778, 45.754947053477565],
+                                   [-111.19206055457778, 45.587493372544984]])
 
-BOZEMAN = ee.Geometry.Polygon([[-111.19206055457778, 45.587493372544984],
-                               [-110.91946228797622, 45.587493372544984],
-                               [-110.91946228797622, 45.754947053477565],
-                               [-111.19206055457778, 45.754947053477565],
-                               [-111.19206055457778, 45.587493372544984]])
+    navajo = ee.Geometry.Polygon([[-108.50192867920967, 36.38701227276218],
+                                  [-107.92995297120186, 36.38701227276218],
+                                  [-107.92995297120186, 36.78068624960868],
+                                  [-108.50192867920967, 36.78068624960868],
+                                  [-108.50192867920967, 36.38701227276218]])
 
-NAVAJO = ee.Geometry.Polygon([[-108.50192867920967, 36.38701227276218],
-                              [-107.92995297120186, 36.38701227276218],
-                              [-107.92995297120186, 36.78068624960868],
-                              [-108.50192867920967, 36.78068624960868],
-                              [-108.50192867920967, 36.38701227276218]])
+    test_point = ee.Geometry.Point(-111.19417486580859, 45.73357569538925)
 
-TEST_POINT = ee.Geometry.Point(-111.19206055457778, 45.587493372544984)
+    western_us = ee.Geometry.Polygon([[-127.00073221292574, 30.011505140554807],
+                                      [-100.63354471292574, 30.011505140554807],
+                                      [-100.63354471292574, 49.908396143431744],
+                                      [-127.00073221292574, 49.908396143431744],
+                                      [-127.00073221292574, 30.011505140554807]])
+
+    return bozeman, navajo, test_point, western_us
 
 
 def export_gridded_data(tables, bucket, years, description, features=None, min_years=0, debug=False):
@@ -51,6 +54,7 @@ def export_gridded_data(tables, bucket, years, description, features=None, min_y
     :param min_years:
     :return:
     """
+    initialize()
     fc = ee.FeatureCollection(tables)
     if features:
         fc = fc.filter(ee.Filter.inList('STAID', features))
@@ -131,11 +135,11 @@ def export_gridded_data(tables, bucket, years, description, features=None, min_y
                                        scale=30)
 
             if debug:
-                pt = bands.sample(region=TEST_POINT,
+                pt = bands.sample(region=get_geomteries()[2],
                                   numPixels=1,
                                   scale=30)
-                fields = pt.propertyNames().remove('.geo')
-                p = data.first().getInfo()['properties']
+                p = pt.first().getInfo()['properties']
+                print('propeteries {}'.format(p))
 
             out_desc = '{}_{}_{}'.format(description, yr, month)
             task = ee.batch.Export.table.toCloudStorage(
@@ -147,6 +151,49 @@ def export_gridded_data(tables, bucket, years, description, features=None, min_y
                 selectors=select_)
             task.start()
             print(out_desc)
+
+
+def extract_ndvi_change(tables, bucket, features=None):
+    initialize()
+    fc = ee.FeatureCollection(tables)
+    if features:
+        fc = fc.filter(ee.Filter.inList('STAID', features))
+
+    roi = get_geomteries()[-1]
+    early = landsat_masked(1987, 1991, 182, 243, roi)
+    late = landsat_masked(2017, 2021, 182, 243, roi)
+    early_mean = ee.Image(early.map(lambda x: x.normalizedDifference(['B5', 'B4'])).median())
+    late_mean = ee.Image(late.map(lambda x: x.normalizedDifference(['B5', 'B4'])).median())
+    ndvi_diff = late_mean.subtract(early_mean).rename('nd_diff')
+    # ndvi_diff = ndvi_diff.reproject(crs='EPSG:5070', scale=30).resample('bilinear')
+
+    dataset = ee.ImageCollection('USDA/NASS/CDL').filter(ee.Filter.date('2013-01-01', '2017-12-31'))
+    cultivated = dataset.select('cultivated').mode()
+
+    ndvi_cult = ndvi_diff.mask(cultivated.eq(2))
+    increase = ndvi_cult.gt(0.2).rename('gain')
+    decrease = ndvi_cult.lt(-0.2).rename('loss')
+    change = increase.addBands([decrease])
+    change = change.mask(cultivated)
+    change = change.multiply(ee.Image.pixelArea())
+
+    fc = fc.filterMetadata('STAID', 'equals', '13269000')
+
+    change = change.reduceRegions(collection=fc,
+                                  reducer=ee.Reducer.sum(),
+                                  scale=30)
+    p = change.first().getInfo()
+    out_desc = 'ndvi_change'
+    selectors = ['STAID', 'loss', 'gain']
+    task = ee.batch.Export.table.toCloudStorage(
+        change,
+        description=out_desc,
+        bucket=bucket,
+        fileNamePrefix=out_desc,
+        fileFormat='CSV',
+        selectors=selectors)
+    task.start()
+    print(out_desc)
 
 
 def extract_gridmet_monthly(year, month):
@@ -265,6 +312,82 @@ def export_naip(region, bucket):
     task.start()
 
 
+def landsat_c2_sr(input_img):
+    # credit: cgmorton; https://github.com/Open-ET/openet-core-beta/blob/master/openet/core/common.py
+
+    INPUT_BANDS = ee.Dictionary({
+        'LANDSAT_4': ['SR_B1', 'SR_B2', 'SR_B3', 'SR_B4', 'SR_B5', 'SR_B7',
+                      'ST_B6', 'QA_PIXEL', 'QA_RADSAT'],
+        'LANDSAT_5': ['SR_B1', 'SR_B2', 'SR_B3', 'SR_B4', 'SR_B5', 'SR_B7',
+                      'ST_B6', 'QA_PIXEL', 'QA_RADSAT'],
+        'LANDSAT_7': ['SR_B1', 'SR_B2', 'SR_B3', 'SR_B4', 'SR_B5', 'SR_B7',
+                      'ST_B6', 'QA_PIXEL', 'QA_RADSAT'],
+        'LANDSAT_8': ['SR_B2', 'SR_B3', 'SR_B4', 'SR_B5', 'SR_B6', 'SR_B7',
+                      'ST_B10', 'QA_PIXEL', 'QA_RADSAT'],
+        'LANDSAT_9': ['SR_B2', 'SR_B3', 'SR_B4', 'SR_B5', 'SR_B6', 'SR_B7',
+                      'ST_B10', 'QA_PIXEL', 'QA_RADSAT'],
+    })
+    OUTPUT_BANDS = ['B2', 'B3', 'B4', 'B5', 'B6', 'B7',
+                    'B10', 'QA_PIXEL', 'QA_RADSAT']
+
+    spacecraft_id = ee.String(input_img.get('SPACECRAFT_ID'))
+
+    prep_image = input_img \
+        .select(INPUT_BANDS.get(spacecraft_id), OUTPUT_BANDS) \
+        .multiply([0.0000275, 0.0000275, 0.0000275, 0.0000275,
+                   0.0000275, 0.0000275, 0.00341802, 1, 1]) \
+        .add([-0.2, -0.2, -0.2, -0.2, -0.2, -0.2, 149.0, 0, 0])
+
+    def _cloud_mask(i):
+        qa_img = i.select(['QA_PIXEL'])
+        cloud_mask = qa_img.rightShift(3).bitwiseAnd(1).neq(0)
+        cloud_mask = cloud_mask.Or(qa_img.rightShift(2).bitwiseAnd(1).neq(0))
+        cloud_mask = cloud_mask.Or(qa_img.rightShift(1).bitwiseAnd(1).neq(0))
+        cloud_mask = cloud_mask.Or(qa_img.rightShift(4).bitwiseAnd(1).neq(0))
+        cloud_mask = cloud_mask.Or(qa_img.rightShift(5).bitwiseAnd(1).neq(0))
+        sat_mask = i.select(['QA_RADSAT']).gt(0)
+        cloud_mask = cloud_mask.Or(sat_mask)
+
+        cloud_mask = cloud_mask.Not().rename(['cloud_mask'])
+
+        return cloud_mask
+
+    mask = _cloud_mask(input_img)
+
+    image = prep_image.updateMask(mask).copyProperties(input_img, ['system:time_start'])
+
+    return image
+
+
+def landsat_masked(start_year, end_year, doy_start, doy_end, roi):
+    start = '{}-01-01'.format(start_year)
+    end_date = '{}-01-01'.format(end_year)
+
+    l5_coll = ee.ImageCollection('LANDSAT/LT05/C02/T1_L2').filterBounds(
+        roi).filterDate(start, end_date).filter(ee.Filter.calendarRange(
+        doy_start, doy_end, 'day_of_year')).map(landsat_c2_sr)
+    l7_coll = ee.ImageCollection('LANDSAT/LE07/C02/T1_L2').filterBounds(
+        roi).filterDate(start, end_date).filter(ee.Filter.calendarRange(
+        doy_start, doy_end, 'day_of_year')).map(landsat_c2_sr)
+    l8_coll = ee.ImageCollection('LANDSAT/LC08/C02/T1_L2').filterBounds(
+        roi).filterDate(start, end_date).filter(ee.Filter.calendarRange(
+        doy_start, doy_end, 'day_of_year')).map(landsat_c2_sr)
+
+    lsSR_masked = ee.ImageCollection(l7_coll.merge(l8_coll).merge(l5_coll))
+    return lsSR_masked
+
+
+def initialize():
+    try:
+        ee.Initialize()
+        print('Authorized')
+    except Exception as e:
+        print('You are not authorized: {}'.format(e))
+
+
 if __name__ == '__main__':
-    pass
+    basins = 'users/dgketchum/gages/gage_basins'
+    bucket = 'wudr'
+
+    extract_ndvi_change(basins, bucket)
 # ========================= EOF ================================================================================

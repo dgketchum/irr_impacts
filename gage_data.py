@@ -8,8 +8,8 @@ import matplotlib.pyplot as plt
 
 import dataretrieval.nwis as nwis
 
-from utils.gage_lists import TARGET_IRRIGATED_GAGES
 
+from utils.gage_lists import EXCLUDE_STATIONS
 
 class MissingValues(Exception):
     pass
@@ -51,6 +51,9 @@ def get_station_daily_data(start, end, stations, out_dir, plot_dir=None, overwri
 
     for sid, data in stations.items():
 
+        if sid in EXCLUDE_STATIONS:
+            continue
+
         out_file = os.path.join(out_dir, '{}.csv'.format(sid))
         if os.path.exists(out_file) and not overwrite:
             print(sid, 'exists, skipping')
@@ -72,14 +75,17 @@ def get_station_daily_data(start, end, stations, out_dir, plot_dir=None, overwri
 
         # exclude months without complete data
         if nan_count > 0:
-            df['q'] = df['q'].interpolate(limit=7, method='linear')
+            # df['q'] = df['q'].interpolate(limit=7, method='linear')
             df['q'] = df['q'].dropna(axis=0)
             record_ct = df['q'].groupby([df.index.year, df.index.month]).agg('count')
             records = [r for i, r in record_ct.items()]
-            mask = [int(a == b) for a, b in zip(records, counts)]
+            # add a zero to the front of the list to hack the resample, then remove
+            mask = [0] + [int(a == b) for a, b in zip(records, counts)]
             missing_mo = len(counts) - sum(mask)
-            mask = pd.Series(index=pd.DatetimeIndex(pd.date_range(start, end, freq='M')),
+            resamp_start = pd.to_datetime(start) - pd.DateOffset(months=1)
+            mask = pd.Series(index=pd.DatetimeIndex(pd.date_range(resamp_start, end, freq='M')),
                              data=mask).resample('D').bfill()
+            mask = mask[1:]
             df = df.loc[mask[mask == 1].index, 'q']
             print('write {:.1f}'.format(data['AREA']), sid, 'missing {} months'.format(missing_mo), data['STANAME'])
         else:

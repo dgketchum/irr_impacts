@@ -49,7 +49,7 @@ def climate_flow_correlation(q_flow_dir, month, in_json, out_json, start_yr=1987
 
         if np.count_nonzero(mask) < 20:
             print('\nonly {} q records month {}, {}, {}'.format(np.count_nonzero(q > 1),
-                                                              month, sid, s_meta['STANAME']))
+                                                                month, sid, s_meta['STANAME']))
             short_q.append(sid)
             continue
 
@@ -64,6 +64,10 @@ def climate_flow_correlation(q_flow_dir, month, in_json, out_json, start_yr=1987
         ppt_m = np.array([df['gm_ppt'][d[0]: d[1]].sum() for d in q_dates])
         ai_m = etr_m - ppt_m
         irr = np.array([df['irr'][d[0]: d[1]].sum() for d in q_dates])
+        lr = linregress(ai_m, cc)
+        b, inter, r, p = lr.slope, lr.intercept, lr.rvalue, lr.pvalue
+        cc_res = cc - (b * ai_m + inter)
+
         for lag in offsets:
 
             dates = [(date(y, month, monthrange(y, month)[1]) + rdlt(months=-lag, days=1),
@@ -85,6 +89,7 @@ def climate_flow_correlation(q_flow_dir, month, in_json, out_json, start_yr=1987
                               'r': r,
                               'p': p,
                               'q': list(q),
+                              'q_mo': month,
                               'ai': list(ai),
                               'etr': list(etr),
                               'ppt': list(ppt),
@@ -93,6 +98,7 @@ def climate_flow_correlation(q_flow_dir, month, in_json, out_json, start_yr=1987
                               'ppt_month': list(ppt_m),
                               'etr_month': list(etr_m),
                               'cc_month': list(cc),
+                              'ccres_month': list(cc_res),
                               'irr': list(irr),
                               'years': list(years),
                               }
