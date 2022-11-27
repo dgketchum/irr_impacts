@@ -11,7 +11,7 @@ from shapely.geometry import shape
 from utils.gage_lists import EXCLUDE_STATIONS
 
 
-def monthly_trends(regressions_dir, in_shape, glob=None, out_shape=None):
+def monthly_trends(regressions_dir, in_shape, glob=None, out_shape=None, selectors=None):
     with fiona.open(in_shape, 'r') as src:
         feats = [f for f in src]
 
@@ -43,9 +43,15 @@ def monthly_trends(regressions_dir, in_shape, glob=None, out_shape=None):
     range_ = np.arange(1, 13)
     for var, test in trc_subdirs.items():
 
+        if selectors and var not in selectors:
+            continue
+
         df = pd.DataFrame(index=trends_stations, data=areas, columns=['AREA'])
 
         for m in range_:
+
+            if m not in trends_dct.keys():
+                continue
 
             d = trends_dct[m]
 
@@ -90,7 +96,11 @@ def monthly_trends(regressions_dir, in_shape, glob=None, out_shape=None):
 
         gdf[gdf[[i for i in range(1, 13)]] == 0.0] = np.nan
         gdf['median'] = gdf[[i for i in range(1, 13)]].median(axis=1)
+        gdf['min'] = gdf[[i for i in range(1, 13)]].min(axis=1)
+        gdf['max'] = gdf[[i for i in range(1, 13)]].max(axis=1)
         gdf['median'][isna(gdf['median'])] = 0.0
+        gdf['min'][isna(gdf['min'])] = 0.0
+        gdf['max'][isna(gdf['max'])] = 0.0
 
         gdf['sum_med'] = gdf[[i for i in range(5, 11)]].median(axis=1)
         gdf['sum_med'][isna(gdf['sum_med'])] = 0.0
@@ -108,12 +118,10 @@ def monthly_trends(regressions_dir, in_shape, glob=None, out_shape=None):
 
 
 def monthly_cc_qres(regressions_dir, in_shape, glob=None, out_shape=None, bayes=False):
-    with fiona.open(in_shape, 'r') as src:
-        feats = [f for f in src]
-
-    geo = {f['properties']['STAID']: shape(f['geometry']) for f in feats}
-    areas = {f['properties']['STAID']: f['properties']['AREA'] for f in feats}
-    names = {f['properties']['STAID']: f['properties']['STANAME'] for f in feats}
+    feats = gpd.read_file(in_shape)
+    geo = {f['STAID']: shape(f['geometry']) for i, f in feats.iterrows()}
+    areas = {f['STAID']: f['AREA'] for i, f in feats.iterrows()}
+    names = {f['STAID']: f['STANAME'] for i, f in feats.iterrows()}
 
     trends_dct = {}
 
@@ -129,6 +137,7 @@ def monthly_cc_qres(regressions_dir, in_shape, glob=None, out_shape=None, bayes=
     bayes_sig = 0
     p_sig = 0
 
+    multi_impact = {}
     first = True
     for m in range(1, 13):
 
@@ -153,6 +162,10 @@ def monthly_cc_qres(regressions_dir, in_shape, glob=None, out_shape=None, bayes=
                             bayes_sig += 1
                     if bayes and vv['p'] < 0.05:
                         p_sig += 1
+            if k not in multi_impact.keys():
+                multi_impact[k] = [(p, s) for p, s in zip(cc_periods, slopes_)]
+            else:
+                [multi_impact[k].append((p, s)) for p, s in zip(cc_periods, slopes_)]
 
             if has_sig:
                 data[k] = np.nanmedian(slopes_).item()
@@ -169,6 +182,9 @@ def monthly_cc_qres(regressions_dir, in_shape, glob=None, out_shape=None, bayes=
             df = concat([df, c], axis=1)
 
         df[np.isnan(df)] = 0.0
+
+    area_sort = sorted([x for x in areas.items() if x[0] in multi_impact.keys()], key=lambda x: x[1], reverse=True)
+    multi_impact = {k: (multi_impact[k], names[k]) for k, v in area_sort}
 
     gdf = gpd.GeoDataFrame(df)
     gdf.geometry = [geo[_id] for _id in gdf.index]
@@ -258,15 +274,17 @@ if __name__ == '__main__':
         root = '/home/dgketchum/data/IrrigationGIS/impacts'
 
     inshp = os.path.join(root, 'gages', 'selected_gages.shp')
-    lr_ = os.path.join(root, 'analysis', 'trends')
+    # lr_ = os.path.join(root, 'analysis', 'trends')
 
+    lr_ = os.path.join(root, 'analysis', 'trends')
     fig_shp = os.path.join(root, 'figures', 'shapefiles', 'trends')
     glb = 'trends_bayes'
-    monthly_trends(lr_, inshp, glob=glb, out_shape=fig_shp)
+    monthly_trends(lr_, inshp, glob=glb, out_shape=fig_shp, selectors=['time_ccres'])
 
-    glb = 'ccres_qres_bayes'
-    cc_qres = os.path.join(root, 'analysis', 'ccres_qres')
-    out_shp = os.path.join(root, 'figures', 'shapefiles', 'ccres_qres')
+    v_ = 'cc_qres'
+    glb = '{}_bayes'.format(v_)
+    cc_qres = os.path.join(root, 'analysis', '{}'.format(v_))
+    out_shp = os.path.join(root, 'figures', 'shapefiles', '{}'.format(v_))
     # monthly_cc_qres(cc_qres, inshp, glob=glb, out_shape=out_shp, bayes=True)
 
     q_trend = os.path.join(root, 'figures', 'shapefiles', 'trends', 'time_q.shp')

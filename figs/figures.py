@@ -14,22 +14,23 @@ sns.set_theme(style="whitegrid")
 large = 22
 med = 16
 small = 12
-params = {'axes.titlesize': large,
-          'legend.fontsize': med,
-          'figure.figsize': (16, 10),
-          'axes.labelsize': med,
-          'xtick.labelsize': med,
-          'ytick.labelsize': med,
-          'figure.titlesize': large,
-          'xtick.color': 'black',
-          'ytick.color': 'black',
-          'xtick.direction': 'out',
-          'ytick.direction': 'out',
-          'xtick.bottom': True,
-          'xtick.top': False,
-          'ytick.left': True,
-          'ytick.right': False,
-          }
+params = {
+    'axes.titlesize': large,
+    'legend.fontsize': med,
+    'figure.figsize': (16, 10),
+    'axes.labelsize': med,
+    'xtick.labelsize': med,
+    'ytick.labelsize': med,
+    'figure.titlesize': large,
+    'xtick.color': 'black',
+    'ytick.color': 'black',
+    'xtick.direction': 'out',
+    'ytick.direction': 'out',
+    'xtick.bottom': True,
+    'xtick.top': False,
+    'ytick.left': True,
+    'ytick.right': False,
+}
 
 
 def plot_climate_flow(climate_flow_data, fig_dir_, selected=None):

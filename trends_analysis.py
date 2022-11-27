@@ -14,6 +14,7 @@ import warnings
 import matplotlib.pyplot as plt
 
 warnings.simplefilter(action='ignore', category=FutureWarning)
+np.seterr(divide='ignore', invalid='ignore')
 
 from utils.error_estimates import BASIN_CC_ERR, BASIN_IRRMAPPER_F1, BASIN_PRECIP_RMSE, ETR_ERR
 
@@ -44,7 +45,10 @@ def initial_trends_test(in_json, out_json, plot_dir=None, selectors=None):
         ai = np.array(records['ai'])
 
         cc = np.array(records['cc_month'])
-        ccres = np.array(records['ccres_month'])
+        try:
+            ccres = np.array(records['ccres_month'])
+        except KeyError:
+            ccres = cc * np.zeros_like(cc)
         aim = np.array(records['ai_month'])
         etr_m = np.array(records['etr_month'])
         etr = np.array(records['etr'])
@@ -116,8 +120,6 @@ def initial_trends_test(in_json, out_json, plot_dir=None, selectors=None):
                                                     'rsq': r,
                                                     'b_norm': b_norm,
                                                     'anderson': ad_test}
-                    # if subdir == 'time_ccres':
-                    #     print('{} {} p {:.3f}, b {:.3f}'.format(station, month, p, b_norm))
 
             if plot_dir:
                 d = os.path.join(plot_dir, str(month), subdir)
@@ -177,8 +179,8 @@ def bayes_linear_regression_trends(station, records, trc_dir, cores, overwrite, 
         rmse = BASIN_CC_ERR[basin]['rmse']
         bias = BASIN_CC_ERR[basin]['bias']
         irr_f1 = 1 - BASIN_IRRMAPPER_F1[basin]
-        cci_err = (rmse - abs(bias)) / 2.
-        cc_err = (irr_f1 + rmse - abs(bias)) / 2.
+        cci_err = rmse - abs(bias)
+        cc_err = irr_f1 + rmse - abs(bias)
         ppt_err, etr_err = BASIN_PRECIP_RMSE[basin], ETR_ERR
         qres_err = np.sqrt(ppt_err ** 2 + etr_err ** 2)
 
@@ -293,7 +295,7 @@ def bayes_write_significant_trends(metadata, trc_dir, out_json, month, update_se
         for subdir in trc_subdirs:
 
             if update_selectors and subdir not in update_selectors:
-                if subdir not in out_meta.keys():
+                if subdir not in out_meta[station].keys():
                     out_meta[station][subdir] = None
                 continue
 

@@ -65,7 +65,8 @@ def export_gridded_data(tables, bucket, years, description, features=None, min_y
     irr_coll = ee.ImageCollection(RF_ASSET)
     coll = irr_coll.filterDate('1987-01-01', '2021-12-31').select('classification')
     remap = coll.map(lambda img: img.lt(1))
-    irr_min_yr_mask = remap.sum().gt(min_years)
+    irr_min_yr_mask = remap.sum().gte(min_years)
+    irr_mask = irr_min_yr_mask
 
     for yr in years:
         for month in range(1, 13):

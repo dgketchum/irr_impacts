@@ -39,73 +39,31 @@ def get_gage_data():
 
 basins = 'users/dgketchum/gages/gage_basins'
 bucket = 'wudr'
-desc = 'cc_static_4NOV2022'
+desc = 'ee_gridded_21OCT2022'
 with open(gages_metadata, 'r') as fp:
     stations = json.load(fp)
 
-
-def get_gridded_data():
-    # extract SSEBop ET, irrigation status, and TerraClimate at monthly time-step from Earth Engine
-    # precede gage data by five years so climate-flow correlation can look back 60 months before first discharge month
-    extract_years = np.arange(start_yr - 5, end_yr + 1)
-    basin_ids = [station_id for station_id, _ in stations.items()]
-    export_gridded_data(basins, bucket, extract_years, features=basin_ids, min_years=35, description=desc, debug=False)
-    # transfer gridded data from GCS bucket to local system
-
-
-# extracts = os.path.join(root, 'tables', 'gridded_tables', 'IrrMapperComp_21OCT2022')
-# data_tables = os.path.join(root, 'tables', 'input_flow_climate_tables', 'IrrMapperComp_21OCT2022')
-
-# static irrigation mask
-extracts = os.path.join(root, 'tables', 'gridded_tables', 'IrrMapperComp_static_24OCT2022')
-data_tables = os.path.join(root, 'tables', 'input_flow_climate_tables', 'IrrMapperComp_static_24OCT2022')
-
-
-def build_tables():
-    # merge aggregated gridded data with monthly discharge at each gage-basin
-    # start 5 years before the study period to account for basin lag times
-    # merge_gridded_flow_data(extracts, monthly_q, data_tables, start_yr - 5, end_yr, glob=desc)
-    merge_gridded_flow_data(extracts, monthly_q, data_tables, start_yr, end_yr, glob=desc, cc_only=True)
-
-
 analysis_directory = os.path.join(root, 'analysis')
-climate_flow_data = os.path.join(analysis_directory, 'climate_flow')
-climate_flow_file = os.path.join(climate_flow_data, 'climate_flow_{}.json')
+static_irr = False
 
-# climate_flow_data = os.path.join(analysis_directory, 'climate_flow_static_irr')
-# climate_flow_file = os.path.join(climate_flow_data, 'climate_flow_{}.json')
+if static_irr:
+    desc = 'cc_static_4NOV2022'
+    extracts = os.path.join(root, 'tables', 'gridded_tables', 'IrrMapperComp_static_4NOV2022')
+    data_tables = os.path.join(root, 'tables', 'input_flow_climate_tables', 'IrrMapperComp_static_4NOV2022')
+    climate_flow_data = os.path.join(analysis_directory, 'climate_flow_static_irr')
+    climate_flow_file = os.path.join(climate_flow_data, 'climate_flow_{}.json')
+    trends_initial = os.path.join(analysis_directory, 'trends_static_irr', 'trends_initial_{}.json')
+    trends_traces = os.path.join(root, 'traces', 'trends_static_irr')
+    trends_bayes = os.path.join(analysis_directory, 'trends_static_irr', 'trends_bayes_{}.json')
 
-
-def climate_flow_correlations():
-    # find each gage's monthly characteristic response period to basin climate (precip and reference ET)
-    for m in months:
-        out_data = climate_flow_file.format(m)
-        climate_flow_correlation(data_tables, m, gages_metadata, out_data)
-
-
-trends_initial = os.path.join(analysis_directory, 'trends', 'trends_initial_{}.json')
-trends_initial_figs = os.path.join(figures, 'trends_initial')
-trends_bayes = os.path.join(analysis_directory, 'trends', 'trends_bayes_{}.json')
-trends_traces = os.path.join(root, 'traces', 'trends')
-# trends_traces = os.path.join(root, 'traces', 'trends_static_irr')
-processes = 30
-overwrite_bayes = False
-
-
-def trends():
-    # test for trends by first checking OLS, then if p < 0.05, run the trend test with error in Bayes regression
-    for m in months[3:10]:
-        print('\n\n\ntrends {}'.format(m))
-        in_data = climate_flow_file.format(m)
-        out_data = trends_initial.format(m)
-        initial_trends_test(in_data, out_data, plot_dir=None)
-
-        in_data = out_data
-        out_data = trends_bayes.format(m)
-        run_bayes_regression_trends(trends_traces, in_data, processes,
-                                    overwrite=overwrite_bayes)
-        # bayes_write_significant_trends(in_data, trends_traces, out_data, m, update_selectors=['time_ccres'])
-
+else:
+    extracts = os.path.join(root, 'tables', 'gridded_tables', 'IrrMapperComp_21OCT2022')
+    data_tables = os.path.join(root, 'tables', 'input_flow_climate_tables', 'IrrMapperComp_21OCT2022')
+    climate_flow_data = os.path.join(analysis_directory, 'climate_flow')
+    climate_flow_file = os.path.join(climate_flow_data, 'climate_flow_{}.json')
+    trends_initial = os.path.join(analysis_directory, 'trends', 'trends_initial_{}.json')
+    trends_traces = os.path.join(root, 'traces', 'trends')
+    trends_bayes = os.path.join(analysis_directory, 'trends', 'trends_bayes_{}.json')
 
 # crop consumption and climate-normalized flow data
 cc_qres_file = os.path.join(analysis_directory, 'cc_qres', 'cc_qres_initial_{}.json')
@@ -116,6 +74,50 @@ cc_qres_traces = os.path.join(root, 'traces', 'cc_qres')
 ccres_qres_file = os.path.join(analysis_directory, 'ccres_qres', 'ccres_qres_initial_{}.json')
 ccres_qres_results_file = os.path.join(analysis_directory, 'ccres_qres', 'ccres_qres_bayes_{}.json')
 ccres_qres_traces = os.path.join(root, 'traces', 'ccres_qres')
+
+
+def get_gridded_data():
+    # extract SSEBop ET, irrigation status, and TerraClimate at monthly time-step from Earth Engine
+    # precede gage data by five years so climate-flow correlation can look back 60 months before first discharge month
+    extract_years = np.arange(start_yr - 5, end_yr + 1)
+    basin_ids = [station_id for station_id, _ in stations.items()]
+    export_gridded_data(basins, bucket, extract_years, features=basin_ids, min_years=5, description=desc, debug=False)
+    # transfer gridded data from GCS bucket to local system
+
+
+def build_tables():
+    # merge aggregated gridded data with monthly discharge at each gage-basin
+    # start 5 years before the study period to account for basin lag times
+    # merge_gridded_flow_data(extracts, monthly_q, data_tables, start_yr - 5, end_yr, glob=desc)
+    merge_gridded_flow_data(extracts, monthly_q, data_tables, start_yr, end_yr, glob=desc)
+
+
+def climate_flow_correlations():
+    # find each gage's monthly characteristic response period to basin climate (precip and reference ET)
+    for m in months:
+        out_data = climate_flow_file.format(m)
+        climate_flow_correlation(data_tables, m, gages_metadata, out_data)
+
+
+processes = 30
+overwrite_bayes = True
+
+
+def trends():
+    # test for trends by first checking OLS, then if p < 0.05, run the trend test with error in Bayes regression
+    for m in months:
+        if m not in range(4, 11):
+            continue
+        print('\n\n\ntrends {}'.format(m))
+        in_data = climate_flow_file.format(m)
+        out_data = trends_initial.format(m)
+        # initial_trends_test(in_data, out_data, plot_dir=None)
+
+        in_data = out_data
+        out_data = trends_bayes.format(m)
+        # run_bayes_regression_trends(trends_traces, in_data, processes,
+        #                             overwrite=overwrite_bayes, selectors=['time_cc', 'time_ccres', 'time_cci'])
+        bayes_write_significant_trends(in_data, trends_traces, out_data, m, update_selectors=['time_ccres'])
 
 
 def irrigation_impacts():
@@ -143,9 +145,9 @@ def irrigation_impacts():
 
 if __name__ == '__main__':
     # get_gage_data()
-    get_gridded_data()
+    # get_gridded_data()
     # build_tables()
     # climate_flow_correlations()
-    # trends()
+    trends()
     # irrigation_impacts()
 # ========================= EOF ====================================================================

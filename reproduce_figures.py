@@ -40,11 +40,11 @@ ccres_qres_figs = os.path.join(figures, 'traces', 'ccres_qres')
 
 
 def cc_qres_traces():
-    for m in months[7:8]:
+    for m in months:
         fig_dir = os.path.join(ccres_qres_figs, str(m))
         if not os.path.exists(fig_dir):
             os.mkdir(fig_dir)
-        plot_saved_traces(gages_metadata, ccres_qres_traces, fig_dir, selected=[select], overwrite=True)
+        plot_saved_traces(gages_metadata, ccres_qres_traces, fig_dir, selected=None, overwrite=False)
 
 
 trends_bayes = os.path.join(analysis_directory, 'trends', 'trends_bayes_{}.json')
@@ -72,8 +72,8 @@ def q_cc_time_series():
 
 
 if __name__ == '__main__':
-    climate_flow()
-    # cc_qres_traces()
+    # climate_flow()
+    cc_qres_traces()
     # trend_traces()
     # q_cc_time_series()
 # ========================= EOF ====================================================================

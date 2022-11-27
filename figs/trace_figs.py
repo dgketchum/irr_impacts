@@ -64,11 +64,12 @@ def plot_trace(x, y, x_err, y_err, model, fig_dir, desc_str, overwrite=False):
 
     plt.savefig(fig_file.replace('.png', '_trace.png'))
     plt.close()
+    plt.clf()
 
     if isinstance(x_err, type(None)):
-        plot_regressions(x, y, y_err / 2.)
+        f, a = plot_regressions(x, y, y_err / 2.)
     else:
-        plot_regressions(x, y, y_err / 2., x_err / 2.)
+        f, a = plot_regressions(x, y, y_err / 2., x_err / 2.)
     plot_regression_from_trace(model, (x, y, x_err, y_err),
                                ax=plt.gca(), chains=150)
 
@@ -80,7 +81,8 @@ def plot_trace(x, y, x_err, y_err, model, fig_dir, desc_str, overwrite=False):
     plt.suptitle(' '.join(desc_str))
     print('write {}'.format(fig_file))
     plt.savefig(fig_file)
-    plt.close()
+    plt.close(f)
+    plt.clf()
 
 
 def plot_regressions(x, y, sigma_y, sigma_x=None):
@@ -97,6 +99,7 @@ def plot_regressions(x, y, sigma_y, sigma_x=None):
 
     ax.set_xlabel('x')
     ax.set_ylabel('y')
+    return figure, ax
 
 
 def plot_regression_from_trace(fitted, observed, ax=None, chains=None):
