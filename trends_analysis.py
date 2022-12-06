@@ -5,7 +5,7 @@ import pickle
 from multiprocessing import Pool
 
 import arviz as az
-from utils.bayes_models import LinearModel
+from utils.bayes_models import LinearModel, MVLinearModel
 import numpy as np
 from scipy.stats.stats import linregress
 from scipy.stats import anderson
@@ -72,8 +72,18 @@ def initial_trends_test(in_json, out_json, plot_dir=None, selectors=None):
                             (years, irr, 'time_irr'),
                             (years, cci, 'time_cci')]
 
-        if not counts:
-            counts = {k[2]: [0, 0] for k in regression_combs}
+        if not sig_counts:
+            sig_counts = {k[2]: [0, 0] for k in regression_combs}
+            sig_counts.update({'q_cwd': [0, 0]})
+            all_counts = {k[2]: 0 for k in regression_combs}
+            all_counts.update({'q_cwd': 0})
+
+        all_counts['q_cwd'] += 1
+        if records['p'] < 0.05:
+            if records['b'] < 0.0:
+                sig_counts['q_cwd'][0] += 1
+            else:
+                sig_counts['q_cwd'][1] += 1
 
         regressions[station] = records
 
@@ -85,6 +95,8 @@ def initial_trends_test(in_json, out_json, plot_dir=None, selectors=None):
             if month not in range(4, 11) and subdir in ['time_irr', 'time_cc', 'time_ccres', 'time_cci']:
                 continue
 
+            all_counts[subdir] += 1
+
             if subdir == 'time_q':
                 mk_test = mk.hamed_rao_modification_test(y)
                 y_pred = x * mk_test.slope + mk_test.intercept
@@ -92,9 +104,9 @@ def initial_trends_test(in_json, out_json, plot_dir=None, selectors=None):
                 p = mk_test.p
                 if p < 0.05:
                     if mk_slope_std > 0:
-                        counts[subdir][1] += 1
+                        sig_counts[subdir][1] += 1
                     else:
-                        counts[subdir][0] += 1
+                        sig_counts[subdir][0] += 1
                     regressions[station][subdir] = {'test': 'mk',
                                                     'b': mk_slope_std,
                                                     'p': p}
@@ -110,9 +122,9 @@ def initial_trends_test(in_json, out_json, plot_dir=None, selectors=None):
                     print('{} month {} failed normality test'.format(station, month))
                 if p < 0.05:
                     if b_norm > 0:
-                        counts[subdir][1] += 1
+                        sig_counts[subdir][1] += 1
                     else:
-                        counts[subdir][0] += 1
+                        sig_counts[subdir][0] += 1
                     regressions[station][subdir] = {'test': 'ols',
                                                     'b': b,
                                                     'inter': inter,
@@ -144,8 +156,8 @@ def initial_trends_test(in_json, out_json, plot_dir=None, selectors=None):
                 plt.close()
 
     print('\n {}'.format(in_json))
-    pprint(counts)
-    print(sum([np.array(v).sum() for k, v in counts.items()]))
+    pprint(sig_counts)
+    print(sum([np.array(v).sum() for k, v in sig_counts.items()]))
 
     with open(out_json, 'w') as f:
         json.dump(regressions, f, indent=4, sort_keys=False)
@@ -188,6 +200,7 @@ def bayes_linear_regression_trends(station, records, trc_dir, cores, overwrite, 
         cc = np.array(records['cc_month']) * (1 + bias)
         ccres = np.array(records['ccres_month']) * (1 + bias)
         qres = np.array(records['qres'])
+        q = np.array(records['q'])
         ai = np.array(records['ai'])
         irr = np.array(records['irr'])
         cci = cc / irr
@@ -197,6 +210,7 @@ def bayes_linear_regression_trends(station, records, trc_dir, cores, overwrite, 
         sample_kwargs['cores'] = cores
 
         ai = (ai - ai.min()) / (ai.max() - ai.min()) + 0.001
+        q = (q - q.min()) / (q.max() - q.min()) + 0.001
         cc = (cc - cc.min()) / (cc.max() - cc.min()) + 0.001
         cci = (cci - cci.min()) / (cci.max() - cci.min()) + 0.001
         ccres = (ccres - ccres.min()) / (ccres.max() - ccres.min()) + 0.001

@@ -10,30 +10,12 @@ import seaborn as sns
 
 from gage_data import hydrograph
 
-sns.set_theme(style="whitegrid")
-large = 22
-med = 16
-small = 12
-params = {
-    'axes.titlesize': large,
-    'legend.fontsize': med,
-    'figure.figsize': (16, 10),
-    'axes.labelsize': med,
-    'xtick.labelsize': med,
-    'ytick.labelsize': med,
-    'figure.titlesize': large,
-    'xtick.color': 'black',
-    'ytick.color': 'black',
-    'xtick.direction': 'out',
-    'ytick.direction': 'out',
-    'xtick.bottom': True,
-    'xtick.top': False,
-    'ytick.left': True,
-    'ytick.right': False,
-}
+sns.set_style("dark")
+sns.set_theme()
+sns.despine()
 
 
-def plot_climate_flow(climate_flow_data, fig_dir_, selected=None):
+def plot_climate_flow(climate_flow_data, fig_dir_, selected=None, label=True, fmt='png'):
     with open(climate_flow_data, 'r') as f_obj:
         clim_q = json.load(f_obj)
 
@@ -42,21 +24,26 @@ def plot_climate_flow(climate_flow_data, fig_dir_, selected=None):
         if selected and sid not in selected:
             continue
 
-        figure = plt.figure(figsize=(16, 10))
-        ax = figure.add_subplot(111)
+        fig = plt.figure(figsize=(7, 1.75))
+        ax = fig.add_subplot(111)
         q = np.array(records['q']) / 1e9
         month = records['q_mo']
         ai = np.array(records['ai']) / 1e9
 
         lr = linregress(ai, q)
         line = ai * lr.slope + lr.intercept
-        sns.lineplot(ai, line, label='Least Squares', ax=ax)
-        sns.scatterplot(ai, q, label='Observation', ax=ax)
-        ax.set_xlabel('Aridity Index [km^3]')
-        ax.set_ylabel('Stream Discharge [km^3]')
-        plt.suptitle(records['STANAME'])
-        fig_file = os.path.join(fig_dir_, '{}_{}.png'.format(sid, month))
-        plt.savefig(fig_file)
+        sns.scatterplot(ai, q, ax=ax, color='blue', s=20)
+        sns.lineplot(ai, line, ax=ax, color='black', linewidth=1.0)
+        if label:
+            ax.set_xlabel('Aridity Index [km^3]')
+            ax.set_ylabel('Stream Discharge [km^3]')
+            plt.suptitle(records['STANAME'])
+        fig_file = os.path.join(fig_dir_, '{}_{}.{}'.format(sid, month, fmt))
+        # ax.tick_params(axis='both', which='major', labelsize=8)
+        # ax.tick_params(axis='both', which='minor', labelsize=8)
+        # ax.grid(False)
+        fig.tight_layout()
+        plt.savefig(fig_file, format=fmt)
 
 
 def hydrograph_vs_crop_consumption(ee_data, sid, fig_dir):

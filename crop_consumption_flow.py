@@ -6,7 +6,7 @@ import pickle
 from multiprocessing import Pool
 
 import arviz as az
-from utils.bayes_models import LinearModel
+from utils.bayes_models import LinearModel, MVLinearModel
 import numpy as np
 from scipy.stats.stats import linregress
 import warnings
@@ -165,7 +165,7 @@ def bayes_linear_regression_cc_qres(station, period, records, trc_dir, cores, ov
         irr_f1 = 1 - BASIN_IRRMAPPER_F1[basin]
         cc_err = (irr_f1 + rmse - abs(bias))
         ppt_err, etr_err = BASIN_PRECIP_RMSE[basin], ETR_ERR
-        qres_err = np.sqrt(ppt_err**2 + etr_err**2)
+        qres_err = np.sqrt(ppt_err ** 2 + etr_err ** 2)
 
         month = records['q_mo']
         cc = np.array(records['cc']) * (1 + bias)

@@ -1,5 +1,6 @@
 import os
 import json
+from pprint import pprint
 
 import numpy as np
 
@@ -27,6 +28,7 @@ monthly_q = os.path.join(root, 'tables', 'hydrographs', 'monthly_q')
 monthly_q_fig = os.path.join(figures, 'hydrographs', 'monthly_hydrograph_plots')
 start_yr, end_yr = 1987, 2021
 months = list(range(1, 13))
+select = '13269000'
 
 
 def get_gage_data():
@@ -45,6 +47,7 @@ with open(gages_metadata, 'r') as fp:
 
 analysis_directory = os.path.join(root, 'analysis')
 static_irr = False
+print('\nassuming static irrigation mask: {}'.format(static_irr))
 
 if static_irr:
     desc = 'cc_static_4NOV2022'
@@ -68,7 +71,7 @@ else:
 # crop consumption and climate-normalized flow data
 cc_qres_file = os.path.join(analysis_directory, 'cc_qres', 'cc_qres_initial_{}.json')
 cc_qres_results_file = os.path.join(analysis_directory, 'cc_qres', 'cc_qres_bayes_{}.json')
-cc_qres_traces = os.path.join(root, 'traces', 'cc_qres')
+cc_qres_traces = os.path.join(root, 'mvtraces', 'cc_qres')
 
 # climate-normalized crop consumption and climate-normalized flow data
 ccres_qres_file = os.path.join(analysis_directory, 'ccres_qres', 'ccres_qres_initial_{}.json')
@@ -121,6 +124,7 @@ def trends():
 
 
 def irrigation_impacts():
+    count = 0
     for m in months:
         in_data = climate_flow_file.format(m)
         # print('\n\n\n cc_qres {}'.format(m))
@@ -129,18 +133,21 @@ def irrigation_impacts():
         # initial_impacts_test(in_data, data_tables, out_data, m, cc_res=False)
         in_data = out_data
         out_data = cc_qres_results_file.format(m)
-        # run_bayes_regression_cc_qres(cc_qres_traces, in_data, processes, overwrite_bayes)
+        run_bayes_regression_cc_qres(cc_qres_traces, in_data, processes, overwrite_bayes)
         # bayes_write_significant_cc_qres(in_data, cc_qres_traces, out_data, m)
 
         # use same-month climate to normalize cc
-        in_data = climate_flow_file.format(m)
-        print('\n\n\n ccres_qres {}'.format(m))
-        out_data = ccres_qres_file.format(m)
+        # in_data = climate_flow_file.format(m)
+        # print('\n\n\n ccres_qres {}'.format(m))
+        # out_data = ccres_qres_file.format(m)
         # initial_impacts_test(in_data, data_tables, out_data, m, cc_res=True)
         in_data = out_data
-        out_data = ccres_qres_results_file.format(m)
-        # run_bayes_regression_cc_qres(ccres_qres_traces, in_data, processes, overwrite_bayes)
+        # out_data = ccres_qres_results_file.format(m)
+        # ct = run_bayes_regression_cc_qres(ccres_qres_traces, in_data, processes, overwrite_bayes)
+        # count += ct
         # bayes_write_significant_cc_qres(in_data, ccres_qres_traces, out_data, m)
+
+    print(count)
 
 
 if __name__ == '__main__':
