@@ -6,7 +6,7 @@ import pickle
 from multiprocessing import Pool
 
 import arviz as az
-from utils.bayes_models import LinearModel, MVLinearModel
+from utils.bayes_models import LinearModel, BiVarLinearModel
 import numpy as np
 from scipy.stats.stats import linregress
 import warnings
@@ -16,13 +16,6 @@ from gage_data import hydrograph
 from utils.error_estimates import BASIN_CC_ERR, BASIN_IRRMAPPER_F1, BASIN_PRECIP_RMSE, ETR_ERR
 
 warnings.simplefilter(action='ignore', category=FutureWarning)
-SAMPLE_KWARGS = {'draws': 1000,
-                 'tune': 5000,
-                 'cores': None,
-                 'chains': 4,
-                 'init': 'advi+adapt_diag',
-                 'progressbar': False,
-                 'return_inferencedata': False}
 
 
 def initial_impacts_test(clim_q_data, ee_series, out_jsn, month, cc_res=False):
@@ -80,12 +73,11 @@ def initial_impacts_test(clim_q_data, ee_series, out_jsn, month, cc_res=False):
                 continue
 
             cc = np.array([cdf['cc'][d[0]: d[1]].sum() for d in cc_dates])
+            etr = np.array([cdf['gm_etr'][d[0]: d[1]].sum() for d in cc_dates])
+            ppt = np.array([cdf['gm_ppt'][d[0]: d[1]].sum() for d in cc_dates])
+            aim = etr - ppt
 
             if cc_res:
-                etr = np.array([cdf['gm_etr'][d[0]: d[1]].sum() for d in cc_dates])
-                ppt = np.array([cdf['gm_ppt'][d[0]: d[1]].sum() for d in cc_dates])
-                aim = etr - ppt
-
                 lr = linregress(aim, cc)
                 b, inter, r, p = lr.slope, lr.intercept, lr.rvalue, lr.pvalue
                 resid = cc - (b * aim + inter)
@@ -119,7 +111,9 @@ def initial_impacts_test(clim_q_data, ee_series, out_jsn, month, cc_res=False):
                                                                              'q_mo': month,
                                                                              'basin': basin,
                                                                              'cc': list(cc),
-                                                                             'qres': list(qres),
+                                                                             'q': list(q),
+                                                                             'ai': list(ai),
+                                                                             'aim': list(aim),
                                                                              }})
                 if cc_res:
                     sig_stations[sid]['{}-{}'.format(cc_start, cc_end)]['cc_data'] = list(resid)
@@ -128,7 +122,7 @@ def initial_impacts_test(clim_q_data, ee_series, out_jsn, month, cc_res=False):
         json.dump(sig_stations, f, indent=4, sort_keys=False)
 
 
-def run_bayes_regression_cc_qres(traces_dir, stations, multiproc=0, overwrite=False):
+def run_bayes_regression_cc_qres(traces_dir, stations, multiproc=0, overwrite=False, station=None):
     if not os.path.exists(traces_dir):
         os.makedirs(traces_dir)
 
@@ -143,7 +137,7 @@ def run_bayes_regression_cc_qres(traces_dir, stations, multiproc=0, overwrite=Fa
 
     for sid, period, rec in diter:
 
-        if rec['p'] > 0.05:
+        if station and sid != station:
             continue
 
         if not multiproc:
@@ -169,25 +163,37 @@ def bayes_linear_regression_cc_qres(station, period, records, trc_dir, cores, ov
 
         month = records['q_mo']
         cc = np.array(records['cc']) * (1 + bias)
-        qres = np.array(records['qres'])
+        q = np.array(records['q'])
+        ai = np.array(records['ai'])
 
         cc = (cc - cc.min()) / (cc.max() - cc.min()) + 0.001
-        qres = (qres - qres.min()) / (qres.max() - qres.min()) + 0.001
+        q = (q - q.min()) / (q.max() - q.min()) + 0.001
+        ai = (ai - ai.min()) / (ai.max() - ai.min()) + 0.001
 
-        qres_err = qres_err * np.ones_like(qres)
+        ai_err = qres_err * np.ones_like(ai)
         cc_err = cc_err * np.ones_like(cc)
+        q_err = np.ones_like(ai_err) * 0.01
 
-        sample_kwargs = SAMPLE_KWARGS
-        sample_kwargs['cores'] = cores
+        # sample_kwargs = {'cores': cores}
+        sample_kwargs = {}
+        variable_names = {'x1_name': 'cwd_coeff',
+                          'x2_name': 'iwu_coeff'}
 
         if not os.path.isdir(trc_dir):
-            os.makedirs(trc_dir)
-        save_model = os.path.join(trc_dir, '{}_cc_{}_q_{}.model'.format(station, period, month))
-        save_data = save_model.replace('.model', '.data')
-        dct = {'x': list(cc),
-               'y': list(qres),
-               'x_err': list(cc_err),
-               'y_err': list(qres_err),
+            os.makedirs(os.path.join(trc_dir, 'model'))
+            os.makedirs(os.path.join(trc_dir, 'data'))
+            os.makedirs(os.path.join(trc_dir, 'trace'))
+
+        save_model = os.path.join(trc_dir, 'model', '{}_cc_{}_q_{}.model'.format(station, period, month))
+        save_data =os.path.join(trc_dir, 'data', '{}_cc_{}_q_{}.data'.format(station, period, month))
+        save_tracefig =os.path.join(trc_dir, 'trace', '{}_cc_{}_q_{}.png'.format(station, period, month))
+
+        dct = {'x1': list(ai),
+               'x2': list(cc),
+               'y': list(q),
+               'x1_err': list(cc_err),
+               'x2_err': list(ai_err),
+               'y_err': list(np.zeros_like(ai_err)),
                'xvar': 'cc',
                'yvar': 'qres',
                }
@@ -204,11 +210,13 @@ def bayes_linear_regression_cc_qres(station, period, records, trc_dir, cores, ov
             print('\n=== sampling qres {} at {}, p = {:.3f}, err: {:.3f}, bias: {} ======='.format(
                 month, station, records['p'], cc_err[0], bias))
 
-        model = LinearModel()
+        model = BiVarLinearModel()
 
-        model.fit(cc, qres, qres_err, cc_err,
+        model.fit(ai, ai_err, cc, cc_err, q, q_err,
                   save_model=save_model,
-                  sample_kwargs=sample_kwargs)
+                  sample_kwargs=sample_kwargs,
+                  var_names=variable_names,
+                  figure=save_tracefig)
         delta = (datetime.now() - start).seconds / 60.
         print('sampled in {} minutes'.format(delta))
 
@@ -230,7 +238,7 @@ def bayes_write_significant_cc_qres(metadata, trc_dir, out_json, month):
 
         for period in impact_keys:
 
-            saved_model = os.path.join(trc_dir, '{}_cc_{}_q_{}.model'.format(station, period, month))
+            saved_model = os.path.join(trc_dir, 'model', '{}_cc_{}_q_{}.model'.format(station, period, month))
 
             if os.path.exists(saved_model):
                 try:
@@ -244,21 +252,21 @@ def bayes_write_significant_cc_qres(metadata, trc_dir, out_json, month):
                 continue
 
             try:
-                vars_ = ['slope', 'inter']
+                vars_ = ['cwd_coeff', 'iwu_coeff', 'inter']
                 summary = az.summary(trace, hdi_prob=0.95, var_names=vars_)
-                d = {'mean': summary['mean'].slope,
-                     'hdi_2.5%': summary['hdi_2.5%'].slope,
-                     'hdi_97.5%': summary['hdi_97.5%'].slope,
+                d = {'mean': summary['mean'].iwu_coeff,
+                     'hdi_2.5%': summary['hdi_2.5%'].iwu_coeff,
+                     'hdi_97.5%': summary['hdi_97.5%'].iwu_coeff,
                      'model': saved_model}
 
                 out_meta[station][period] = data[period]
 
-                out_meta[station][period]['cc_qres'] = d
+                out_meta[station][period]['cc_q'] = d
                 if np.sign(d['hdi_2.5%']) == np.sign(d['hdi_97.5%']):
                     print('{}, {}, {}, {} mean: {:.2f}; hdi {:.2f} to {:.2f}'.format(station,
                                                                                      data['STANAME'],
                                                                                      period,
-                                                                                     'cc_qres',
+                                                                                     'cc_q',
                                                                                      d['mean'],
                                                                                      d['hdi_2.5%'],
                                                                                      d['hdi_97.5%']))
