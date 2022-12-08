@@ -8,8 +8,9 @@ from gage_data import get_station_daily_data, get_station_daterange_data
 from gridded_data import export_gridded_data
 from input_tables import merge_gridded_flow_data
 from climate_flow import climate_flow_correlation
-from trends_analysis import initial_trends_test, run_bayes_regression_trends
-from trends_analysis import bayes_write_significant_trends
+from uv_trends_analysis import run_bayes_univariate_trends, summarize_univariate_trends
+from ols_trends_analysis import initial_trends_test
+from mv_trends_analysis import run_bayes_multivariate_trends, summarize_multivariate_trends
 from crop_consumption_flow import initial_impacts_test, run_bayes_regression_cc_qres
 from crop_consumption_flow import bayes_write_significant_cc_qres
 
@@ -55,28 +56,28 @@ if static_irr:
     data_tables = os.path.join(root, 'tables', 'input_flow_climate_tables', 'IrrMapperComp_static_4NOV2022')
     climate_flow_data = os.path.join(analysis_directory, 'climate_flow_static_irr')
     climate_flow_file = os.path.join(climate_flow_data, 'climate_flow_{}.json')
-    trends_initial = os.path.join(analysis_directory, 'trends_static_irr', 'trends_initial_{}.json')
-    trends_traces = os.path.join(root, 'traces', 'trends_static_irr')
-    trends_bayes = os.path.join(analysis_directory, 'trends_static_irr', 'trends_bayes_{}.json')
+    uv_trends_initial = os.path.join(analysis_directory, 'trends_static_irr', 'trends_initial_{}.json')
+    uv_trends_traces = os.path.join(root, 'traces', 'trends_static_irr')
+    uv_trends_bayes = os.path.join(analysis_directory, 'trends_static_irr', 'trends_bayes_{}.json')
 
 else:
     extracts = os.path.join(root, 'tables', 'gridded_tables', 'IrrMapperComp_21OCT2022')
     data_tables = os.path.join(root, 'tables', 'input_flow_climate_tables', 'IrrMapperComp_21OCT2022')
     climate_flow_data = os.path.join(analysis_directory, 'climate_flow')
     climate_flow_file = os.path.join(climate_flow_data, 'climate_flow_{}.json')
-    trends_initial = os.path.join(analysis_directory, 'trends', 'trends_initial_{}.json')
-    trends_traces = os.path.join(root, 'traces', 'trends')
-    trends_bayes = os.path.join(analysis_directory, 'trends', 'trends_bayes_{}.json')
+
+    ols_trends_data = os.path.join(analysis_directory, 'ols_trends', 'trends_initial_{}.json')
+
+    uv_trends_traces = os.path.join(root, 'uv_traces', 'uv_trends')
+    uv_trends_bayes = os.path.join(analysis_directory, 'uv_trends', 'trends_bayes_{}.json')
+
+    mv_trends_traces = os.path.join(root, 'mv_traces', 'mv_trends')
+    mv_trends_bayes = os.path.join(analysis_directory, 'mv_trends', 'mv_traces_bayes_{}.json')
 
 # crop consumption and climate-normalized flow data
-cc_qres_file = os.path.join(analysis_directory, 'cc_qres', 'cc_qres_initial_{}.json')
-cc_qres_results_file = os.path.join(analysis_directory, 'cc_qres', 'cc_qres_bayes_{}.json')
-cc_qres_traces = os.path.join(root, 'mvtraces', 'cc_qres')
-
-# climate-normalized crop consumption and climate-normalized flow data
-ccres_qres_file = os.path.join(analysis_directory, 'ccres_qres', 'ccres_qres_initial_{}.json')
-ccres_qres_results_file = os.path.join(analysis_directory, 'ccres_qres', 'ccres_qres_bayes_{}.json')
-ccres_qres_traces = os.path.join(root, 'traces', 'ccres_qres')
+cc_q_file = os.path.join(analysis_directory, 'cc_q', 'cc_q_initial_{}.json')
+cc_q_bayes_file = os.path.join(analysis_directory, 'cc_q', 'cc_q_bayes_{}.json')
+cc_q_traces = os.path.join(root, 'mv_traces', 'cc_q')
 
 
 def get_gridded_data():
@@ -102,50 +103,54 @@ def climate_flow_correlations():
         climate_flow_correlation(data_tables, m, gages_metadata, out_data)
 
 
-processes = 30
+def calculate_ols_trends():
+    for m in months:
+        print('\n\n\ntrends {}'.format(m))
+        in_data = climate_flow_file.format(m)
+        out_data = ols_trends_data.format(m)
+        initial_trends_test(in_data, out_data, plot_dir=None)
+
+
+processes = 0
 overwrite_bayes = True
 
 
-def trends():
-    # test for trends by first checking OLS, then if p < 0.05, run the trend test with error in Bayes regression
+# test for trends by first checking OLS, then if p < 0.05, run the trend test with error in Bayes regression
+def univariate_trends():
     for m in months:
         if m not in range(4, 11):
             continue
-        print('\n\n\ntrends {}'.format(m))
-        in_data = climate_flow_file.format(m)
-        out_data = trends_initial.format(m)
-        # initial_trends_test(in_data, out_data, plot_dir=None)
+        print('\n\n\nunivariate trends {}'.format(m))
 
-        in_data = out_data
-        out_data = trends_bayes.format(m)
-        # run_bayes_regression_trends(trends_traces, in_data, processes,
-        #                             overwrite=overwrite_bayes, selectors=['time_cc', 'time_ccres', 'time_cci'])
-        bayes_write_significant_trends(in_data, trends_traces, out_data, m, update_selectors=['time_ccres'])
+        in_data = ols_trends_data.format(m)
+        out_data = uv_trends_bayes.format(m)
+        run_bayes_univariate_trends(uv_trends_traces, in_data, processes, overwrite=overwrite_bayes,
+                                    station='09379500', selectors=['time_q'])
+        summarize_univariate_trends(in_data, uv_trends_traces, out_data, m, update_selectors=['time_q'])
+
+
+def multivariate_trends():
+    for m in months:
+        print('\n\n\nmultivariate trends {}'.format(m))
+        in_data = climate_flow_file.format(m)
+        out_data = mv_trends_bayes.format(m)
+        run_bayes_multivariate_trends(mv_trends_traces, in_data, processes, overwrite=overwrite_bayes,
+                                      station='09379500')
+        summarize_multivariate_trends(in_data, mv_trends_traces, out_data, m)
 
 
 def irrigation_impacts():
     count = 0
     for m in months:
         in_data = climate_flow_file.format(m)
-        # print('\n\n\n cc_qres {}'.format(m))
+        print('\n\n\n cc_qres {}'.format(m))
 
-        out_data = cc_qres_file.format(m)
+        out_data = cc_q_file.format(m)
         # initial_impacts_test(in_data, data_tables, out_data, m, cc_res=False)
         in_data = out_data
-        out_data = cc_qres_results_file.format(m)
-        run_bayes_regression_cc_qres(cc_qres_traces, in_data, processes, overwrite_bayes)
-        # bayes_write_significant_cc_qres(in_data, cc_qres_traces, out_data, m)
-
-        # use same-month climate to normalize cc
-        # in_data = climate_flow_file.format(m)
-        # print('\n\n\n ccres_qres {}'.format(m))
-        # out_data = ccres_qres_file.format(m)
-        # initial_impacts_test(in_data, data_tables, out_data, m, cc_res=True)
-        in_data = out_data
-        # out_data = ccres_qres_results_file.format(m)
-        # ct = run_bayes_regression_cc_qres(ccres_qres_traces, in_data, processes, overwrite_bayes)
-        # count += ct
-        # bayes_write_significant_cc_qres(in_data, ccres_qres_traces, out_data, m)
+        out_data = cc_q_bayes_file.format(m)
+        # run_bayes_regression_cc_qres(cc_qres_traces, in_data, processes, overwrite_bayes, station=select)
+        bayes_write_significant_cc_qres(in_data, cc_q_traces, out_data, m)
 
     print(count)
 
@@ -155,6 +160,7 @@ if __name__ == '__main__':
     # get_gridded_data()
     # build_tables()
     # climate_flow_correlations()
-    trends()
+    # univariate_trends()
+    multivariate_trends()
     # irrigation_impacts()
 # ========================= EOF ====================================================================

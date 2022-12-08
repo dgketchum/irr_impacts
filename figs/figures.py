@@ -15,6 +15,33 @@ sns.set_theme()
 sns.despine()
 
 
+def bidirectional_histogram(csv):
+    df = pd.read_csv(csv, index_col=['Unnamed: 0'])
+    # df = df[df['AREA'] < 0.2]
+    df.drop(columns=['AREA', 'geometry'], inplace=True)
+    pos_ct = np.count_nonzero(df.values > 0, axis=0).astype(int)
+    negct = np.count_nonzero(df.values < 0, axis=0).astype(int)
+    color_red = '#e66e61'
+    color_blue = '#63a9cf'
+    index = [x + 1 for x in range(12)]
+    title0 = 'Negative'
+    title1 = 'Positve'
+    fig, axes = plt.subplots(figsize=(10, 5), ncols=2, sharey=True)
+    fig.tight_layout()
+    axes[0].barh(index, pos_ct, align='center', color=color_red, zorder=10)
+    axes[0].set_title(title0, fontsize=14, pad=15)
+    axes[1].barh(index, negct, align='center', color=color_blue, zorder=10)
+    axes[1].set_title(title1, fontsize=14, pad=15)
+    axes[0].invert_xaxis()
+    plt.suptitle('IWU - Flow Relationship Direction', y=0.97, x=0.56)
+    plt.xlabel('Count', x=0)
+    plt.xlim([0, 70])
+    fig_ = csv.replace('.csv', '_histogram.png')
+    plt.subplots_adjust(wspace=0, top=0.85, bottom=0.1, left=0.18, right=0.95)
+    plt.savefig(fig_)
+
+
+
 def plot_climate_flow(climate_flow_data, fig_dir_, selected=None, label=True, fmt='png'):
     with open(climate_flow_data, 'r') as f_obj:
         clim_q = json.load(f_obj)
@@ -76,4 +103,8 @@ if __name__ == '__main__':
     root = '/media/research/IrrigationGIS/impacts'
     if not os.path.exists(root):
         root = '/home/dgketchum/data/IrrigationGIS/impacts'
+
+    _dir = os.path.join(root, 'figures', 'shapefiles', 'cc_q')
+    csv_ = os.path.join(_dir, 'cc_q_bayes.csv')
+    bidirectional_histogram(csv_)
 # ========================= EOF ====================================================================

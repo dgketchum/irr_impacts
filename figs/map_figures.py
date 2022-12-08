@@ -117,7 +117,7 @@ def monthly_trends(regressions_dir, in_shape, glob=None, out_shape=None, selecto
         print(shp_file)
 
 
-def monthly_cc_qres(regressions_dir, in_shape, glob=None, out_shape=None, bayes=False):
+def monthly_cc_qres(regressions_dir, in_shape, glob=None, out_shape=None, bayes=False, var='cc_q'):
     feats = gpd.read_file(in_shape)
     geo = {f['STAID']: shape(f['geometry']) for i, f in feats.iterrows()}
     areas = {f['STAID']: f['AREA'] for i, f in feats.iterrows()}
@@ -154,9 +154,9 @@ def monthly_cc_qres(regressions_dir, in_shape, glob=None, out_shape=None, bayes=
                     if not bayes and vv['p'] < 0.05:
                         slopes_.append(vv['b'])
                         has_sig = True
-                    elif bayes and 'cc_qres' in vv.keys():
-                        if np.sign(vv['cc_qres']['hdi_2.5%']) == np.sign(vv['cc_qres']['hdi_97.5%']):
-                            slopes_.append(vv['cc_qres']['mean'])
+                    elif bayes and var in vv.keys():
+                        if np.sign(vv[var]['hdi_2.5%']) == np.sign(vv[var]['hdi_97.5%']):
+                            slopes_.append(vv['cc_q']['mean'])
                             cc_periods.append(kk)
                             has_sig = True
                             bayes_sig += 1
@@ -226,6 +226,9 @@ def monthly_cc_qres(regressions_dir, in_shape, glob=None, out_shape=None, bayes=
     gdf.columns = cols
     shp_file = os.path.join(out_shape, '{}.shp'.format(glob))
     gdf.to_file(shp_file, crs='epsg:4326')
+    df = DataFrame(gdf)
+    df.drop(columns=['AREA', 'geometry'], inplace=True)
+    df.to_csv(shp_file.replace('.shp', '.csv'))
     print('write {}'.format(shp_file))
 
 
@@ -279,13 +282,13 @@ if __name__ == '__main__':
     lr_ = os.path.join(root, 'analysis', 'trends')
     fig_shp = os.path.join(root, 'figures', 'shapefiles', 'trends')
     glb = 'trends_bayes'
-    monthly_trends(lr_, inshp, glob=glb, out_shape=fig_shp, selectors=['time_ccres'])
+    # monthly_trends(lr_, inshp, glob=glb, out_shape=fig_shp, selectors=['time_ccres'])
 
-    v_ = 'cc_qres'
+    v_ = 'cc_q'
     glb = '{}_bayes'.format(v_)
     cc_qres = os.path.join(root, 'analysis', '{}'.format(v_))
     out_shp = os.path.join(root, 'figures', 'shapefiles', '{}'.format(v_))
-    # monthly_cc_qres(cc_qres, inshp, glob=glb, out_shape=out_shp, bayes=True)
+    monthly_cc_qres(cc_qres, inshp, glob=glb, out_shape=out_shp, bayes=True)
 
     q_trend = os.path.join(root, 'figures', 'shapefiles', 'trends', 'time_q.shp')
     cc_trend = os.path.join(root, 'figures', 'shapefiles', 'trends', 'time_cc.shp')

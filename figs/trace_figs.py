@@ -105,15 +105,39 @@ def plot_trace(x, y, x_err, y_err, model, fig_dir, desc_str, overwrite=False, fm
     plt.clf()
 
 
-def trace_only(model, fig_file):
+def trace_only(model, fig_file, vars=None):
     with open(model, 'rb') as buff:
         data = pickle.load(buff)
         model, traces = data['model'], data['trace']
-        vars_ = ['slope_1', 'slope_2', 'inter']
-        az.plot_trace(traces, var_names=vars_, rug=True)
+        if not vars:
+            vars = ['slope_1', 'slope_2', 'inter']
+        az.plot_trace(traces, var_names=vars, rug=True)
         plt.savefig(fig_file.replace('.png', '_trace.png'))
         plt.close()
         plt.clf()
+
+
+def bayes_lines(x, x_err, y, y_err, traces, fig_file):
+    figure = plt.figure(figsize=(14, 4.5), dpi=900)
+    ax = figure.add_subplot(111)
+    ax.scatter(x, y, color='b')
+
+    if isinstance(x_err, np.ndarray):
+        ax.errorbar(x, y, xerr=x_err / 2.0, yerr=y_err / 2.0, alpha=0.3, ls='', color='b')
+    else:
+        ax.errorbar(x, y, yerr=y_err / 2.0, alpha=0.3, ls='', color='b')
+
+    trace_inter = az.extract_dataset(traces).inter.values
+    trace_slope = az.extract_dataset(traces).slope.values
+    idx = list(range(0, len(trace_inter), 20))
+    for i, chain in enumerate(idx):
+        alpha, beta = trace_inter[chain], trace_slope[chain]
+        y = alpha + beta * x
+        ax.plot(x, y, alpha=0.05, c='red')
+
+    plt.savefig(fig_file)
+    plt.close()
+    plt.clf()
 
 
 if __name__ == '__main__':

@@ -174,10 +174,7 @@ def bayes_linear_regression_cc_qres(station, period, records, trc_dir, cores, ov
         cc_err = cc_err * np.ones_like(cc)
         q_err = np.ones_like(ai_err) * 0.01
 
-        # sample_kwargs = {'cores': cores}
-        sample_kwargs = {}
-        variable_names = {'x1_name': 'cwd_coeff',
-                          'x2_name': 'iwu_coeff'}
+
 
         if not os.path.isdir(trc_dir):
             os.makedirs(os.path.join(trc_dir, 'model'))
@@ -210,11 +207,13 @@ def bayes_linear_regression_cc_qres(station, period, records, trc_dir, cores, ov
             print('\n=== sampling qres {} at {}, p = {:.3f}, err: {:.3f}, bias: {} ======='.format(
                 month, station, records['p'], cc_err[0], bias))
 
+        variable_names = {'x1_name': 'cwd_coeff',
+                          'x2_name': 'iwu_coeff'}
+
         model = BiVarLinearModel()
 
         model.fit(ai, ai_err, cc, cc_err, q, q_err,
                   save_model=save_model,
-                  sample_kwargs=sample_kwargs,
                   var_names=variable_names,
                   figure=save_tracefig)
         delta = (datetime.now() - start).seconds / 60.

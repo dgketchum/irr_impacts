@@ -1,61 +1,84 @@
+import os
 import pickle
+import tempfile
 
-import pymc3 as pm
-from astroML.linear_model import LinearRegression
+import pymc as pm
+import pymc.sampling_jax
 
+from figs.trace_figs import trace_only
 
-class LinearModel(LinearRegression):
-
-    def __init__(self, fit_intercept=False, regularization='none', kwds=None):
-        super().__init__(fit_intercept, regularization, kwds)
-        self.clf_ = None
-        self.trace = None
-
-    def fit(self, x, y, y_error=1, x_error=None, save_model=None,
-            sample_kwargs=None):
-        with pm.Model():
-            intercept = pm.Normal('inter', 0, sd=20)
-            gradient = pm.Normal('slope', 0, sd=20)
-            true_x = pm.Normal('true_x', mu=0, sd=20, shape=len(x))
-            likelihood_x = pm.Normal('x', mu=true_x, sd=x_error, observed=x)
-            true_y = pm.Deterministic('true_y', intercept + gradient * true_x)
-            likelihood_y = pm.Normal('y', mu=true_y, sd=y_error, observed=y)
-
-            self.trace = pm.sample(**sample_kwargs)
-
-            if save_model:
-                with open(save_model, 'wb') as buff:
-                    pickle.dump({'model': self, 'trace': self.trace}, buff)
-                    print('saving', save_model)
+DEFAULTS = {'draws': 1000,
+            'tune': 5000,
+            'chains': 4,
+            'progress_bar': False}
 
 
-class MVLinearModel():
+class LinearModel():
 
     def __init__(self):
-        pass
+        self.dirpath = tempfile.mkdtemp()
+        os.environ['AESARA_FLAGS'] = "base_compiledir=${}/.aesara".format(self.dirpath)
 
-    def fit(self, x1, x2, y, y_error=1, x1_error=None, x2_error=None, save_model=None,
-            sample_kwargs=None):
+    def fit(self, x, x_err, y, y_err, save_model=None, figure=None):
         with pm.Model():
-            alpha = pm.Normal('inter', 0, sd=20)
-            slope_1 = pm.Normal('slope_1', 0, sd=20)
-            slope_2 = pm.Normal('slope_2', 0, sd=20)
+            intercept = pm.Normal('inter', 0, sigma=20)
+            gradient = pm.Normal('slope', 0, sigma=20)
+            true_x = pm.Normal('true_x', mu=0, sigma=20, shape=len(x))
+            likelihood_x = pm.Normal('x', mu=true_x, sigma=x_err, observed=x)
+            true_y = pm.Deterministic('true_y', intercept + gradient * true_x)
+            likelihood_y = pm.Normal('y', mu=true_y, sigma=y_err, observed=y)
 
-            x1_ = pm.Normal('x_1', mu=0, sd=x1_error)
-            x2_ = pm.Normal('x_2', mu=0, sd=x2_error)
-
-            x1_hat = pm.Normal('x1_hat', mu=x1_, sd=x1_error, observed=x1)
-            x2_hat = pm.Normal('x2_hat', mu=x2_, sd=x2_error, observed=x2)
-
-            mu = alpha + slope_1 * x1_hat + slope_2 * x2_hat
-            y_hat = pm.Normal('y_hat', mu=mu, sd=y_error, observed=y)
-
-            self.trace = pm.sample(**sample_kwargs)
+            trace = pm.sampling_jax.sample_numpyro_nuts(**DEFAULTS)
 
             if save_model:
                 with open(save_model, 'wb') as buff:
-                    pickle.dump({'model': self, 'trace': self.trace}, buff)
+                    pickle.dump({'model': self, 'trace': trace}, buff)
                     print('saving', save_model)
+
+                var_names = ['slope', 'inter']
+                trace_only(save_model, figure, var_names)
+
+        os.rmdir(self.dirpath)
+
+
+class BiVarLinearModel():
+
+    def __init__(self):
+        self.dirpath = tempfile.mkdtemp()
+        os.environ['AESARA_FLAGS'] = "base_compiledir=${}/.aesara".format(self.dirpath)
+
+    def fit(self, x1, x1_err, x2, x2_err, y, y_error, save_model=None, var_names=None, figure=None):
+
+        if not var_names:
+            var_names = {'x1_name': 'slope_1',
+                         'x2_name': 'slope_2'}
+
+        with pm.Model():
+
+            intercept = pm.Normal('inter', 0, sigma=20)
+            gradient_1 = pm.Normal(var_names['x1_name'], 0, sigma=20)
+            gradient_2 = pm.Normal(var_names['x2_name'], 0, sigma=20)
+
+            true_x1 = pm.Normal('true_x1', mu=0, sigma=20, shape=len(x1))
+            true_x2 = pm.Normal('true_x2', mu=0, sigma=20, shape=len(x2))
+
+            likelihood_x1 = pm.Normal('x1', mu=true_x1, sigma=x1_err, observed=x1)
+            likelihood_x2 = pm.Normal('x2', mu=true_x2, sigma=x2_err, observed=x2)
+
+            true_y = pm.Deterministic('true_y', intercept + gradient_1 * true_x1 + gradient_2 * true_x2)
+            likelihood_y = pm.Normal('y', mu=true_y, sigma=y_error, observed=y)
+
+            trace = pm.sampling_jax.sample_numpyro_nuts(**DEFAULTS)
+
+            if save_model:
+                with open(save_model, 'wb') as buff:
+                    pickle.dump({'model': self, 'trace': trace}, buff)
+                    print('saving', save_model)
+
+                var_names = [v for k, v in var_names.items()] + ['inter']
+                trace_only(save_model, figure, var_names)
+
+        os.rmdir(self.dirpath)
 
 
 if __name__ == '__main__':
