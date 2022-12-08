@@ -13,6 +13,7 @@ def initial_trends_test(in_json, out_json, plot_dir=None, selectors=None):
         stations = json.load(f)
 
     regressions, counts, ct = {}, None, 0
+    all_counts, sig_counts = None, None
 
     for enu, (station, records) in enumerate(stations.items(), start=1):
 
@@ -142,6 +143,8 @@ def initial_trends_test(in_json, out_json, plot_dir=None, selectors=None):
 
     with open(out_json, 'w') as f:
         json.dump(regressions, f, indent=4, sort_keys=False)
+
+    return sig_counts
 
 
 if __name__ == '__main__':

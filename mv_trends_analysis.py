@@ -85,6 +85,9 @@ def bayes_multivariate_trends(station, records, trc_dir, overwrite, selector=Non
             if selector and selector != subdir:
                 continue
 
+            if subdir == 'time_cc' and month not in list(range(4, 11)):
+                continue
+
             model_dir = os.path.join(trc_dir, subdir)
             save_model = os.path.join(model_dir, 'model', '{}_q_{}.model'.format(station, month))
             save_figure = os.path.join(model_dir, 'trace', '{}_q_{}.png'.format(station, month))
@@ -139,6 +142,9 @@ def summarize_multivariate_trends(metadata, trc_dir, out_json, month, update_sel
         trc_subdirs = ['time_q', 'time_cc']
         for subdir in trc_subdirs:
 
+            if subdir == 'time_cc' and month not in range(4, 11):
+                continue
+
             if update_selectors and subdir not in update_selectors:
                 if subdir not in out_meta[station].keys():
                     out_meta[station][subdir] = None
@@ -164,16 +170,18 @@ def summarize_multivariate_trends(metadata, trc_dir, out_json, month, update_sel
                 d = {'mean': summary['mean'].time_coeff,
                      'hdi_2.5%': summary['hdi_2.5%'].time_coeff,
                      'hdi_97.5%': summary['hdi_97.5%'].time_coeff,
+                     'r_hat': summary['r_hat'].time_coeff,
                      'model': saved_model}
 
                 out_meta[station][subdir] = d
-                if np.sign(d['hdi_2.5%']) == np.sign(d['hdi_97.5%']):
-                    print('{}, {}, {} mean: {:.2f}; hdi {:.2f} to {:.2f}'.format(station,
-                                                                                 month,
-                                                                                 subdir,
-                                                                                 d['mean'],
-                                                                                 d['hdi_2.5%'],
-                                                                                 d['hdi_97.5%']))
+                if np.sign(d['hdi_2.5%']) == np.sign(d['hdi_97.5%']) and d['r_hat'] < 1.2:
+                    print('{}, {}, {} mean: {:.2f}; hdi {:.2f} to {:.2f}    rhat: {:.3f}'.format(station,
+                                                                                                 month,
+                                                                                                 subdir,
+                                                                                                 d['mean'],
+                                                                                                 d['hdi_2.5%'],
+                                                                                                 d['hdi_97.5%'],
+                                                                                                 d['r_hat']))
 
             except ValueError as e:
                 print(station, e)

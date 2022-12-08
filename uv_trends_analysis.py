@@ -149,13 +149,16 @@ def summarize_univariate_trends(metadata, trc_dir, out_json, month, update_selec
 
         for subdir in trc_subdirs:
 
+            if subdir == 'time_cc' and month not in list(range(4, 11)):
+                continue
+
             if update_selectors and subdir not in update_selectors:
                 if subdir not in out_meta[station].keys():
                     out_meta[station][subdir] = None
                 continue
 
             model_dir = os.path.join(trc_dir, subdir)
-            saved_model = os.path.join(model_dir, '{}_q_{}.model'.format(station, month))
+            saved_model = os.path.join(model_dir, 'model', '{}_q_{}.model'.format(station, month))
 
             if os.path.exists(saved_model):
                 try:
@@ -174,16 +177,18 @@ def summarize_univariate_trends(metadata, trc_dir, out_json, month, update_selec
                 d = {'mean': summary['mean'].slope,
                      'hdi_2.5%': summary['hdi_2.5%'].slope,
                      'hdi_97.5%': summary['hdi_97.5%'].slope,
+                     'r_hat': summary['r_hat'].slope,
                      'model': saved_model}
 
                 out_meta[station][subdir] = d
                 if np.sign(d['hdi_2.5%']) == np.sign(d['hdi_97.5%']):
-                    print('{}, {}, {} mean: {:.2f}; hdi {:.2f} to {:.2f}'.format(station,
-                                                                                 month,
-                                                                                 subdir,
-                                                                                 d['mean'],
-                                                                                 d['hdi_2.5%'],
-                                                                                 d['hdi_97.5%']))
+                    print('{}, {}, {} mean: {:.2f}; hdi {:.2f} to {:.2f}    rhat: {:.3f}'.format(station,
+                                                                                                 month,
+                                                                                                 subdir,
+                                                                                                 d['mean'],
+                                                                                                 d['hdi_2.5%'],
+                                                                                                 d['hdi_97.5%'],
+                                                                                                 d['r_hat']))
 
             except ValueError as e:
                 print(station, e)

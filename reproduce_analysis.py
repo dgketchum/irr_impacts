@@ -104,11 +104,19 @@ def climate_flow_correlations():
 
 
 def calculate_ols_trends():
+    ct, first = None, True
     for m in months:
         print('\n\n\ntrends {}'.format(m))
         in_data = climate_flow_file.format(m)
         out_data = ols_trends_data.format(m)
-        initial_trends_test(in_data, out_data, plot_dir=None)
+        ct_ = initial_trends_test(in_data, out_data, plot_dir=None)
+        if first:
+            ct = ct_
+            first = False
+        else:
+            ct = {k: [v[0] + ct_[k][0], v[1] + ct_[k][1]] for k, v in ct.items()}
+
+    pprint(ct)
 
 
 processes = 0
@@ -122,7 +130,7 @@ def univariate_trends():
         in_data = ols_trends_data.format(m)
         out_data = uv_trends_bayes.format(m)
         # run_bayes_univariate_trends(uv_trends_traces, in_data, processes, overwrite=overwrite_bayes)
-        # summarize_univariate_trends(in_data, uv_trends_traces, out_data, m)
+        summarize_univariate_trends(in_data, uv_trends_traces, out_data, m)
 
 
 def multivariate_trends():
@@ -130,9 +138,9 @@ def multivariate_trends():
         print('\n\n\nmultivariate trends {}'.format(m))
         in_data = climate_flow_file.format(m)
         out_data = mv_trends_bayes.format(m)
-        run_bayes_multivariate_trends(mv_trends_traces, in_data, processes,
-                                      overwrite=overwrite_bayes, selector='time_cc')
-        # summarize_multivariate_trends(in_data, mv_trends_traces, out_data, m)
+        # run_bayes_multivariate_trends(mv_trends_traces, in_data, processes,
+        #                               overwrite=overwrite_bayes, selector='time_cc')
+        summarize_multivariate_trends(in_data, mv_trends_traces, out_data, m)
 
 
 def irrigation_impacts():
@@ -158,6 +166,6 @@ if __name__ == '__main__':
     # climate_flow_correlations()
     # calculate_ols_trends()
     # univariate_trends()
-    multivariate_trends()
+    # multivariate_trends()
     # irrigation_impacts()
 # ========================= EOF ====================================================================
