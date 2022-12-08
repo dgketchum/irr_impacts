@@ -79,41 +79,26 @@ def initial_trends_test(in_json, out_json, plot_dir=None, selectors=None):
 
             all_counts[subdir] += 1
 
-            if subdir == 'time_q':
-                mk_test = mk.hamed_rao_modification_test(y)
-                y_pred = x * mk_test.slope + mk_test.intercept
-                mk_slope_std = mk_test.slope * np.std(x) / np.std(y)
-                p = mk_test.p
-                if p < 0.05:
-                    if mk_slope_std > 0:
-                        sig_counts[subdir][1] += 1
-                    else:
-                        sig_counts[subdir][0] += 1
-                    regressions[station][subdir] = {'test': 'mk',
-                                                    'b': mk_slope_std,
-                                                    'p': p}
-
-            else:
-                lr = linregress(x, y)
-                b, inter, r, p = lr.slope, lr.intercept.item(), lr.rvalue, lr.pvalue
-                y_pred = x * b + inter
-                b_norm = b * np.std(x) / np.std(y)
-                resid = y - (b * x + inter)
-                ad_test = anderson(resid, 'norm').statistic.item()
-                if ad_test < 0.05:
-                    print('{} month {} failed normality test'.format(station, month))
-                if p < 0.05:
-                    if b_norm > 0:
-                        sig_counts[subdir][1] += 1
-                    else:
-                        sig_counts[subdir][0] += 1
-                    regressions[station][subdir] = {'test': 'ols',
-                                                    'b': b,
-                                                    'inter': inter,
-                                                    'p': p,
-                                                    'rsq': r,
-                                                    'b_norm': b_norm,
-                                                    'anderson': ad_test}
+            lr = linregress(x, y)
+            b, inter, r, p = lr.slope, lr.intercept.item(), lr.rvalue, lr.pvalue
+            y_pred = x * b + inter
+            b_norm = b * np.std(x) / np.std(y)
+            resid = y - (b * x + inter)
+            ad_test = anderson(resid, 'norm').statistic.item()
+            if ad_test < 0.05:
+                print('{} month {} failed normality test'.format(station, month))
+            if p < 0.05:
+                if b_norm > 0:
+                    sig_counts[subdir][1] += 1
+                else:
+                    sig_counts[subdir][0] += 1
+                regressions[station][subdir] = {'test': 'ols',
+                                                'b': b,
+                                                'inter': inter,
+                                                'p': p,
+                                                'rsq': r,
+                                                'b_norm': b_norm,
+                                                'anderson': ad_test}
 
             if plot_dir:
                 d = os.path.join(plot_dir, str(month), subdir)
@@ -144,7 +129,7 @@ def initial_trends_test(in_json, out_json, plot_dir=None, selectors=None):
     with open(out_json, 'w') as f:
         json.dump(regressions, f, indent=4, sort_keys=False)
 
-    return sig_counts
+    return sig_counts, all_counts
 
 
 if __name__ == '__main__':
