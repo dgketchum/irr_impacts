@@ -19,7 +19,7 @@ np.seterr(divide='ignore', invalid='ignore')
 from utils.error_estimates import BASIN_CC_ERR, BASIN_IRRMAPPER_F1, BASIN_PRECIP_RMSE, ETR_ERR
 
 
-def run_bayes_multivariate_trends(traces_dir, stations_meta, multiproc=0, overwrite=False, station=None):
+def run_bayes_multivariate_trends(traces_dir, stations_meta, multiproc=0, overwrite=False, station=None, selector=None):
     if not os.path.exists(traces_dir):
         os.makedirs(traces_dir)
 
@@ -35,16 +35,16 @@ def run_bayes_multivariate_trends(traces_dir, stations_meta, multiproc=0, overwr
             continue
 
         if not multiproc:
-            bayes_multivariate_trends(sid, rec, traces_dir, overwrite)
+            bayes_multivariate_trends(sid, rec, traces_dir, overwrite, selector)
         else:
-            pool.apply_async(bayes_multivariate_trends, args=(sid, rec, traces_dir, overwrite))
+            pool.apply_async(bayes_multivariate_trends, args=(sid, rec, traces_dir, overwrite, selector))
 
     if multiproc > 0:
         pool.close()
         pool.join()
 
 
-def bayes_multivariate_trends(station, records, trc_dir, overwrite):
+def bayes_multivariate_trends(station, records, trc_dir, overwrite, selector=None):
     try:
         basin = records['basin']
         rmse = BASIN_CC_ERR[basin]['rmse']
@@ -81,12 +81,17 @@ def bayes_multivariate_trends(station, records, trc_dir, overwrite):
                 os.makedirs(model_dir)
 
         for (x, x_err, y, y_err), subdir in zip(regression_combs, trc_subdirs):
+
+            if selector and selector != subdir:
+                continue
+
             model_dir = os.path.join(trc_dir, subdir)
             save_model = os.path.join(model_dir, 'model', '{}_q_{}.model'.format(station, month))
             save_figure = os.path.join(model_dir, 'trace', '{}_q_{}.png'.format(station, month))
             save_data = os.path.join(model_dir, 'data', '{}_q_{}.data'.format(station, month))
 
             if os.path.exists(save_model) and not overwrite:
+                print(os.path.basename(save_model), 'exists, skipping')
                 return None
 
             else:
@@ -103,8 +108,7 @@ def bayes_multivariate_trends(station, records, trc_dir, overwrite):
                     json.dump(dct, fp, indent=4)
 
                 print('\n=== sampling {} len {}, m {} at {}, '
-                      'p = {:.3f}, err: {:.3f} ===='.format(subdir, len(x), month, station,
-                                                            records['p'], ai_err[0]))
+                      'err: {:.3f} ===='.format(subdir, len(x), month, station, ai_err[0]))
 
                 variable_names = {'x1_name': 'time_coeff',
                                   'x2_name': 'cwd_coeff'}
@@ -132,7 +136,7 @@ def summarize_multivariate_trends(metadata, trc_dir, out_json, month, update_sel
         if not update_selectors:
             out_meta[station] = {month: data}
 
-        trc_subdirs = ['q_ai', 'cc_ai']
+        trc_subdirs = ['time_q', 'time_cc']
         for subdir in trc_subdirs:
 
             if update_selectors and subdir not in update_selectors:
@@ -141,8 +145,7 @@ def summarize_multivariate_trends(metadata, trc_dir, out_json, month, update_sel
                 continue
 
             model_dir = os.path.join(trc_dir, subdir)
-            saved_model = os.path.join(model_dir, '{}_q_{}.model'.format(station, month))
-            out_meta[station] = {month: data}
+            saved_model = os.path.join(model_dir, 'model', '{}_q_{}.model'.format(station, month))
 
             if os.path.exists(saved_model):
                 try:

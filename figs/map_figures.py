@@ -30,9 +30,17 @@ def monthly_trends(regressions_dir, in_shape, glob=None, out_shape=None, selecto
 
         trends_dct.update({m: dct})
 
-    trc_subdirs = {'time_ccres': 'bayes', 'time_cc': 'bayes', 'time_qres': 'bayes', 'time_ai': 'bayes',
-                   'time_aim': 'lr', 'time_q': 'mk', 'time_etr': 'lr', 'time_ppt': 'lr', 'time_irr': 'bayes',
-                   'time_pptm': 'lr', 'time_etrm': 'lr'}
+    base_ = os.path.basename(regressions_dir)
+    if base_ == 'ols_trends':
+        trc_subdirs = {'time_aim': 'lr', 'time_q': 'mk', 'time_etr': 'lr', 'time_ppt': 'lr', 'time_irr': 'bayes',
+                       'time_pptm': 'lr', 'time_etrm': 'lr'}
+    elif base_ == 'mv_trends':
+        trc_subdirs = {'time_q': 'bayes', 'time_cc': 'bayes'}
+    elif base_ == 'uv_trends':
+        trc_subdirs = {'time_q': 'bayes', 'time_cc': 'bayes', 'time_irr': 'bayes',
+                       'time_ai': 'bayes', 'time_aim': 'bayes'}
+    else:
+        raise KeyError
 
     trends_stations = []
     [[trends_stations.append(sid) for sid in v.keys()] for k, v in trends_dct.items()]
@@ -279,16 +287,17 @@ if __name__ == '__main__':
     inshp = os.path.join(root, 'gages', 'selected_gages.shp')
     # lr_ = os.path.join(root, 'analysis', 'trends')
 
-    lr_ = os.path.join(root, 'analysis', 'trends')
-    fig_shp = os.path.join(root, 'figures', 'shapefiles', 'trends')
-    glb = 'trends_bayes'
-    # monthly_trends(lr_, inshp, glob=glb, out_shape=fig_shp, selectors=['time_ccres'])
+    # lr_ = os.path.join(root, 'analysis', 'uv_trends')
+    lr_ = os.path.join(root, 'analysis', 'mv_trends')
+    fig_shp = os.path.join(root, 'figures', 'shapefiles', 'mv_trends')
+    glb = 'mv_traces'
+    monthly_trends(lr_, inshp, glob=glb, out_shape=fig_shp)
 
     v_ = 'cc_q'
     glb = '{}_bayes'.format(v_)
     cc_qres = os.path.join(root, 'analysis', '{}'.format(v_))
     out_shp = os.path.join(root, 'figures', 'shapefiles', '{}'.format(v_))
-    monthly_cc_qres(cc_qres, inshp, glob=glb, out_shape=out_shp, bayes=True)
+    # monthly_cc_qres(cc_qres, inshp, glob=glb, out_shape=out_shp, bayes=True)
 
     q_trend = os.path.join(root, 'figures', 'shapefiles', 'trends', 'time_q.shp')
     cc_trend = os.path.join(root, 'figures', 'shapefiles', 'trends', 'time_cc.shp')

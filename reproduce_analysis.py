@@ -112,21 +112,17 @@ def calculate_ols_trends():
 
 
 processes = 0
-overwrite_bayes = True
+overwrite_bayes = False
 
 
-# test for trends by first checking OLS, then if p < 0.05, run the trend test with error in Bayes regression
 def univariate_trends():
     for m in months:
-        if m not in range(4, 11):
-            continue
         print('\n\n\nunivariate trends {}'.format(m))
 
         in_data = ols_trends_data.format(m)
         out_data = uv_trends_bayes.format(m)
-        run_bayes_univariate_trends(uv_trends_traces, in_data, processes, overwrite=overwrite_bayes,
-                                    station='09379500', selectors=['time_q'])
-        summarize_univariate_trends(in_data, uv_trends_traces, out_data, m, update_selectors=['time_q'])
+        # run_bayes_univariate_trends(uv_trends_traces, in_data, processes, overwrite=overwrite_bayes)
+        # summarize_univariate_trends(in_data, uv_trends_traces, out_data, m)
 
 
 def multivariate_trends():
@@ -134,9 +130,9 @@ def multivariate_trends():
         print('\n\n\nmultivariate trends {}'.format(m))
         in_data = climate_flow_file.format(m)
         out_data = mv_trends_bayes.format(m)
-        run_bayes_multivariate_trends(mv_trends_traces, in_data, processes, overwrite=overwrite_bayes,
-                                      station='09379500')
-        summarize_multivariate_trends(in_data, mv_trends_traces, out_data, m)
+        run_bayes_multivariate_trends(mv_trends_traces, in_data, processes,
+                                      overwrite=overwrite_bayes, selector='time_cc')
+        # summarize_multivariate_trends(in_data, mv_trends_traces, out_data, m)
 
 
 def irrigation_impacts():
@@ -160,6 +156,7 @@ if __name__ == '__main__':
     # get_gridded_data()
     # build_tables()
     # climate_flow_correlations()
+    # calculate_ols_trends()
     # univariate_trends()
     multivariate_trends()
     # irrigation_impacts()

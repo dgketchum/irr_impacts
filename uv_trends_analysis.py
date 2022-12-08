@@ -24,6 +24,7 @@ def run_bayes_univariate_trends(traces_dir, stations, multiproc=0, overwrite=Fal
     if multiproc > 0:
         pool = Pool(processes=multiproc)
 
+    print(len(stations.keys()))
     for sid, rec in stations.items():
 
         if station and sid != station:
@@ -32,7 +33,7 @@ def run_bayes_univariate_trends(traces_dir, stations, multiproc=0, overwrite=Fal
         if not multiproc:
             bayes_univariate_trends(sid, rec, traces_dir, overwrite, selectors)
         else:
-            pool.apply_async(bayes_univariate_trends, args=(sid, rec, traces_dir, 1, overwrite, selectors))
+            pool.apply_async(bayes_univariate_trends, args=(sid, rec, traces_dir, overwrite, selectors))
 
     if multiproc > 0:
         pool.close()
@@ -120,13 +121,7 @@ def bayes_univariate_trends(station, records, trc_dir, overwrite, selectors=None
 
             else:
                 print('\n=== sampling {} len {}, m {} at {}, '
-                      'p = {:.3f}, err: {:.3f}, bias: {} ===='.format(subdir,
-                                                                      len(x),
-                                                                      month,
-                                                                      station,
-                                                                      records[subdir]['p'],
-                                                                      cc_err[0],
-                                                                      bias))
+                      'err: {:.3f}, bias: {} ===='.format(subdir, len(x), month, station, cc_err[0], bias))
 
                 model = LinearModel()
 
