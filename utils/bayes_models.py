@@ -1,19 +1,47 @@
 import os
 import pickle
 import tempfile
+import json
 
 import pymc as pm
 import pymc.sampling_jax
 
+import matplotlib.pyplot as plt
+
 from figs.trace_figs import trace_only
 
-DEFAULTS = {'draws': 1000,
-            'tune': 5000,
+DEFAULTS = {'draws': 10000,
+            'tune': 10000,
             'chains': 4,
             'progress_bar': False}
 
 
-class LinearModel():
+class UniLinearModelErrY():
+
+    def __init__(self):
+        self.dirpath = tempfile.mkdtemp()
+        os.environ['AESARA_FLAGS'] = "base_compiledir=${}/.aesara".format(self.dirpath)
+
+    def fit(self, x, y, y_err, save_model=None, figure=None):
+        with pm.Model():
+            intercept = pm.Normal('inter', 0, sigma=20)
+            gradient = pm.Normal('slope', 0, sigma=20)
+            true_y = pm.Deterministic('true_y', intercept + gradient * x)
+            likelihood = pm.Normal('y', mu=true_y, sigma=y_err, observed=y)
+            trace = pm.sampling_jax.sample_numpyro_nuts(**DEFAULTS)
+
+            if save_model:
+                with open(save_model, 'wb') as buff:
+                    pickle.dump({'model': self, 'trace': trace}, buff)
+                    print('saving', save_model)
+
+                var_names = ['slope', 'inter']
+                trace_only(save_model, figure, var_names)
+
+        os.rmdir(self.dirpath)
+
+
+class UniLinearModelErrXY():
 
     def __init__(self):
         self.dirpath = tempfile.mkdtemp()
@@ -82,5 +110,11 @@ class BiVarLinearModel():
 
 
 if __name__ == '__main__':
-    pass
+    f = '/media/research/IrrigationGIS/impacts/uv_traces/uv_trends/time_irr/data/13172500_q_4.data'
+    with open(f, 'r') as f_obj:
+        d = json.load(f_obj)
+    model_ = '/media/research/IrrigationGIS/impacts/uv_traces/uv_trends/time_irr/13172500_q_4.model'
+    trace_ = '/media/research/IrrigationGIS/impacts/uv_traces/uv_trends/time_irr/13172500_q_4.png'
+    lm = LinearModelErrY()
+    lm.fit(d['x'], d['y'], d['y_err'], save_model=model_, figure=trace_)
 # ========================= EOF ====================================================================
