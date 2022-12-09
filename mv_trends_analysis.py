@@ -65,10 +65,10 @@ def bayes_multivariate_trends(station, records, trc_dir, overwrite, selector=Non
         ai = (ai - ai.min()) / (ai.max() - ai.min()) + 0.001
         years_norm = (years - years.min()) / (years.max() - years.min()) + 0.001
 
-        q_err = np.ones_like(q) * 0.06
+        q_err = np.ones_like(q) * 0.0001
         ai_err = np.ones_like(ai) * ai_err
         cc_err = np.ones_like(cc) * cc_err
-        time_err = np.ones_like(ai) * 0.000001
+        time_err = np.ones_like(ai) * 0.0001
 
         regression_combs = [(ai, ai_err, q, q_err),
                             (aim, ai_err, cc, cc_err)]
@@ -174,7 +174,7 @@ def summarize_multivariate_trends(metadata, trc_dir, out_json, month, update_sel
                      'model': saved_model}
 
                 out_meta[station][subdir] = d
-                if np.sign(d['hdi_2.5%']) == np.sign(d['hdi_97.5%']) and d['r_hat'] < 1.2:
+                if np.sign(d['hdi_2.5%']) == np.sign(d['hdi_97.5%']) and d['r_hat'] <= 1.2:
                     print('{}, {}, {} mean: {:.2f}; hdi {:.2f} to {:.2f}    rhat: {:.3f}'.format(station,
                                                                                                  month,
                                                                                                  subdir,

@@ -174,16 +174,14 @@ def bayes_linear_regression_cc_qres(station, period, records, trc_dir, cores, ov
         cc_err = cc_err * np.ones_like(cc)
         q_err = np.ones_like(ai_err) * 0.01
 
-
-
         if not os.path.isdir(trc_dir):
             os.makedirs(os.path.join(trc_dir, 'model'))
             os.makedirs(os.path.join(trc_dir, 'data'))
             os.makedirs(os.path.join(trc_dir, 'trace'))
 
         save_model = os.path.join(trc_dir, 'model', '{}_cc_{}_q_{}.model'.format(station, period, month))
-        save_data =os.path.join(trc_dir, 'data', '{}_cc_{}_q_{}.data'.format(station, period, month))
-        save_tracefig =os.path.join(trc_dir, 'trace', '{}_cc_{}_q_{}.png'.format(station, period, month))
+        save_data = os.path.join(trc_dir, 'data', '{}_cc_{}_q_{}.data'.format(station, period, month))
+        save_tracefig = os.path.join(trc_dir, 'trace', '{}_cc_{}_q_{}.png'.format(station, period, month))
 
         dct = {'x1': list(ai),
                'x2': list(cc),
@@ -256,19 +254,21 @@ def bayes_write_significant_cc_qres(metadata, trc_dir, out_json, month):
                 d = {'mean': summary['mean'].iwu_coeff,
                      'hdi_2.5%': summary['hdi_2.5%'].iwu_coeff,
                      'hdi_97.5%': summary['hdi_97.5%'].iwu_coeff,
+                     'r_hat': summary['r_hat'].iwu_coeff,
                      'model': saved_model}
 
                 out_meta[station][period] = data[period]
 
                 out_meta[station][period]['cc_q'] = d
-                if np.sign(d['hdi_2.5%']) == np.sign(d['hdi_97.5%']):
-                    print('{}, {}, {}, {} mean: {:.2f}; hdi {:.2f} to {:.2f}'.format(station,
-                                                                                     data['STANAME'],
-                                                                                     period,
-                                                                                     'cc_q',
-                                                                                     d['mean'],
-                                                                                     d['hdi_2.5%'],
-                                                                                     d['hdi_97.5%']))
+                if np.sign(d['hdi_2.5%']) == np.sign(d['hdi_97.5%']) and d['r_hat'] <= 1.2:
+                    print('{}, {}, {}, {} mean: {:.2f}; hdi {:.2f} to {:.2f}   {:.3f}'.format(station,
+                                                                                              data['STANAME'],
+                                                                                              period,
+                                                                                              'cc_q',
+                                                                                              d['mean'],
+                                                                                              d['hdi_2.5%'],
+                                                                                              d['hdi_97.5%'],
+                                                                                              d['r_hat']))
                 else:
                     print(station, data['STANAME'], period)
 

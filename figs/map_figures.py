@@ -21,7 +21,7 @@ def monthly_trends(regressions_dir, in_shape, glob=None, out_shape=None, selecto
 
     trends_dct = {}
 
-    l = [os.path.join(regressions_dir, x) for x in os.listdir(regressions_dir) if x.startswith(glob)]
+    l = [os.path.join(regressions_dir, x) for x in os.listdir(regressions_dir) if glob in x]
 
     for f in l:
         m = int(os.path.basename(f).split('.')[0].split('_')[-1])
@@ -31,14 +31,17 @@ def monthly_trends(regressions_dir, in_shape, glob=None, out_shape=None, selecto
         trends_dct.update({m: dct})
 
     base_ = os.path.basename(regressions_dir)
+
     if base_ == 'ols_trends':
         trc_subdirs = {'time_aim': 'lr', 'time_q': 'mk', 'time_etr': 'lr', 'time_ppt': 'lr', 'time_irr': 'bayes',
                        'time_pptm': 'lr', 'time_etrm': 'lr'}
+
     elif base_ == 'mv_trends':
         trc_subdirs = {'time_q': 'bayes', 'time_cc': 'bayes'}
+
     elif base_ == 'uv_trends':
         trc_subdirs = {'time_q': 'bayes', 'time_cc': 'bayes', 'time_irr': 'bayes',
-                       'time_ai': 'bayes', 'time_aim': 'bayes'}
+                       'time_ai': 'bayes', 'time_aim': 'bayes', 'time_cci': 'bayes'}
     else:
         raise KeyError
 
@@ -287,10 +290,10 @@ if __name__ == '__main__':
     inshp = os.path.join(root, 'gages', 'selected_gages.shp')
     # lr_ = os.path.join(root, 'analysis', 'trends')
 
-    # lr_ = os.path.join(root, 'analysis', 'uv_trends')
-    lr_ = os.path.join(root, 'analysis', 'mv_trends')
-    fig_shp = os.path.join(root, 'figures', 'shapefiles', 'mv_trends')
-    glb = 'mv_traces'
+    v_ = 'uv'
+    lr_ = os.path.join(root, 'analysis', '{}_trends'.format(v_))
+    fig_shp = os.path.join(root, 'figures', 'shapefiles', '{}_trends'.format(v_))
+    glb = 'trends'
     monthly_trends(lr_, inshp, glob=glb, out_shape=fig_shp)
 
     v_ = 'cc_q'

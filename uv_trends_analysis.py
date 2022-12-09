@@ -66,7 +66,7 @@ def bayes_univariate_trends(station, records, trc_dir, overwrite, selectors=None
         irr = (irr - irr.min()) / (irr.max() - irr.min()) + 0.001
 
         cc_err = np.ones_like(cc) * cc_err
-        q_err = np.ones_like(q) * 0.06
+        q_err = np.ones_like(q) * 0.001
         ai_err = np.ones_like(qres) * ai_err
         irr_err = np.ones_like(qres) * irr_f1
 
@@ -89,13 +89,9 @@ def bayes_univariate_trends(station, records, trc_dir, overwrite, selectors=None
 
             if selectors and subdir not in selectors:
                 continue
-            if subdir == 'time_irr' and month != 8:
-                continue
             if subdir not in records.keys():
                 continue
             if month not in range(4, 11) and subdir == 'time_cc':
-                continue
-            if records[subdir]['p'] > 0.05:
                 continue
 
             model_dir = os.path.join(trc_dir, subdir)
@@ -121,7 +117,7 @@ def bayes_univariate_trends(station, records, trc_dir, overwrite, selectors=None
 
             else:
                 print('\n=== sampling {} len {}, m {} at {}, '
-                      'err: {:.3f}, bias: {} ===='.format(subdir, len(x), month, station, cc_err[0], bias))
+                      'err: {:.3f}, bias: {} ===='.format(subdir, len(x), month, station, y_err[0], bias))
 
                 model = LinearModel()
 
@@ -181,7 +177,7 @@ def summarize_univariate_trends(metadata, trc_dir, out_json, month, update_selec
                      'model': saved_model}
 
                 out_meta[station][subdir] = d
-                if np.sign(d['hdi_2.5%']) == np.sign(d['hdi_97.5%']):
+                if np.sign(d['hdi_2.5%']) == np.sign(d['hdi_97.5%']) and d['r_hat'] <= 1.2:
                     print('{}, {}, {} mean: {:.2f}; hdi {:.2f} to {:.2f}    rhat: {:.3f}'.format(station,
                                                                                                  month,
                                                                                                  subdir,

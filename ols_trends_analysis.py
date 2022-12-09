@@ -17,6 +17,9 @@ def initial_trends_test(in_json, out_json, plot_dir=None, selectors=None):
 
     for enu, (station, records) in enumerate(stations.items(), start=1):
 
+        if station != '06327500':
+            continue
+
         try:
             q = np.array(records['q'])
         except KeyError:
@@ -85,20 +88,20 @@ def initial_trends_test(in_json, out_json, plot_dir=None, selectors=None):
             b_norm = b * np.std(x) / np.std(y)
             resid = y - (b * x + inter)
             ad_test = anderson(resid, 'norm').statistic.item()
-            if ad_test < 0.05:
-                print('{} month {} failed normality test'.format(station, month))
-            if p < 0.05:
-                if b_norm > 0:
-                    sig_counts[subdir][1] += 1
-                else:
-                    sig_counts[subdir][0] += 1
-                regressions[station][subdir] = {'test': 'ols',
-                                                'b': b,
-                                                'inter': inter,
-                                                'p': p,
-                                                'rsq': r,
-                                                'b_norm': b_norm,
-                                                'anderson': ad_test}
+            # if ad_test < 0.05:
+            #     print('{} month {} failed normality test'.format(station, month))
+            # if p < 0.1:
+            if b_norm > 0:
+                sig_counts[subdir][1] += 1
+            else:
+                sig_counts[subdir][0] += 1
+            regressions[station][subdir] = {'test': 'ols',
+                                            'b': b,
+                                            'inter': inter,
+                                            'p': p,
+                                            'rsq': r,
+                                            'b_norm': b_norm,
+                                            'anderson': ad_test}
 
             if plot_dir:
                 d = os.path.join(plot_dir, str(month), subdir)
