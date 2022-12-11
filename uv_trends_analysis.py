@@ -4,7 +4,7 @@ import pickle
 from multiprocessing import Pool
 
 import arviz as az
-from utils.bayes_models import LinearModel
+from utils.bayes_models import UniLinearModelErrY
 import numpy as np
 import warnings
 
@@ -61,12 +61,13 @@ def bayes_univariate_trends(station, records, trc_dir, overwrite, selectors=None
 
         q = (q - q.min()) / (q.max() - q.min()) + 0.001
         ai = (ai - ai.min()) / (ai.max() - ai.min()) + 0.001
+        aim = (aim - aim.min()) / (aim.max() - aim.min()) + 0.001
         cc = (cc - cc.min()) / (cc.max() - cc.min()) + 0.001
         qres = (qres - qres.min()) / (qres.max() - qres.min()) + 0.001
         irr = (irr - irr.min()) / (irr.max() - irr.min()) + 0.001
 
         cc_err = np.ones_like(cc) * cc_err
-        q_err = np.ones_like(q) * 0.001
+        q_err = np.ones_like(q) * 0.08
         ai_err = np.ones_like(qres) * ai_err
         irr_err = np.ones_like(qres) * irr_f1
 
@@ -119,9 +120,9 @@ def bayes_univariate_trends(station, records, trc_dir, overwrite, selectors=None
                 print('\n=== sampling {} len {}, m {} at {}, '
                       'err: {:.3f}, bias: {} ===='.format(subdir, len(x), month, station, y_err[0], bias))
 
-                model = LinearModel()
+                model = UniLinearModelErrY()
 
-                model.fit(x, x_err, y, y_err, save_model=save_model, figure=save_png)
+                model.fit(x, y, y_err, save_model=save_model, figure=save_png)
 
     except Exception as e:
         print(e, station)
@@ -177,7 +178,7 @@ def summarize_univariate_trends(metadata, trc_dir, out_json, month, update_selec
                      'model': saved_model}
 
                 out_meta[station][subdir] = d
-                if np.sign(d['hdi_2.5%']) == np.sign(d['hdi_97.5%']) and d['r_hat'] <= 1.2:
+                if np.sign(d['hdi_2.5%']) == np.sign(d['hdi_97.5%']) and d['r_hat'] <= 1.1:
                     print('{}, {}, {} mean: {:.2f}; hdi {:.2f} to {:.2f}    rhat: {:.3f}'.format(station,
                                                                                                  month,
                                                                                                  subdir,

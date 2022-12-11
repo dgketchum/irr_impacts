@@ -108,8 +108,6 @@ def climate_flow_correlations():
 def calculate_ols_trends():
     all_ct, ct, first = None, None, True
     for m in months:
-        if m!= 8:
-            continue
         print('\n\n\ntrends {}'.format(m))
         in_data = climate_flow_file.format(m)
         out_data = ols_trends_data.format(m)
@@ -126,7 +124,7 @@ def calculate_ols_trends():
     pprint(all_ct)
 
 
-processes = 0
+processes = 25
 overwrite_bayes = True
 
 
@@ -135,9 +133,9 @@ def univariate_trends():
         print('\n\n\nunivariate trends {}'.format(m))
         in_data = ols_trends_data.format(m)
         out_data = uv_trends_bayes.format(m)
-        # run_bayes_univariate_trends(uv_trends_traces, in_data, processes, overwrite=overwrite_bayes,
-        #                             station='06327500', selectors=['time_irr'])
-        summarize_univariate_trends(in_data, uv_trends_traces, out_data, m)
+        run_bayes_univariate_trends(uv_trends_traces, in_data, processes, overwrite=overwrite_bayes,
+                                    selectors=['time_q'])
+        # summarize_univariate_trends(in_data, uv_trends_traces, out_data, m, update_selectors=['time_q'])
 
 
 def multivariate_trends():
@@ -145,8 +143,9 @@ def multivariate_trends():
         print('\n\n\nmultivariate trends {}'.format(m))
         in_data = climate_flow_file.format(m)
         out_data = mv_trends_bayes.format(m)
-        # run_bayes_multivariate_trends(mv_trends_traces, in_data, processes, overwrite=overwrite_bayes)
-        summarize_multivariate_trends(in_data, mv_trends_traces, out_data, m)
+        run_bayes_multivariate_trends(mv_trends_traces, in_data, processes, overwrite=overwrite_bayes,
+                                      selector='time_q')
+        # summarize_multivariate_trends(in_data, mv_trends_traces, out_data, m, update_selectors=['time_q'])
 
 
 def irrigation_impacts():
@@ -159,8 +158,8 @@ def irrigation_impacts():
         # initial_impacts_test(in_data, data_tables, out_data, m, cc_res=False)
         in_data = out_data
         out_data = cc_q_bayes_file.format(m)
-        run_bayes_regression_cc_qres(cc_q_traces, in_data, processes, overwrite_bayes, station=select)
-        bayes_write_significant_cc_qres(in_data, cc_q_traces, out_data, m)
+        run_bayes_regression_cc_qres(cc_q_traces, in_data, processes, overwrite_bayes)
+        # bayes_write_significant_cc_qres(in_data, cc_q_traces, out_data, m)
 
     print(count)
 
@@ -172,6 +171,6 @@ if __name__ == '__main__':
     # climate_flow_correlations()
     # calculate_ols_trends()
     univariate_trends()
-    # multivariate_trends()
-    # irrigation_impacts()
+    multivariate_trends()
+    irrigation_impacts()
 # ========================= EOF ====================================================================

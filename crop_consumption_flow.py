@@ -6,7 +6,7 @@ import pickle
 from multiprocessing import Pool
 
 import arviz as az
-from utils.bayes_models import LinearModel, BiVarLinearModel
+from utils.bayes_models import BiVarLinearModel
 import numpy as np
 from scipy.stats.stats import linregress
 import warnings
@@ -172,7 +172,7 @@ def bayes_linear_regression_cc_qres(station, period, records, trc_dir, cores, ov
 
         ai_err = qres_err * np.ones_like(ai)
         cc_err = cc_err * np.ones_like(cc)
-        q_err = np.ones_like(ai_err) * 0.01
+        q_err = np.ones_like(ai_err) * 0.08
 
         if not os.path.isdir(trc_dir):
             os.makedirs(os.path.join(trc_dir, 'model'))

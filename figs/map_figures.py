@@ -290,7 +290,7 @@ if __name__ == '__main__':
     inshp = os.path.join(root, 'gages', 'selected_gages.shp')
     # lr_ = os.path.join(root, 'analysis', 'trends')
 
-    v_ = 'uv'
+    v_ = 'mv'
     lr_ = os.path.join(root, 'analysis', '{}_trends'.format(v_))
     fig_shp = os.path.join(root, 'figures', 'shapefiles', '{}_trends'.format(v_))
     glb = 'trends'
