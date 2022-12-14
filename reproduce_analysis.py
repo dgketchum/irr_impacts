@@ -51,13 +51,16 @@ static_irr = False
 print('\nassuming static irrigation mask: {}'.format(static_irr))
 
 if static_irr:
+    months = list(range(4, 11))
     desc = 'cc_static_4NOV2022'
     extracts = os.path.join(root, 'tables', 'gridded_tables', 'IrrMapperComp_static_4NOV2022')
     data_tables = os.path.join(root, 'tables', 'input_flow_climate_tables', 'IrrMapperComp_static_4NOV2022')
     climate_flow_data = os.path.join(analysis_directory, 'climate_flow_static_irr')
     climate_flow_file = os.path.join(climate_flow_data, 'climate_flow_{}.json')
-    uv_trends_initial = os.path.join(analysis_directory, 'trends_static_irr', 'trends_initial_{}.json')
-    uv_trends_traces = os.path.join(root, 'traces', 'trends_static_irr')
+
+    ols_trends_data = os.path.join(analysis_directory, 'ols_trends_static_irr', 'trends_initial_{}.json')
+
+    uv_trends_traces = os.path.join(root, 'uv_traces', 'trends_static_irr')
     uv_trends_bayes = os.path.join(analysis_directory, 'trends_static_irr', 'trends_bayes_{}.json')
 
 else:
@@ -99,8 +102,6 @@ def build_tables():
 def climate_flow_correlations():
     # find each gage's monthly characteristic response period to basin climate (precip and reference ET)
     for m in months:
-        if m != 8:
-            continue
         out_data = climate_flow_file.format(m)
         climate_flow_correlation(data_tables, m, gages_metadata, out_data)
 
@@ -125,27 +126,48 @@ def calculate_ols_trends():
 
 
 processes = 25
-overwrite_bayes = True
+overwrite_bayes = False
 
 
 def univariate_trends():
+    conv, div = 0, 0
+    sigp, sign = 0, 0
+    summarize = True
     for m in months:
         print('\n\n\nunivariate trends {}'.format(m))
         in_data = ols_trends_data.format(m)
         out_data = uv_trends_bayes.format(m)
-        run_bayes_univariate_trends(uv_trends_traces, in_data, processes, overwrite=overwrite_bayes,
-                                    selectors=['time_q'])
-        # summarize_univariate_trends(in_data, uv_trends_traces, out_data, m, update_selectors=['time_q'])
+        # for i in range(3):
+        #     run_bayes_univariate_trends(uv_trends_traces, in_data, processes, overwrite=overwrite_bayes,
+        #                                 selectors=['time_cc'])
+        if summarize:
+            c, d, sp, sn = summarize_univariate_trends(in_data, uv_trends_traces, out_data, m)
+            conv += c
+            div += d
+            sigp += sp
+            sign += sn
+            print('{} converged, {} diverged, {} sig pos, {} sig neg'.format(conv, div, sigp, sign))
 
 
 def multivariate_trends():
+    conv, div = 0, 0
+    sigp, sign = 0, 0
+    summarize = True
     for m in months:
         print('\n\n\nmultivariate trends {}'.format(m))
         in_data = climate_flow_file.format(m)
         out_data = mv_trends_bayes.format(m)
-        run_bayes_multivariate_trends(mv_trends_traces, in_data, processes, overwrite=overwrite_bayes,
-                                      selector='time_q')
-        # summarize_multivariate_trends(in_data, mv_trends_traces, out_data, m, update_selectors=['time_q'])
+        # run_bayes_multivariate_trends(mv_trends_traces, in_data, processes, overwrite=overwrite_bayes,
+        #                               selector='time_cc')
+
+        if summarize:
+            c, d, sp, sn = summarize_multivariate_trends(in_data, mv_trends_traces, out_data, m,
+                                                         update_selectors=['time_cc'])
+            conv += c
+            div += d
+            sigp += sp
+            sign += sn
+            print('{} converged, {} diverged, {} sig pos, {} sig neg'.format(conv, div, sigp, sign))
 
 
 def irrigation_impacts():
@@ -171,6 +193,6 @@ if __name__ == '__main__':
     # climate_flow_correlations()
     # calculate_ols_trends()
     univariate_trends()
-    multivariate_trends()
-    irrigation_impacts()
+    # multivariate_trends()
+    # irrigation_impacts()
 # ========================= EOF ====================================================================

@@ -4,7 +4,7 @@ import pickle
 from multiprocessing import Pool
 
 import arviz as az
-from utils.bayes_models import UniLinearModelErrY
+from utils.bayes_models import TimeTrendModel
 import numpy as np
 import warnings
 
@@ -120,7 +120,7 @@ def bayes_univariate_trends(station, records, trc_dir, overwrite, selectors=None
                 print('\n=== sampling {} len {}, m {} at {}, '
                       'err: {:.3f}, bias: {} ===='.format(subdir, len(x), month, station, y_err[0], bias))
 
-                model = UniLinearModelErrY()
+                model = TimeTrendModel()
 
                 model.fit(x, y, y_err, save_model=save_model, figure=save_png)
 
@@ -129,6 +129,10 @@ def bayes_univariate_trends(station, records, trc_dir, overwrite, selectors=None
 
 
 def summarize_univariate_trends(metadata, trc_dir, out_json, month, update_selectors=None):
+
+    div_, conv_ = 0, 0
+    sp, sn = 0, 0
+
     with open(metadata, 'r') as f:
         stations = json.load(f)
 
@@ -177,8 +181,16 @@ def summarize_univariate_trends(metadata, trc_dir, out_json, month, update_selec
                      'r_hat': summary['r_hat'].slope,
                      'model': saved_model}
 
+                if d['r_hat'] > 1.1:
+                    div_ += 1
+
                 out_meta[station][subdir] = d
                 if np.sign(d['hdi_2.5%']) == np.sign(d['hdi_97.5%']) and d['r_hat'] <= 1.1:
+                    conv_ += 1
+                    if d['mean'] > 0:
+                        sp += 1
+                    else:
+                        sn += 1
                     print('{}, {}, {} mean: {:.2f}; hdi {:.2f} to {:.2f}    rhat: {:.3f}'.format(station,
                                                                                                  month,
                                                                                                  subdir,
@@ -192,6 +204,8 @@ def summarize_univariate_trends(metadata, trc_dir, out_json, month, update_selec
 
     with open(out_json, 'w') as f:
         json.dump(out_meta, f, indent=4, sort_keys=False)
+
+    return conv_, div_, sp, sn
 
 
 if __name__ == '__main__':

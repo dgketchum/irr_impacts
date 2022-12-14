@@ -189,7 +189,8 @@ def bayes_linear_regression_cc_qres(station, period, records, trc_dir, cores, ov
                'x1_err': list(cc_err),
                'x2_err': list(ai_err),
                'y_err': list(np.zeros_like(ai_err)),
-               'xvar': 'cc',
+               'x1_var': 'cc',
+               'x2_var': 'cwd',
                'yvar': 'qres',
                }
 

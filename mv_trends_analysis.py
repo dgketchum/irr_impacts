@@ -63,6 +63,8 @@ def bayes_multivariate_trends(station, records, trc_dir, overwrite, selector=Non
 
         q = (q - q.min()) / (q.max() - q.min()) + 0.001
         ai = (ai - ai.min()) / (ai.max() - ai.min()) + 0.001
+        aim = (aim - aim.min()) / (aim.max() - aim.min()) + 0.001
+        cc = (cc - cc.min()) / (cc.max() - cc.min()) + 0.001
         years_norm = (years - years.min()) / (years.max() - years.min()) + 0.001
 
         q_err = np.ones_like(q) * 0.08
@@ -104,6 +106,7 @@ def bayes_multivariate_trends(station, records, trc_dir, overwrite, selector=Non
                        'x_err': list(x_err),
                        'y_err': list(y_err),
                        'xvar': 'cwd',
+                       'xvar2': 'time',
                        'yvar': subdir.split('_')[1],
                        'model': save_model}
 
@@ -118,7 +121,9 @@ def bayes_multivariate_trends(station, records, trc_dir, overwrite, selector=Non
 
                 model = BiVarLinearModel()
 
-                model.fit(years_norm, time_err, ai, ai_err, q, q_err, save_model=save_model,
+                # [print(x) for x in (years_norm, time_err, x, x_err, y, y_err)]
+                # return
+                model.fit(years_norm, time_err, x, x_err, y, y_err, save_model=save_model,
                           figure=save_figure, var_names=variable_names)
 
     except Exception as e:
@@ -126,6 +131,10 @@ def bayes_multivariate_trends(station, records, trc_dir, overwrite, selector=Non
 
 
 def summarize_multivariate_trends(metadata, trc_dir, out_json, month, update_selectors=None):
+
+    div_, conv_ = 0, 0
+    sp, sn = 0, 0
+
     with open(metadata, 'r') as f:
         stations = json.load(f)
 
@@ -173,8 +182,16 @@ def summarize_multivariate_trends(metadata, trc_dir, out_json, month, update_sel
                      'r_hat': summary['r_hat'].time_coeff,
                      'model': saved_model}
 
+                if d['r_hat'] > 1.1:
+                    div_ += 1
+
                 out_meta[station][subdir] = d
                 if np.sign(d['hdi_2.5%']) == np.sign(d['hdi_97.5%']) and d['r_hat'] <= 1.1:
+                    conv_ += 1
+                    if d['mean'] > 0:
+                        sp += 1
+                    else:
+                        sn += 1
                     print('{}, {}, {} mean: {:.2f}; hdi {:.2f} to {:.2f}    rhat: {:.3f}'.format(station,
                                                                                                  month,
                                                                                                  subdir,
@@ -188,6 +205,8 @@ def summarize_multivariate_trends(metadata, trc_dir, out_json, month, update_sel
 
     with open(out_json, 'w') as f:
         json.dump(out_meta, f, indent=4, sort_keys=False)
+
+    return conv_, div_, sp, sn
 
 
 if __name__ == '__main__':

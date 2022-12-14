@@ -28,7 +28,7 @@ def get_geomteries():
                                   [-108.50192867920967, 36.78068624960868],
                                   [-108.50192867920967, 36.38701227276218]])
 
-    test_point = ee.Geometry.Point(-111.19417486580859, 45.73357569538925)
+    test_point = ee.Geometry.Point(-110.644980, 45.970375)
 
     western_us = ee.Geometry.Polygon([[-127.00073221292574, 30.011505140554807],
                                       [-100.63354471292574, 30.011505140554807],
@@ -226,19 +226,20 @@ def export_et_images(polygon, tables, bucket, years=None, description=None,
     # fc = ee.FeatureCollection(ee.FeatureCollection(tables).filter(ee.Filter.eq('STAID', '12484500')))
 
     irr_coll = ee.ImageCollection(RF_ASSET)
-    coll = irr_coll.filterDate('1991-01-01', '2020-12-31').select('classification')
+    coll = irr_coll.filterDate('1987-01-01', '2021-12-31').select('classification')
     remap = coll.map(lambda img: img.lt(1))
     irr_min_yr_mask = remap.sum().gt(min_years)
-    # sum = remap.sum().mask(irr_mask)
+    first = True
+    img = None
 
     for yr in years:
-        for month in range(4, 5):
+        for month in range(4, 11):
             s = '{}-{}-01'.format(yr, str(month).rjust(2, '0'))
             end_day = monthrange(yr, month)[1]
             e = '{}-{}-{}'.format(yr, str(month).rjust(2, '0'), end_day)
 
-            irr = irr_coll.filterDate('{}-01-01'.format(yr), '{}-12-31'.format(yr)).select('classification').mosaic()
-            irr_mask = irr_min_yr_mask.updateMask(irr.lt(1))
+            # irr = irr_coll.filterDate('{}-01-01'.format(yr), '{}-12-31'.format(yr)).select('classification').mosaic()
+            # irr_mask = irr_min_yr_mask.updateMask(irr.lt(1))
 
             annual_coll = ee.ImageCollection('users/dgketchum/ssebop/cmbrb').merge(
                 ee.ImageCollection('users/hoylmanecohydro2/ssebop/cmbrb'))
@@ -256,47 +257,47 @@ def export_et_images(polygon, tables, bucket, years=None, description=None,
             et_umrb = et_coll.sum().multiply(0.00001).clip(umrb_clip.geometry())
 
             et_sum = ee.ImageCollection([et_cmb, et_corb, et_umrb]).mosaic()
-            et = et_sum.mask(irr_mask)
+            # et = et_sum.mask(irr_mask)
+            et = et_sum.mask(irr_min_yr_mask)
 
             tclime = ee.ImageCollection("IDAHO_EPSCOR/TERRACLIMATE").filterDate(s, e).select('pr', 'pet', 'aet')
             tclime_red = ee.Reducer.sum()
             tclime_sums = tclime.select('pr', 'pet', 'aet').reduce(tclime_red)
-            ppt = tclime_sums.select('pr_sum').multiply(0.001)
-            etr = tclime_sums.select('pet_sum').multiply(0.0001)
-            swb_aet = tclime_sums.select('aet_sum').mask(irr_mask).multiply(0.0001)
+            # swb_aet = tclime_sums.select('aet_sum').mask(irr_mask).multiply(0.0001)
+            swb_aet = tclime_sums.select('aet_sum').mask(irr_min_yr_mask).multiply(0.0001)
 
-            irr_mask = irr_mask.reproject(crs='EPSG:5070', scale=30)
             et = et.reproject(crs='EPSG:5070', scale=30).resample('bilinear')
-            ppt = ppt.reproject(crs='EPSG:5070', scale=30).resample('bilinear')
-            etr = etr.reproject(crs='EPSG:5070', scale=30).resample('bilinear')
             swb_aet = swb_aet.reproject(crs='EPSG:5070', scale=30).resample('bilinear')
 
-            cc = et.subtract(swb_aet)
+            cc = et.subtract(swb_aet).rename('cc_{}_{}'.format(month, yr))
 
-            area = ee.Image.pixelArea()
-            irr = irr_mask.multiply(area).rename('irr')
-            et = et.multiply(area).rename('et')
-            cc = cc.multiply(area).rename('cc')
-            ppt = ppt.multiply(area).rename('ppt')
-            etr = etr.multiply(area).rename('etr')
-            swb_aet = swb_aet.multiply(area).rename('swb_aet')
+            if first:
+                img = cc
+                first = False
+            else:
+                img = img.add(cc)
 
-            v = [irr]  # , cc, ppt, etr, swb_aet]
-            s = ['irr']  # , 'cc', 'ppt', 'etr', 'swb_aet']
+    roi = ee.FeatureCollection(polygon).first().geometry()
+    img = img.clip(roi)
 
-            for var_, st in zip(v, s):
-                out_desc = '{}_{}_{}_{}'.format(description, st, yr, month)
-                task = ee.batch.Export.image.toCloudStorage(
-                    var_,
-                    description=out_desc,
-                    bucket=bucket,
-                    fileNamePrefix=out_desc,
-                    region=polygon,
-                    scale=30,
-                    maxPixels=1e13,
-                    crs='EPSG:5071')
-                task.start()
-                print(out_desc)
+    # pt = img.sample(region=get_geomteries()[2],
+    #                 numPixels=1,
+    #                 scale=30)
+    # p = pt.first().getInfo()['properties']
+    # print('propeteries {}'.format(p))
+
+    out_desc = '{}_int'.format(description)
+    task = ee.batch.Export.image.toCloudStorage(
+        img,
+        description=out_desc,
+        bucket=bucket,
+        fileNamePrefix=out_desc,
+        region=roi,
+        scale=30,
+        maxPixels=1e13,
+        crs='EPSG:5071')
+    task.start()
+    print(out_desc)
 
 
 def export_naip(region, bucket):
@@ -387,8 +388,12 @@ def initialize():
 
 
 if __name__ == '__main__':
+    initialize()
     basins = 'users/dgketchum/gages/gage_basins'
     bucket = 'wudr'
+    basin = 'users/dgketchum/boundaries/shields'
+    export_et_images(basin, basins, bucket, years=list(range(1987, 2021)),
+                     description='shields', min_years=33)
 
-    extract_ndvi_change(basins, bucket)
+    # extract_ndvi_change(basins, bucket)
 # ========================= EOF ================================================================================

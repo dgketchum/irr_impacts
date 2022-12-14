@@ -27,6 +27,7 @@ def monthly_trends(regressions_dir, in_shape, glob=None, out_shape=None, selecto
         m = int(os.path.basename(f).split('.')[0].split('_')[-1])
         with open(f, 'r') as _file:
             dct = json.load(_file)
+            dct = {k: v for k, v in dct.items() if k not in EXCLUDE_STATIONS}
 
         trends_dct.update({m: dct})
 
@@ -35,13 +36,14 @@ def monthly_trends(regressions_dir, in_shape, glob=None, out_shape=None, selecto
     if base_ == 'ols_trends':
         trc_subdirs = {'time_aim': 'lr', 'time_q': 'mk', 'time_etr': 'lr', 'time_ppt': 'lr', 'time_irr': 'bayes',
                        'time_pptm': 'lr', 'time_etrm': 'lr'}
-
     elif base_ == 'mv_trends':
         trc_subdirs = {'time_q': 'bayes', 'time_cc': 'bayes'}
 
     elif base_ == 'uv_trends':
         trc_subdirs = {'time_q': 'bayes', 'time_cc': 'bayes', 'time_irr': 'bayes',
                        'time_ai': 'bayes', 'time_aim': 'bayes', 'time_cci': 'bayes'}
+    elif base_ == 'trends_static_irr':
+        trc_subdirs = {'time_cc': 'bayes'}
     else:
         raise KeyError
 
@@ -67,7 +69,7 @@ def monthly_trends(regressions_dir, in_shape, glob=None, out_shape=None, selecto
             d = trends_dct[m]
 
             if var in ['time_cc', 'time_ccres'] and m in [1, 2, 3, 11, 12]:
-                data = {k: 0.0 for k, v in d.items() if k not in EXCLUDE_STATIONS}
+                data = {k: 0.0 for k, v in d.items()}
 
             else:
                 if test == 'bayes':
@@ -105,19 +107,23 @@ def monthly_trends(regressions_dir, in_shape, glob=None, out_shape=None, selecto
 
         shp_file = os.path.join(out_shape, '{}.shp'.format(var))
 
-        gdf[gdf[[i for i in range(1, 13)]] == 0.0] = np.nan
-        gdf['median'] = gdf[[i for i in range(1, 13)]].median(axis=1)
-        gdf['min'] = gdf[[i for i in range(1, 13)]].min(axis=1)
-        gdf['max'] = gdf[[i for i in range(1, 13)]].max(axis=1)
-        gdf['median'][isna(gdf['median'])] = 0.0
-        gdf['min'][isna(gdf['min'])] = 0.0
-        gdf['max'][isna(gdf['max'])] = 0.0
+        try:
+            gdf[gdf[[i for i in range(1, 13)]] == 0.0] = np.nan
+            gdf['median'] = gdf[[i for i in range(1, 13)]].median(axis=1)
+            gdf['min'] = gdf[[i for i in range(1, 13)]].min(axis=1)
+            gdf['max'] = gdf[[i for i in range(1, 13)]].max(axis=1)
+            gdf['median'][isna(gdf['median'])] = 0.0
+            gdf['min'][isna(gdf['min'])] = 0.0
+            gdf['max'][isna(gdf['max'])] = 0.0
+            gdf['sum_med'] = gdf[[i for i in range(5, 11)]].median(axis=1)
+            gdf['sum_med'][isna(gdf['sum_med'])] = 0.0
+            gdf['win_med'] = gdf[[i for i in [11, 12, 1, 2, 3]]].median(axis=1)
+            gdf['win_med'][isna(gdf['win_med'])] = 0.0
 
-        gdf['sum_med'] = gdf[[i for i in range(5, 11)]].median(axis=1)
-        gdf['sum_med'][isna(gdf['sum_med'])] = 0.0
-
-        gdf['win_med'] = gdf[[i for i in [11, 12, 1, 2, 3]]].median(axis=1)
-        gdf['win_med'][isna(gdf['win_med'])] = 0.0
+        except KeyError:
+            gdf[gdf[[i for i in range(4, 11)]] == 0.0] = np.nan
+            gdf['median'] = gdf[[i for i in range(4, 11)]].median(axis=1)
+            gdf['median'][isna(gdf['median'])] = 0.0
 
         gdf.loc[:, :] = np.where(np.isfinite(gdf.values), gdf.values, np.zeros_like(gdf.values))
         gdf['geometry'] = geo
@@ -142,6 +148,7 @@ def monthly_cc_qres(regressions_dir, in_shape, glob=None, out_shape=None, bayes=
         m = int(os.path.basename(f).split('.')[0].split('_')[-1])
         with open(f, 'r') as _file:
             dct = json.load(_file)
+            dct = {k: v for k, v in dct.items() if k not in EXCLUDE_STATIONS}
 
         trends_dct.update({m: dct})
 
@@ -245,10 +252,13 @@ def monthly_cc_qres(regressions_dir, in_shape, glob=None, out_shape=None, bayes=
 
 def sustainability_trends(q_data, cc_data):
     qdf = gpd.read_file(q_data)
+    qdf.index = qdf['index']
     cdf = gpd.read_file(cc_data)
+    cdf.index = cdf['index']
     geo = [x for x in cdf['geometry']]
-    sdf = gpd.GeoDataFrame(data=[0 for _ in cdf['median']], geometry=geo)
-    sdf.columns = ['sign', 'geometry']
+    sdf = gpd.GeoDataFrame(columns=['sign'], data=[0 for _ in cdf['median']],
+                           geometry=geo, index=cdf.index)
+    sdf = sdf.sort_index()
     sdf['sign'][(qdf['median'] < 0) & (cdf['median'] > 0)] = 'neg q, pos cc'
     sdf['sign'][(qdf['median'] > 0) & (cdf['median'] < 0)] = 'pos q, neg cc'
     sdf['sign'][(qdf['median'] > 0) & (cdf['median'] > 0)] = 'pos q, pos cc'
@@ -257,6 +267,7 @@ def sustainability_trends(q_data, cc_data):
 
     _file = os.path.join(os.path.dirname(q_data), 'sustainability.shp')
     sdf.to_file(_file, crs='EPSG:4326')
+    print('wrote', _file)
 
 
 def flow_change_climate_coincidence(q_data, climate_data):
@@ -278,8 +289,9 @@ def flow_change_climate_coincidence(q_data, climate_data):
     sdf['STANAME'] = cdf['STANAME']
     sdf['STAID'] = cdf['index']
 
-    _file = os.path.join(os.path.dirname(q_data), 'flow_ai_trends.shp')
+    _file = os.path.join(os.path.dirname(q_data), 'flow_aim_trends.shp')
     sdf.to_file(_file, crs='EPSG:4326')
+    print('wrote', _file)
 
 
 if __name__ == '__main__':
@@ -290,11 +302,15 @@ if __name__ == '__main__':
     inshp = os.path.join(root, 'gages', 'selected_gages.shp')
     # lr_ = os.path.join(root, 'analysis', 'trends')
 
-    v_ = 'mv'
-    lr_ = os.path.join(root, 'analysis', '{}_trends'.format(v_))
+    v_ = 'static'
+    if v_ == 'static':
+        glb = 'trends_bayes'
+        lr_ = os.path.join(root, 'analysis', 'trends_static_irr')
+    else:
+        glb = 'trends'
+        lr_ = os.path.join(root, 'analysis', '{}_trends'.format(v_))
     fig_shp = os.path.join(root, 'figures', 'shapefiles', '{}_trends'.format(v_))
-    glb = 'trends'
-    monthly_trends(lr_, inshp, glob=glb, out_shape=fig_shp)
+    # monthly_trends(lr_, inshp, glob=glb, out_shape=fig_shp)
 
     v_ = 'cc_q'
     glb = '{}_bayes'.format(v_)
@@ -302,11 +318,11 @@ if __name__ == '__main__':
     out_shp = os.path.join(root, 'figures', 'shapefiles', '{}'.format(v_))
     # monthly_cc_qres(cc_qres, inshp, glob=glb, out_shape=out_shp, bayes=True)
 
-    q_trend = os.path.join(root, 'figures', 'shapefiles', 'trends', 'time_q.shp')
-    cc_trend = os.path.join(root, 'figures', 'shapefiles', 'trends', 'time_cc.shp')
+    q_trend = os.path.join(root, 'figures', 'shapefiles', 'uv_trends', 'time_q.shp')
+    cc_trend = os.path.join(root, 'figures', 'shapefiles', 'uv_trends', 'time_cc.shp')
     # sustainability_trends(q_trend, cc_trend)
 
-    ai_trend = os.path.join(root, 'figures', 'shapefiles', 'trends', 'time_ai.shp')
-    # flow_change_climate_coincidence(q_trend, ai_trend)
+    ai_trend = os.path.join(root, 'figures', 'shapefiles', 'uv_trends', 'time_ai.shp')
+    flow_change_climate_coincidence(q_trend, ai_trend)
 
 # ========================= EOF ====================================================================

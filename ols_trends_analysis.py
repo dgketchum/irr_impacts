@@ -17,9 +17,6 @@ def initial_trends_test(in_json, out_json, plot_dir=None, selectors=None):
 
     for enu, (station, records) in enumerate(stations.items(), start=1):
 
-        if station != '13172500':
-            continue
-
         try:
             q = np.array(records['q'])
         except KeyError:

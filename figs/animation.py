@@ -1,4 +1,5 @@
 import os
+import tempfile
 
 from pandas import Series, to_datetime, DatetimeIndex, date_range, isna
 import numpy as np
@@ -100,6 +101,41 @@ def build_et_gif(_dir, jpeg, gif, background=None, overwrite=False, freq='monthl
     im1.save(gif, save_all=True, append_images=frames, duration=durations)
 
 
+def write_cummulative(_dir, jpeg):
+    l = [os.path.join(_dir, x) for x in os.listdir(_dir) if x.endswith('.tif')]
+    l = sorted(l, key=lambda n: int(os.path.basename(n).split('.')[0].split('_')[2]), reverse=False)
+    max_cumulative = 36.
+    first = True
+    years = [y for y in range(1986, 2022)]
+
+    for f, yr in zip(l, years):
+        with rasterio.open(f, 'r') as src:
+            print(os.path.basename(f))
+            if first:
+                meta = src.meta
+                meta['dtype'] = rasterio.uint8
+                data = src.read()
+                data[data > 0] = 1
+                data = data.astype(np.uint8)
+                first = False
+            else:
+                tif = src.read()
+                tif[tif > 0] = 1
+                tif = tif.astype(np.uint8)
+                data = np.append(data, tif, axis=0)
+
+            data[np.isnan(data)] = 0.0
+            data[data < 0] = 0.0
+
+            arr = data.sum(axis=0)
+
+    arr = arr.reshape((1, arr.shape[0], arr.shape[1]))
+    out_final_file = os.path.join(os.path.dirname(jpeg), 'navajo_final.tif')
+    meta['dtype'] = rasterio.dtypes.int16
+    with rasterio.open(out_final_file, 'w', **meta) as dst:
+        dst.write(arr)
+
+
 def build_irr_gif(_dir, jpeg, gif, theme='cumulative', background=None, overwrite=False, paste_cmap=None):
     l = [os.path.join(_dir, x) for x in os.listdir(_dir) if x.endswith('.tif')]
     l = sorted(l, key=lambda n: int(os.path.basename(n).split('.')[0].split('_')[2]), reverse=False)
@@ -107,6 +143,7 @@ def build_irr_gif(_dir, jpeg, gif, theme='cumulative', background=None, overwrit
     max_cumulative = 36.
     first = True
     years = [y for y in range(1986, 2022)]
+
     if paste_cmap:
         paste_img = Image.open(paste_cmap)
     for f, yr in zip(l, years):
@@ -172,6 +209,10 @@ def build_irr_gif(_dir, jpeg, gif, theme='cumulative', background=None, overwrit
             img.save(out_j)
             jp_l.append(out_j)
             print('{} to png'.format(os.path.basename(out_j)))
+
+    out_final_file = os.path.join(os.path.dirname(jpeg), 'navajo_final.tif')
+    with rasterio.open(out_final_file, 'w', **meta) as dst:
+        dst.write(arr)
 
     def gen_frame(path):
         im = Image.open(path)
@@ -267,25 +308,17 @@ if __name__ == '__main__':
         root = '/home/dgketchum/data/IrrigationGIS/gages/gridmet_analysis'
 
     flder = os.path.join(root, 'figures', 'animation')
-    _d = os.path.join(flder, 'tif', 'et')
+    _d = os.path.join(flder, 'tif', 'irr_navajo')
+    out_jp = os.path.join(flder, 'cumulative_irr_navajo')
+    _gif = os.path.join(flder, 'irr_cumulative_navajo.gif')
 
-    # out_jp = os.path.join(flder, 'monthly_et_png')
-    # _gif = os.path.join(flder, 'et_monthly_small.gif')
-    # # csv_ = os.path.join(flder, 'et_monthly.csv')
-    # naip = os.path.join(flder, 'NAIP_Bozeman.tif')
-    # build_et_gif(_d, out_jp, _gif, background=naip, overwrite=True, freq='monthly')
-
-    # _d = os.path.join(flder, 'tif', 'irr_navajo')
-    # out_jp = os.path.join(flder, 'cumulative_irr_navajo')
-    # _gif = os.path.join(flder, 'irr_cumulative_navajo.gif')
-
-    # naip = os.path.join(flder, 'NAIP_Navajo.tif')
-    # paste_cmap_ = 'jet_r_ramp.png'
-    # build_irr_gif(_d, out_jp, _gif, background=naip, overwrite=True, paste_cmap=paste_cmap_)
+    naip = os.path.join(flder, 'NAIP_Navajo.tif')
+    paste_cmap_ = 'fig_misc/jet_r_ramp.png'
+    wrtie_cummulative(_d, out_jp)
 
     csv_ = os.path.join('/media/research/IrrigationGIS/gages/merged_q_ee/'
                         'monthly_ssebop_tc_gm_q_Comp_21DEC2021/06052500.csv')
     line_gif = os.path.join(flder, 'et_time_series.mp4')
     dq = '/media/research/IrrigationGIS/gages/hydrographs/daily_q/06052500.csv'
-    et_time_series(csv_, line_gif, daily_q=dq)
+    # et_time_series(csv_, line_gif, daily_q=dq)
 # ========================= EOF ====================================================================

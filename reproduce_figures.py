@@ -18,7 +18,7 @@ months = list(range(1, 13))
 
 analysis_directory = os.path.join(root, 'analysis')
 
-select = '13269000'
+select = '09371010'
 # select = '09371010'
 
 gages_metadata = os.path.join(root, 'gages', 'irrigated_gage_metadata.json')
@@ -31,6 +31,10 @@ gage_figs = os.path.join(gage_figs, select)
 if not os.path.exists(gage_figs):
     os.mkdir(gage_figs)
 
+cc_q_file = os.path.join(analysis_directory, 'cc_q', 'cc_q_initial_{}.json')
+cc_q_bayes_file = os.path.join(analysis_directory, 'cc_q', 'cc_q_bayes_{}.json')
+cc_q_traces = os.path.join(root, 'mv_traces', 'cc_q')
+
 
 def climate_flow():
     for m in months:
@@ -38,33 +42,22 @@ def climate_flow():
         plot_climate_flow(data, gage_figs, selected=[select], label=False)
 
 
-ccres_qres_results_file = os.path.join(analysis_directory, 'ccres_qres', 'ccres_qres_bayes_{}.json')
-ccres_qres_traces = os.path.join(root, 'traces', 'ccres_qres')
-ccres_qres_figs = os.path.join(figures, 'traces', 'ccres_qres')
-
-
 def cc_qres_traces():
     for m in months:
-        plot_saved_traces(gages_metadata, ccres_qres_traces, gage_figs, m, selected=[select], overwrite=True)
+        plot_saved_traces(gages_metadata, cc_q_traces, m, overwrite=True, station=[select])
 
 
-trends_bayes = os.path.join(analysis_directory, 'trends', 'trends_bayes_{}.json')
-trends_traces = os.path.join(root, 'traces', 'trends')
-trends_figs = os.path.join(figures, 'traces', 'trends')
+trends_bayes = os.path.join(analysis_directory, 'uv_trends', 'trends_bayes_{}.json')
+trends_traces = os.path.join(root, 'uv_traces', 'uv_trends')
+trends_figs = os.path.join(figures, 'uv_traces', 'uv_trends')
 
 
-def trend_traces():
+def trends():
     for m in months:
         if m != 8:
             continue
-        traces = os.path.join(trends_traces, 'time_cci')
-        fig_dir = os.path.join(trends_figs, 'time_cci')
-        if not os.path.exists(fig_dir):
-            os.mkdir(fig_dir)
-        traces = os.path.join(trends_traces, 'time_cc')
-        plot_saved_traces(gages_metadata, traces, fig_dir, selected=[select], overwrite=True)
-        traces = os.path.join(trends_traces, 'time_qres')
-        plot_saved_traces(gages_metadata, traces, fig_dir, selected=[select], overwrite=True)
+        meta = trends_bayes.format(m)
+        plot_saved_traces(meta, trends_traces, m, overwrite=True, station=[select], selectors=['time_cc', 'time_q'])
 
 
 data_tables = os.path.join(root, 'tables', 'input_flow_climate_tables', 'IrrMapperComp_21OCT2022')
@@ -78,6 +71,7 @@ def q_cc_time_series():
 if __name__ == '__main__':
     # climate_flow()
     # cc_qres_traces()
-    trend_traces()
+    trends()
+    # mv_trends()
     # q_cc_time_series()
 # ========================= EOF ====================================================================

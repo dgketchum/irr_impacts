@@ -10,9 +10,9 @@ import seaborn as sns
 
 from gage_data import hydrograph
 
-sns.set_style("dark")
-sns.set_theme()
-sns.despine()
+# sns.set_style("dark")
+# sns.set_theme()
+# sns.despine()
 
 
 def bidirectional_histogram(csv):
@@ -39,7 +39,6 @@ def bidirectional_histogram(csv):
     fig_ = csv.replace('.csv', '_histogram.png')
     plt.subplots_adjust(wspace=0, top=0.85, bottom=0.1, left=0.18, right=0.95)
     plt.savefig(fig_)
-
 
 
 def plot_climate_flow(climate_flow_data, fig_dir_, selected=None, label=True, fmt='png'):
@@ -73,7 +72,7 @@ def plot_climate_flow(climate_flow_data, fig_dir_, selected=None, label=True, fm
         plt.savefig(fig_file, format=fmt)
 
 
-def hydrograph_vs_crop_consumption(ee_data, sid, fig_dir):
+def hydrograph_vs_crop_consumption(ee_data, sid='13172500', fig_dir=None):
     _file = os.path.join(ee_data, '{}.csv'.format(sid))
     df = hydrograph(_file)
     df[np.isnan(df)] = 0.0
@@ -82,18 +81,19 @@ def hydrograph_vs_crop_consumption(ee_data, sid, fig_dir):
     df /= 1e9
     plt_cols = ['cc', 'q']
     df = df[plt_cols]
-    df = df.rename(columns={'cc': 'Crop Consumption', 'q': 'Flow'})
-    blue = tuple(np.array([43, 131, 186]) / 256.)
-    orange = tuple(np.array([253, 174, 97]) / 256.)
-    y_err = [x * 0.25 for x in df['Crop Consumption']]
-    y_err_zero = [x * 0. for x in df['Crop Consumption']]
-    ax = df.plot(kind='bar', stacked=False, color=[orange, blue], width=0.9, yerr=[y_err, y_err_zero])
-    plt.suptitle('Snake River Flow and Crop Consumption')
-    plt.ylabel('Cubic Kilometers')
-    plt.xlabel('Year')
-    ticks = [str(x) for x in range(1991, 2021)]
-    ticks = ['' if x not in ['1991', '2000', '2010', '2020'] else x for x in ticks]
-    ax.xaxis.set_major_formatter(ticker.FixedFormatter(ticks))
+    cc = df.cc.values
+    q = df.q.values
+    cc_err = [x * 0.31 for x in cc]
+    q_err = [x * 0.08 for x in q]
+    q_pos = np.arange(0, len(q) * 2, 2)
+    cc_pos = np.arange(1, len(q) * 2 + 1, 2)
+    cm = 1 / 2.54
+    fig, ax = plt.subplots(1, 1, figsize=(89 * cm, 35 * cm))
+    ax.bar(q_pos, q, width=0.9, yerr=q_err, color='#2b83ba', align='center', capsize=2, edgecolor='k')
+    ax.bar(cc_pos, cc, width=0.9, yerr=cc_err, color='#fdae61', align='center', capsize=2, edgecolor='k')
+    empty_string_labels = [''] * len(q)
+    ax.set_xticklabels(empty_string_labels)
+    ax.set_yticklabels(empty_string_labels)
     plt.tight_layout()
     out_fig = os.path.join(fig_dir, '{}'.format(sid))
     plt.savefig(out_fig)
@@ -104,7 +104,11 @@ if __name__ == '__main__':
     if not os.path.exists(root):
         root = '/home/dgketchum/data/IrrigationGIS/impacts'
 
+    figs = os.path.join(root, 'figures', 'cc_q_ratios')
+    data_tables = os.path.join(root, 'tables', 'input_flow_climate_tables', 'IrrMapperComp_21OCT2022')
+    hydrograph_vs_crop_consumption(data_tables, sid='13172500', fig_dir=figs)
+
     _dir = os.path.join(root, 'figures', 'shapefiles', 'cc_q')
     csv_ = os.path.join(_dir, 'cc_q_bayes.csv')
-    bidirectional_histogram(csv_)
+    # bidirectional_histogram(csv_)
 # ========================= EOF ====================================================================
