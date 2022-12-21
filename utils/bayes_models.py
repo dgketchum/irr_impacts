@@ -19,7 +19,7 @@ DEFAULTS = {'draws': 1000,
             'progress_bar': False}
 
 
-class TimeTrendModel():
+class UniLinearModelErrY():
 
     def __init__(self):
         self.dirpath = tempfile.mkdtemp()
@@ -63,6 +63,43 @@ class BiVarLinearModel():
             likelihood_x2 = pm.Normal('x2', mu=true_x2, sigma=x2_err, observed=x2)
 
             mu = intercept + gradient_1 * true_x1 + gradient_2 * true_x2
+            likelihood_y = pm.Normal('y', mu=mu, sigma=y_error, observed=y)
+
+            trace = pm.sampling_jax.sample_numpyro_nuts(**DEFAULTS)
+
+            if save_model:
+                with open(save_model, 'wb') as buff:
+                    pickle.dump({'model': self, 'trace': trace}, buff)
+                    print('saving', save_model)
+
+                var_names = [v for k, v in var_names.items()] + ['inter']
+                trace_only(save_model, figure, var_names)
+
+        os.rmdir(self.dirpath)
+
+
+class TriVarLinearModel():
+
+    def __init__(self):
+        self.dirpath = tempfile.mkdtemp()
+        os.environ['AESARA_FLAGS'] = "base_compiledir=${}/.aesara".format(self.dirpath)
+
+    def fit(self, x1, x1_err, x2, x2_err, x3, x3_err, y, y_error, save_model=None, var_names=None, figure=None):
+        with pm.Model():
+            intercept = pm.Normal('inter', 0, sigma=20)
+            gradient_1 = pm.Normal(var_names['x1_name'], 0, sigma=20)
+            gradient_2 = pm.Normal(var_names['x2_name'], 0, sigma=20)
+            gradient_3 = pm.Normal(var_names['x3_name'], 0, sigma=20)
+
+            true_x1 = pm.Normal('true_x1', mu=0, sigma=20, shape=len(x1))
+            true_x2 = pm.Normal('true_x2', mu=0, sigma=20, shape=len(x2))
+            true_x3 = pm.Normal('true_x3', mu=0, sigma=20, shape=len(x3))
+
+            likelihood_x1 = pm.Normal('x1', mu=true_x1, sigma=x1_err, observed=x1)
+            likelihood_x2 = pm.Normal('x2', mu=true_x2, sigma=x2_err, observed=x2)
+            likelihood_x3 = pm.Normal('x2', mu=true_x3, sigma=x3_err, observed=x3)
+
+            mu = intercept + gradient_1 * true_x1 + gradient_2 * true_x2 + gradient_3 * true_x3
             likelihood_y = pm.Normal('y', mu=mu, sigma=y_error, observed=y)
 
             trace = pm.sampling_jax.sample_numpyro_nuts(**DEFAULTS)
