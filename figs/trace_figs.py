@@ -17,7 +17,11 @@ def plot_saved_traces(metadata, trc_dir, month, overwrite=False, station=None, o
         metadata = json.load(f_obj)
 
     for param in selectors:
-        param_dir = os.path.join(trc_dir, param)
+        if param == 'cc_q':
+            param_dir = trc_dir
+        else:
+            param_dir = os.path.join(trc_dir, param)
+
         model_dir, data_dir = os.path.join(param_dir, 'model'), os.path.join(param_dir, 'data')
 
         model_files = [os.path.join(model_dir, x) for x in os.listdir(model_dir)]
@@ -52,7 +56,7 @@ def plot_saved_traces(metadata, trc_dir, month, overwrite=False, station=None, o
             info_ = metadata[sid]
             base = os.path.basename(model)
 
-            if os.path.basename(param_dir) in ['cc_qres', 'ccres_qres']:
+            if os.path.basename(param_dir) == 'cc':
                 splt = base.split('_')
                 per, q_mo = splt[2], splt[-1].split('.')[0]
                 if int(q_mo) != month:

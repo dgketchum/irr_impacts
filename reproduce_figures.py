@@ -18,7 +18,7 @@ months = list(range(1, 13))
 
 analysis_directory = os.path.join(root, 'analysis')
 
-select = '09371010'
+select = '13172500'
 # select = '09371010'
 
 gages_metadata = os.path.join(root, 'gages', 'irrigated_gage_metadata.json')
@@ -44,7 +44,8 @@ def climate_flow():
 
 def cc_qres_traces():
     for m in months:
-        plot_saved_traces(gages_metadata, cc_q_traces, m, overwrite=True, station=[select])
+        plot_saved_traces(gages_metadata, cc_q_traces, m, overwrite=True, station=[select],
+                          selectors=['cc_q'])
 
 
 trends_bayes = os.path.join(analysis_directory, 'uv_trends', 'trends_bayes_{}.json')
@@ -72,6 +73,5 @@ if __name__ == '__main__':
     # climate_flow()
     # cc_qres_traces()
     trends()
-    # mv_trends()
     # q_cc_time_series()
 # ========================= EOF ====================================================================

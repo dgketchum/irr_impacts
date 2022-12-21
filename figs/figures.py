@@ -4,6 +4,7 @@ import json
 import numpy as np
 import pandas as pd
 from scipy.stats import linregress
+import matplotlib
 from matplotlib import pyplot as plt
 import matplotlib.ticker as ticker
 import seaborn as sns
@@ -73,11 +74,12 @@ def plot_climate_flow(climate_flow_data, fig_dir_, selected=None, label=True, fm
 
 
 def hydrograph_vs_crop_consumption(ee_data, sid='13172500', fig_dir=None):
+    matplotlib.rc('font', family='Ubuntu')
     _file = os.path.join(ee_data, '{}.csv'.format(sid))
     df = hydrograph(_file)
     df[np.isnan(df)] = 0.0
     df = df.resample('A').agg(pd.DataFrame.sum, skipna=False)
-    df = df.loc['1991-01-01': '2020-12-31']
+    df = df.loc['1987-01-01': '2021-12-31']
     df /= 1e9
     plt_cols = ['cc', 'q']
     df = df[plt_cols]
@@ -87,15 +89,33 @@ def hydrograph_vs_crop_consumption(ee_data, sid='13172500', fig_dir=None):
     q_err = [x * 0.08 for x in q]
     q_pos = np.arange(0, len(q) * 2, 2)
     cc_pos = np.arange(1, len(q) * 2 + 1, 2)
-    cm = 1 / 2.54
-    fig, ax = plt.subplots(1, 1, figsize=(89 * cm, 35 * cm))
-    ax.bar(q_pos, q, width=0.9, yerr=q_err, color='#2b83ba', align='center', capsize=2, edgecolor='k')
-    ax.bar(cc_pos, cc, width=0.9, yerr=cc_err, color='#fdae61', align='center', capsize=2, edgecolor='k')
-    empty_string_labels = [''] * len(q)
-    ax.set_xticklabels(empty_string_labels)
-    ax.set_yticklabels(empty_string_labels)
+    fig, ax = plt.subplots(1, 1, figsize=(39, 16))
+    error_kw = dict(lw=5, capsize=5, capthick=3)
+    plt.hlines([5, 10, 15], -1, 70, alpha=1, color='k')
+    ax.bar(q_pos, q, width=0.9, yerr=q_err, color='#2b83ba', align='center',
+           capsize=2, edgecolor='k', label='Annual Streamflow', error_kw=error_kw)
+    ax.bar(cc_pos, cc, width=0.9, yerr=cc_err, color='#fdae61', align='center',
+           capsize=2, edgecolor='k', label='Apr - Oct Irrigation Water Use', error_kw=error_kw)
+    font_size = 70
+    plt.suptitle('Snake River Near Murphy, Idaho', size=font_size)
+    plt.ylabel('Cubic Kilometers', size=font_size)
+    # plt.xlabel('Year', size=font_size)
+    ticks = [str(int(x)) for x in np.arange(1986, 2022)]
+    ticks = ['' if x not in ['1991', '2000', '2010', '2020'] else x for x in ticks]
+    ax.xaxis.set_major_formatter(ticker.FixedFormatter(ticks))
+    ax.xaxis.set_major_locator(ticker.MultipleLocator(2))
+    ax.yaxis.set_major_locator(ticker.MultipleLocator(5))
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.spines['bottom'].set_visible(False)
+    ax.spines['left'].set_visible(False)
+    plt.xlim([-1, 70])
+    ax.tick_params(axis='both', which='major', labelsize=font_size)
     plt.tight_layout()
+    plt.gcf().subplots_adjust(bottom=0.07)
+    plt.gcf().subplots_adjust(left=0.075)
     out_fig = os.path.join(fig_dir, '{}'.format(sid))
+    plt.legend(prop={'size': font_size})
     plt.savefig(out_fig)
 
 

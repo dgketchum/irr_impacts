@@ -6,6 +6,7 @@ import numpy as np
 import rasterio
 from PIL import Image, ImageDraw, ImageFont
 import matplotlib
+
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from matplotlib.animation import FuncAnimation
@@ -314,7 +315,7 @@ if __name__ == '__main__':
 
     naip = os.path.join(flder, 'NAIP_Navajo.tif')
     paste_cmap_ = 'fig_misc/jet_r_ramp.png'
-    wrtie_cummulative(_d, out_jp)
+    # write_cummulative(_d, out_jp)
 
     csv_ = os.path.join('/media/research/IrrigationGIS/gages/merged_q_ee/'
                         'monthly_ssebop_tc_gm_q_Comp_21DEC2021/06052500.csv')

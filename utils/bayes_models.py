@@ -19,7 +19,7 @@ DEFAULTS = {'draws': 1000,
             'progress_bar': False}
 
 
-class UniLinearModelErrY():
+class TimeTrendModel():
 
     def __init__(self):
         self.dirpath = tempfile.mkdtemp()

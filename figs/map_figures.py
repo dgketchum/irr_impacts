@@ -41,7 +41,7 @@ def monthly_trends(regressions_dir, in_shape, glob=None, out_shape=None, selecto
 
     elif base_ == 'uv_trends':
         trc_subdirs = {'time_q': 'bayes', 'time_cc': 'bayes', 'time_irr': 'bayes',
-                       'time_ai': 'bayes', 'time_aim': 'bayes', 'time_cci': 'bayes'}
+                       'time_ai': 'bayes', 'time_aim': 'bayes'}
     elif base_ == 'trends_static_irr':
         trc_subdirs = {'time_cc': 'bayes'}
     else:
@@ -99,6 +99,8 @@ def monthly_trends(regressions_dir, in_shape, glob=None, out_shape=None, selecto
 
         vals = df.values
         vals[np.isnan(vals)] = 0.0
+        months = vals[:, 1:]
+        pos, neg = np.count_nonzero(months > 0.), np.count_nonzero(months < 0.)
         gdf = gpd.GeoDataFrame(df)
         gdf['STANAME'] = [names[_id] for _id in gdf.index]
         geo = [geo_[_id] for _id in gdf.index]
@@ -115,9 +117,9 @@ def monthly_trends(regressions_dir, in_shape, glob=None, out_shape=None, selecto
             gdf['median'][isna(gdf['median'])] = 0.0
             gdf['min'][isna(gdf['min'])] = 0.0
             gdf['max'][isna(gdf['max'])] = 0.0
-            gdf['sum_med'] = gdf[[i for i in range(5, 11)]].median(axis=1)
+            gdf['sum_med'] = gdf[[i for i in range(5, 10)]].median(axis=1)
             gdf['sum_med'][isna(gdf['sum_med'])] = 0.0
-            gdf['win_med'] = gdf[[i for i in [11, 12, 1, 2, 3]]].median(axis=1)
+            gdf['win_med'] = gdf[[i for i in [10, 11, 12, 1, 2, 3]]].median(axis=1)
             gdf['win_med'][isna(gdf['win_med'])] = 0.0
 
         except KeyError:
@@ -131,7 +133,11 @@ def monthly_trends(regressions_dir, in_shape, glob=None, out_shape=None, selecto
         cols = [str(c) for c in gdf.columns]
         gdf.columns = cols
         gdf.to_file(shp_file, crs='epsg:4326')
+        df = DataFrame(gdf)
+        df.drop(columns=['AREA', 'geometry'], inplace=True)
+        df.to_csv(shp_file.replace('.shp', '.csv'))
         print(shp_file)
+        print('{} positive, {} negative'.format(pos, neg))
 
 
 def monthly_cc_qres(regressions_dir, in_shape, glob=None, out_shape=None, bayes=False, var='cc_q'):
@@ -204,6 +210,8 @@ def monthly_cc_qres(regressions_dir, in_shape, glob=None, out_shape=None, bayes=
     area_sort = sorted([x for x in areas.items() if x[0] in multi_impact.keys()], key=lambda x: x[1], reverse=True)
     multi_impact = {k: (multi_impact[k], names[k]) for k, v in area_sort}
 
+    pos, neg = np.count_nonzero(df > 0.), np.count_nonzero(df < 0.)
+
     gdf = gpd.GeoDataFrame(df)
     gdf.geometry = [geo[_id] for _id in gdf.index]
 
@@ -230,8 +238,8 @@ def monthly_cc_qres(regressions_dir, in_shape, glob=None, out_shape=None, bayes=
     gdf.drop(columns=['AREA', 'geometry'], inplace=True)
     gdf[gdf[[i for i in range(1, 13)]] == 0.0] = np.nan
     gdf['median'] = gdf[[i for i in range(1, 13)]].median(axis=1)
-    gdf['sum_med'] = gdf[[i for i in range(7, 11)]].median(axis=1)
-    gdf['win_med'] = gdf[[1, 2, 3, 11, 12]].median(axis=1)
+    gdf['sum_med'] = gdf[[i for i in range(5, 10)]].median(axis=1)
+    gdf['win_med'] = gdf[[1, 2, 3, 10, 11, 12]].median(axis=1)
     gdf['median'][isna(gdf['median'])] = 0.0
     gdf['sum_med'][isna(gdf['sum_med'])] = 0.0
     gdf['win_med'][isna(gdf['win_med'])] = 0.0
@@ -248,6 +256,7 @@ def monthly_cc_qres(regressions_dir, in_shape, glob=None, out_shape=None, bayes=
     df.drop(columns=['AREA', 'geometry'], inplace=True)
     df.to_csv(shp_file.replace('.shp', '.csv'))
     print('write {}'.format(shp_file))
+    print('{} positive, {} negative'.format(pos, neg))
 
 
 def sustainability_trends(q_data, cc_data):
@@ -302,7 +311,7 @@ if __name__ == '__main__':
     inshp = os.path.join(root, 'gages', 'selected_gages.shp')
     # lr_ = os.path.join(root, 'analysis', 'trends')
 
-    v_ = 'static'
+    v_ = 'mv'
     if v_ == 'static':
         glb = 'trends_bayes'
         lr_ = os.path.join(root, 'analysis', 'trends_static_irr')
@@ -310,7 +319,7 @@ if __name__ == '__main__':
         glb = 'trends'
         lr_ = os.path.join(root, 'analysis', '{}_trends'.format(v_))
     fig_shp = os.path.join(root, 'figures', 'shapefiles', '{}_trends'.format(v_))
-    # monthly_trends(lr_, inshp, glob=glb, out_shape=fig_shp)
+    monthly_trends(lr_, inshp, glob=glb, out_shape=fig_shp)
 
     v_ = 'cc_q'
     glb = '{}_bayes'.format(v_)
@@ -321,8 +330,8 @@ if __name__ == '__main__':
     q_trend = os.path.join(root, 'figures', 'shapefiles', 'uv_trends', 'time_q.shp')
     cc_trend = os.path.join(root, 'figures', 'shapefiles', 'uv_trends', 'time_cc.shp')
     # sustainability_trends(q_trend, cc_trend)
-
+    #
     ai_trend = os.path.join(root, 'figures', 'shapefiles', 'uv_trends', 'time_ai.shp')
-    flow_change_climate_coincidence(q_trend, ai_trend)
+    # flow_change_climate_coincidence(q_trend, ai_trend)
 
 # ========================= EOF ====================================================================

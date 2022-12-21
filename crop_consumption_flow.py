@@ -6,7 +6,7 @@ import pickle
 from multiprocessing import Pool
 
 import arviz as az
-from utils.bayes_models import BiVarLinearModel
+from utils.bayes_models import BiVarLinearModel, TriVarLinearModel
 import numpy as np
 from scipy.stats.stats import linregress
 import warnings
@@ -122,7 +122,7 @@ def initial_impacts_test(clim_q_data, ee_series, out_jsn, month, cc_res=False):
         json.dump(sig_stations, f, indent=4, sort_keys=False)
 
 
-def run_bayes_regression_cc_qres(traces_dir, stations, multiproc=0, overwrite=False, station=None):
+def run_bayes_regression_cc_qres(traces_dir, stations, multiproc=0, overwrite=False, station=None, ccres=False):
     if not os.path.exists(traces_dir):
         os.makedirs(traces_dir)
 
@@ -141,16 +141,17 @@ def run_bayes_regression_cc_qres(traces_dir, stations, multiproc=0, overwrite=Fa
             continue
 
         if not multiproc:
-            bayes_linear_regression_cc_qres(sid, period, rec, traces_dir, 4, overwrite)
+            bayes_linear_regression_cc_qres(sid, period, rec, traces_dir, overwrite, ccres=ccres)
         else:
-            pool.apply_async(bayes_linear_regression_cc_qres, args=(sid, period, rec, traces_dir, 1, overwrite))
+            pool.apply_async(bayes_linear_regression_cc_qres, args=(sid, period, rec, traces_dir,
+                                                                    overwrite, ccres))
 
     if multiproc > 0:
         pool.close()
         pool.join()
 
 
-def bayes_linear_regression_cc_qres(station, period, records, trc_dir, cores, overwrite):
+def bayes_linear_regression_cc_qres(station, period, records, trc_dir, overwrite, ccres=False):
     try:
 
         basin = records['basin']
@@ -165,10 +166,12 @@ def bayes_linear_regression_cc_qres(station, period, records, trc_dir, cores, ov
         cc = np.array(records['cc']) * (1 + bias)
         q = np.array(records['q'])
         ai = np.array(records['ai'])
+        aim = np.array(records['ai_month'])
 
         cc = (cc - cc.min()) / (cc.max() - cc.min()) + 0.001
         q = (q - q.min()) / (q.max() - q.min()) + 0.001
         ai = (ai - ai.min()) / (ai.max() - ai.min()) + 0.001
+        aim = (aim - aim.min()) / (aim.max() - aim.min()) + 0.001
 
         ai_err = qres_err * np.ones_like(ai)
         cc_err = cc_err * np.ones_like(cc)
@@ -194,6 +197,9 @@ def bayes_linear_regression_cc_qres(station, period, records, trc_dir, cores, ov
                'yvar': 'qres',
                }
 
+        if ccres:
+            dct.update({'x3': list(aim), 'x3_err': list(ai_err), 'x3_var': 'aim'})
+
         with open(save_data, 'w') as fp:
             json.dump(dct, fp, indent=4)
 
@@ -206,15 +212,28 @@ def bayes_linear_regression_cc_qres(station, period, records, trc_dir, cores, ov
             print('\n=== sampling qres {} at {}, p = {:.3f}, err: {:.3f}, bias: {} ======='.format(
                 month, station, records['p'], cc_err[0], bias))
 
-        variable_names = {'x1_name': 'cwd_coeff',
-                          'x2_name': 'iwu_coeff'}
+        if not ccres:
+            variable_names = {'x1_name': 'cwd_coeff',
+                              'x2_name': 'iwu_coeff'}
 
-        model = BiVarLinearModel()
+            model = BiVarLinearModel()
 
-        model.fit(ai, ai_err, cc, cc_err, q, q_err,
-                  save_model=save_model,
-                  var_names=variable_names,
-                  figure=save_tracefig)
+            model.fit(ai, ai_err, cc, cc_err, q, q_err,
+                      save_model=save_model,
+                      var_names=variable_names,
+                      figure=save_tracefig)
+        else:
+            variable_names = {'x1_name': 'cwd_coeff',
+                              'x2_name': 'iwu_coeff',
+                              'x3_name': 'aim_coeff'}
+
+            model = TriVarLinearModel()
+
+            model.fit(ai, ai_err, cc, cc_err, aim, ai_err, q, q_err,
+                      save_model=save_model,
+                      var_names=variable_names,
+                      figure=save_tracefig)
+
         delta = (datetime.now() - start).seconds / 60.
         print('sampled in {} minutes'.format(delta))
 

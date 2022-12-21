@@ -101,6 +101,7 @@ def build_tables():
 
 def climate_flow_correlations():
     # find each gage's monthly characteristic response period to basin climate (precip and reference ET)
+    rsq = {}
     for m in months:
         out_data = climate_flow_file.format(m)
         climate_flow_correlation(data_tables, m, gages_metadata, out_data)
@@ -190,9 +191,9 @@ if __name__ == '__main__':
     # get_gage_data()
     # get_gridded_data()
     # build_tables()
-    # climate_flow_correlations()
+    climate_flow_correlations()
     # calculate_ols_trends()
-    univariate_trends()
+    # univariate_trends()
     # multivariate_trends()
     # irrigation_impacts()
 # ========================= EOF ====================================================================
