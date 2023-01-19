@@ -160,7 +160,7 @@ def monthly_cc_qres(regressions_dir, in_shape, glob=None, out_shape=None, bayes=
 
     bayes_sig = 0
     p_sig = 0
-
+    cc_q_lags = []
     multi_impact = {}
     first = True
     for m in range(1, 13):
@@ -184,6 +184,15 @@ def monthly_cc_qres(regressions_dir, in_shape, glob=None, out_shape=None, bayes=
                             cc_periods.append(kk)
                             has_sig = True
                             bayes_sig += 1
+                            # find median cc-flow lag in Missourin Basin
+                            if v['basin'] == 'missouri':
+                                cc_mo = int(kk.split('-')[1])
+                                if v['q_mo'] < cc_mo:
+                                    lag = v['q_mo'] + 12 - cc_mo
+                                else:
+                                    lag = v['q_mo'] - cc_mo
+                                cc_q_lags.append(lag)
+
                     if bayes and vv['p'] < 0.05:
                         p_sig += 1
             if k not in multi_impact.keys():
@@ -251,10 +260,10 @@ def monthly_cc_qres(regressions_dir, in_shape, glob=None, out_shape=None, bayes=
     cols = [str(c) for c in gdf.columns]
     gdf.columns = cols
     shp_file = os.path.join(out_shape, '{}.shp'.format(glob))
-    gdf.to_file(shp_file, crs='epsg:4326')
-    df = DataFrame(gdf)
-    df.drop(columns=['AREA', 'geometry'], inplace=True)
-    df.to_csv(shp_file.replace('.shp', '.csv'))
+    # gdf.to_file(shp_file, crs='epsg:4326')
+    # df = DataFrame(gdf)
+    # df.drop(columns=['AREA', 'geometry'], inplace=True)
+    # df.to_csv(shp_file.replace('.shp', '.csv'))
     print('write {}'.format(shp_file))
     print('{} positive, {} negative'.format(pos, neg))
 
@@ -319,13 +328,13 @@ if __name__ == '__main__':
         glb = 'trends'
         lr_ = os.path.join(root, 'analysis', '{}_trends'.format(v_))
     fig_shp = os.path.join(root, 'figures', 'shapefiles', '{}_trends'.format(v_))
-    monthly_trends(lr_, inshp, glob=glb, out_shape=fig_shp)
+    # monthly_trends(lr_, inshp, glob=glb, out_shape=fig_shp)
 
     v_ = 'cc_q'
     glb = '{}_bayes'.format(v_)
     cc_qres = os.path.join(root, 'analysis', '{}'.format(v_))
     out_shp = os.path.join(root, 'figures', 'shapefiles', '{}'.format(v_))
-    # monthly_cc_qres(cc_qres, inshp, glob=glb, out_shape=out_shp, bayes=True)
+    monthly_cc_qres(cc_qres, inshp, glob=glb, out_shape=out_shp, bayes=True)
 
     q_trend = os.path.join(root, 'figures', 'shapefiles', 'uv_trends', 'time_q.shp')
     cc_trend = os.path.join(root, 'figures', 'shapefiles', 'uv_trends', 'time_cc.shp')
