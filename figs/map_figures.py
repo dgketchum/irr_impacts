@@ -11,6 +11,81 @@ from shapely.geometry import shape
 from utils.gage_lists import EXCLUDE_STATIONS
 
 
+def basin_climate_periods(regressions_dir, in_shape, out_shape=None):
+    with fiona.open(in_shape, 'r') as src:
+        feats = [f for f in src]
+
+    geo_ = {f['properties']['STAID']: shape(f['geometry']) for f in feats}
+    areas = {f['properties']['STAID']: f['properties']['AREA'] for f in feats}
+    names = {f['properties']['STAID']: f['properties']['STANAME'] for f in feats}
+
+    lag_dct = {}
+
+    l = [os.path.join(regressions_dir, x) for x in os.listdir(regressions_dir)]
+
+    for f in l:
+        m = int(os.path.basename(f).split('.')[0].split('_')[-1])
+        with open(f, 'r') as _file:
+            dct = json.load(_file)
+            dct = {k: v for k, v in dct.items() if k not in EXCLUDE_STATIONS}
+
+        lag_dct.update({m: dct})
+
+    lags_stations = []
+    [[lags_stations.append(sid) for sid in v.keys()] for k, v in lag_dct.items()]
+    lags_stations = list(set(lags_stations))
+    area_arr = np.array([areas[_id] for _id in lags_stations])
+    areas = [(a - min(area_arr)) / (max(area_arr) - min(area_arr)) for a in area_arr]
+    df = pd.DataFrame(index=lags_stations, data=areas, columns=['AREA'])
+
+    for m in range(1, 13):
+        d = lag_dct[m]
+        data = {}
+
+        for k, v in d.items():
+            if v['p'] < 0.05:
+                data[k] = v['lag']
+            else:
+                data[k] = 0
+
+        index, data = [i[0] for i in data.items()], [i[1] for i in data.items()]
+        c = DataFrame(data=data, index=index, columns=[m]).astype(float)
+        df = concat([df, c], axis=1)
+
+    vals = df.values
+    vals[np.isnan(vals)] = 0.0
+    months = vals[:, 1:]
+    pos, neg = np.count_nonzero(months > 0.), np.count_nonzero(months < 0.)
+    gdf = gpd.GeoDataFrame(df)
+    gdf['STANAME'] = [names[_id] for _id in gdf.index]
+    geo = [geo_[_id] for _id in gdf.index]
+
+    gdf.drop(columns=['STANAME'], inplace=True)
+
+    gdf[gdf[[i for i in range(1, 13)]] == 0.0] = np.nan
+    gdf['median'] = gdf[[i for i in range(1, 13)]].median(axis=1)
+    gdf['min'] = gdf[[i for i in range(1, 13)]].min(axis=1)
+    gdf['max'] = gdf[[i for i in range(1, 13)]].max(axis=1)
+    gdf['median'][isna(gdf['median'])] = 0.0
+    gdf['min'][isna(gdf['min'])] = 0.0
+    gdf['max'][isna(gdf['max'])] = 0.0
+    gdf['sum_med'] = gdf[[i for i in range(5, 10)]].median(axis=1)
+    gdf['sum_med'][isna(gdf['sum_med'])] = 0.0
+    gdf['win_med'] = gdf[[i for i in [10, 11, 12, 1, 2, 3]]].median(axis=1)
+    gdf['win_med'][isna(gdf['win_med'])] = 0.0
+
+    gdf.loc[:, :] = np.where(np.isfinite(gdf.values), gdf.values, np.zeros_like(gdf.values))
+    gdf['geometry'] = geo
+    gdf['STANAME'] = [names[_id] for _id in gdf.index]
+    cols = [str(c) for c in gdf.columns]
+    gdf.columns = cols
+    gdf.to_file(out_shape, crs='epsg:4326')
+    df = DataFrame(gdf)
+    df.drop(columns=['AREA', 'geometry'], inplace=True)
+    df.to_csv(out_shape.replace('.shp', '.csv'))
+    print(out_shape)
+
+
 def monthly_trends(regressions_dir, in_shape, glob=None, out_shape=None, selectors=None):
     with fiona.open(in_shape, 'r') as src:
         feats = [f for f in src]
@@ -260,10 +335,10 @@ def monthly_cc_qres(regressions_dir, in_shape, glob=None, out_shape=None, bayes=
     cols = [str(c) for c in gdf.columns]
     gdf.columns = cols
     shp_file = os.path.join(out_shape, '{}.shp'.format(glob))
-    # gdf.to_file(shp_file, crs='epsg:4326')
-    # df = DataFrame(gdf)
-    # df.drop(columns=['AREA', 'geometry'], inplace=True)
-    # df.to_csv(shp_file.replace('.shp', '.csv'))
+    gdf.to_file(shp_file, crs='epsg:4326')
+    df = DataFrame(gdf)
+    df.drop(columns=['AREA', 'geometry'], inplace=True)
+    df.to_csv(shp_file.replace('.shp', '.csv'))
     print('write {}'.format(shp_file))
     print('{} positive, {} negative'.format(pos, neg))
 
@@ -318,7 +393,9 @@ if __name__ == '__main__':
         root = '/home/dgketchum/data/IrrigationGIS/impacts'
 
     inshp = os.path.join(root, 'gages', 'selected_gages.shp')
-    # lr_ = os.path.join(root, 'analysis', 'trends')
+    lr_ = os.path.join(root, 'analysis', 'climate_flow')
+    fig_shp = os.path.join(root, 'figures', 'shapefiles', 'climate_flow_period', 'cwb_q_lag.shp')
+    basin_climate_periods(lr_, inshp, out_shape=fig_shp)
 
     v_ = 'mv'
     if v_ == 'static':
@@ -334,7 +411,7 @@ if __name__ == '__main__':
     glb = '{}_bayes'.format(v_)
     cc_qres = os.path.join(root, 'analysis', '{}'.format(v_))
     out_shp = os.path.join(root, 'figures', 'shapefiles', '{}'.format(v_))
-    monthly_cc_qres(cc_qres, inshp, glob=glb, out_shape=out_shp, bayes=True)
+    # monthly_cc_qres(cc_qres, inshp, glob=glb, out_shape=out_shp, bayes=True)
 
     q_trend = os.path.join(root, 'figures', 'shapefiles', 'uv_trends', 'time_q.shp')
     cc_trend = os.path.join(root, 'figures', 'shapefiles', 'uv_trends', 'time_cc.shp')

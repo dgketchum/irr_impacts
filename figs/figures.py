@@ -98,7 +98,7 @@ def hydrograph_vs_crop_consumption(ee_data, sid='13172500', fig_dir=None):
            capsize=2, edgecolor='k', label='Apr - Oct Irrigation Water Use', error_kw=error_kw)
     font_size = 70
     plt.suptitle('Snake River Near Murphy, Idaho', size=font_size)
-    plt.ylabel('Cubic Kilometers', size=font_size)
+    plt.ylabel('km$^{3}$', size=font_size)
     # plt.xlabel('Year', size=font_size)
     ticks = [str(int(x)) for x in np.arange(1986, 2022)]
     ticks = ['' if x not in ['1991', '2000', '2010', '2020'] else x for x in ticks]

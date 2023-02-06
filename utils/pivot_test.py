@@ -6,6 +6,20 @@ min_arc = 10
 tol = 0.22
 
 
+def area_flood_irrigation(shp):
+    df = gpd.read_file(shp)
+    p = df[df['IType'] == 'P']['geometry']
+    p = np.sum([g.area for g in p])
+    s = df[df['IType'] == 'S']['geometry']
+    s = np.sum([g.area for g in s])
+    f = df[df['IType'] == 'F']['geometry']
+    f = np.sum([g.area for g in f])
+    t = p + s + f
+    print('pivot: {:.3f} sqkm, {:.3f}'.format(p / 1e6, p / t))
+    print('sprinkler: {:.3f} sqkm, {:.3f}'.format(s / 1e6, s / t))
+    print('flood: {:.3f} sqkm, {:.3f}'.format(f / 1e6, f / t))
+
+
 def bearing(a, b):
     lat1 = np.radians(a[0])
     lat2 = np.radians(b[0])
@@ -53,8 +67,9 @@ def pivot_test(in_shp, out_shp):
 
 
 if __name__ == '__main__':
-
     shp = '/home/dgketchum/Downloads/ID_2015_ESPA_WGS84_irr.shp'
     oshp = '/home/dgketchum/Downloads/ID_2015_ESPA_WGS84_arcs.shp'
-    pivot_test(shp, oshp)
+    # pivot_test(shp, oshp)
+    flu_ = '/media/research/IrrigationGIS/Montana/geointernship/progress/aea/flu_itype.shp'
+    area_flood_irrigation(flu_)
 # ========================= EOF ====================================================================

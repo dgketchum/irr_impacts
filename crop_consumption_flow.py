@@ -158,7 +158,7 @@ def bayes_linear_regression_cc_qres(station, period, records, trc_dir, overwrite
         rmse = BASIN_CC_ERR[basin]['rmse']
         bias = BASIN_CC_ERR[basin]['bias']
         irr_f1 = 1 - BASIN_IRRMAPPER_F1[basin]
-        cc_err = (irr_f1 + rmse - abs(bias))
+        cc_err = np.sqrt(irr_f1**2 + rmse**2)
         ppt_err, etr_err = BASIN_PRECIP_RMSE[basin], ETR_ERR
         qres_err = np.sqrt(ppt_err ** 2 + etr_err ** 2)
 
