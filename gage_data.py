@@ -54,6 +54,9 @@ def get_station_daily_data(start, end, stations, out_dir, plot_dir=None, overwri
         if sid in EXCLUDE_STATIONS:
             continue
 
+        if sid != '13081500':
+            continue
+
         out_file = os.path.join(out_dir, '{}.csv'.format(sid))
         if os.path.exists(out_file) and not overwrite:
             print(sid, 'exists, skipping')
