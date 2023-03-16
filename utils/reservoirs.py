@@ -91,21 +91,23 @@ def process_reservoir_hydrographs(reservoirs, time_series, out_dir, start, end):
 
                 if nan_count > 0:
                     df[c] = df[c].interpolate(limit=7, method='linear')
-                    nan_count = np.count_nonzero(np.isnan(df[c]))
-                    if nan_count > 0:
-                        df[c] = df[c].dropna(axis=0)
-                        record_ct = df[c].groupby([df.index.year, df.index.month]).agg('count')
-                        records = [r for i, r in record_ct.items()]
-                        # add a zero to the front of the list to hack the resample, then remove
-                        mask = [0] + [int(a == b) for a, b in zip(records, counts)]
-                        missing_mo = len(counts) - sum(mask)
+                    df[c] = df[c].dropna(axis=0)
+                    record_ct = df[c].groupby([df.index.year, df.index.month]).agg('count')
+                    records = [r for i, r in record_ct.items()]
+                    mask = [0] + [int(a == b) for a, b in zip(records, counts)]
+                    missing_mo = len(counts) - sum(mask)
+
+                    if df.index[0] > pd.to_datetime(start):
+                        resamp_start = df.index[0] - pd.DateOffset(months=1)
+                    else:
                         resamp_start = pd.to_datetime(start) - pd.DateOffset(months=1)
-                        mask = pd.Series(index=pd.DatetimeIndex(pd.date_range(resamp_start, end, freq='M')),
-                                         data=mask).resample('D').bfill()
-                        mask = mask[1:]
-                        match = [i for i in mask.index if i in df.index]
-                        odf[c] = df.loc[match, c]
-                        print(sid, c, 'missing {} months'.format(missing_mo), d['DAM_NAME'], d['STATE'])
+
+                    mask = pd.Series(index=pd.DatetimeIndex(pd.date_range(resamp_start, end, freq='M')),
+                                     data=mask).resample('D').bfill()
+                    mask = mask[1:]
+                    match = [i for i in mask.index if i in df.index]
+                    odf[c] = df.loc[match, c]
+                    print(sid, c, 'missing {} months'.format(missing_mo), d['DAM_NAME'], d['STATE'])
                 else:
                     odf[c] = df[c]
 
@@ -117,7 +119,7 @@ def process_reservoir_hydrographs(reservoirs, time_series, out_dir, start, end):
             odf = odf.resample('M').agg({'outflow': 'sum',
                                          'inflow': 'sum',
                                          'storage': 'mean'})
-        except TypeError as e:
+        except Exception as e:
             print(sid, e)
             continue
 
@@ -138,7 +140,7 @@ if __name__ == '__main__':
     shp_ = os.path.join(res_attr, 'reservoir_flow_summary.shp')
     # read_mean_join_csvs(res_attr_csv, a, b, c, shp_)
 
-    start_yr, end_yr = 1987, 2021
+    start_yr, end_yr = 1987, 2020
     csv_ = '/home/dgketchum/Downloads/ResOpsUS/ResOpsUS/attributes/reservoir_flow_summary.csv'
     res_gages = '/home/dgketchum/Downloads/ResOpsUS/ResOpsUS/time_series_all'
     processed = '/home/dgketchum/Downloads/ResOpsUS/ResOpsUS/time_series_processed'
@@ -149,7 +151,7 @@ if __name__ == '__main__':
     select = '13090500'
     gages_metadata = os.path.join(root, 'gages', 'irrigated_gage_metadata.json')
     daily_q = os.path.join(root, 'tables', 'hydrographs', 'daily_q')
-    # get_station_daily_data('{}-01-01'.format(start_yr), '{}-12-31'.format(end_yr), gages_metadata,
-    #                        daily_q, plot_dir=None, overwrite=False)
-    # get_station_daterange_data(daily_q, monthly_q, convert_to_mcube=True, resample_freq='M')
+    get_station_daily_data('{}-01-01'.format(start_yr), '{}-12-31'.format(end_yr), gages_metadata,
+                           daily_q, plot_dir=None, overwrite=False)
+    get_station_daterange_data(daily_q, monthly_q, convert_to_mcube=True, resample_freq='M')
 # ========================= EOF ====================================================================
