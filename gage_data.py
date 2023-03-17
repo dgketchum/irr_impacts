@@ -8,8 +8,8 @@ import matplotlib.pyplot as plt
 
 import dataretrieval.nwis as nwis
 
-
 from utils.gage_lists import EXCLUDE_STATIONS
+
 
 class MissingValues(Exception):
     pass
