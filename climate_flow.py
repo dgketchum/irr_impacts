@@ -8,10 +8,10 @@ import numpy as np
 from scipy.stats.stats import linregress
 
 from gage_data import hydrograph
-from utils.gage_lists import EXCLUDE_STATIONS
+from utils.gage_lists import EXCLUDE_STATIONS, RESERVOIR_STATIONS, NON_RESERVOIR_STATIONS
 
 
-def climate_flow_correlation(q_flow_dir, month, in_json, out_json, start_yr=1987, end_yr=2021):
+def climate_flow_correlation(q_flow_dir, month, in_json, out_json, start_yr=1987, end_yr=2021, reservoir=False):
     """Find linear relationship between climate and flow in an expanding time window"""
 
     l = sorted([os.path.join(q_flow_dir, x) for x in os.listdir(q_flow_dir)])
@@ -29,6 +29,11 @@ def climate_flow_correlation(q_flow_dir, month, in_json, out_json, start_yr=1987
             excluded.append(sid)
             continue
 
+        if reservoir and sid in NON_RESERVOIR_STATIONS:
+            continue
+        if not reservoir and sid in RESERVOIR_STATIONS:
+            continue
+
         try:
             s_meta = metadata[sid]
         except KeyError:
@@ -42,10 +47,20 @@ def climate_flow_correlation(q_flow_dir, month, in_json, out_json, start_yr=1987
         offsets = range(1, 61)
 
         corr = (0, 0.0)
-        q_dates = np.array([(date(y, month, 1), date(y, month, monthrange(y, month)[1])) for y in years])
-        q = np.array([df['q'][d[0]: d[1]].sum() for d in q_dates])
 
-        mask = q > 0.
+        if month > 0:
+            q_dates = np.array([(date(y, month, 1), date(y, month, monthrange(y, month)[1])) for y in years])
+        else:
+            q_dates = np.array([(date(y, 1, 1), date(y, 12, 31)) for y in years])
+
+        q = np.array([df['q'][d[0]: d[1]].sum(skipna=False) for d in q_dates])
+        q[q == 0.] = np.nan
+
+        if month == 0:
+            q_chk = np.array([df['q'][d[0]: d[1]] for d in q_dates])
+            mask = np.array([np.all(~np.isnan(x)) for x in q_chk])
+        else:
+            mask = ~np.isnan(q)
 
         if np.count_nonzero(mask) < 20:
             print('\nonly {} q records month {}, {}, {}'.format(np.count_nonzero(q > 1),
@@ -70,8 +85,11 @@ def climate_flow_correlation(q_flow_dir, month, in_json, out_json, start_yr=1987
 
         for lag in offsets:
 
-            dates = [(date(y, month, monthrange(y, month)[1]) + rdlt(months=-lag, days=1),
-                      date(y, month, monthrange(y, month)[1])) for y in years]
+            if month > 0:
+                dates = [(date(y, month, monthrange(y, month)[1]) + rdlt(months=-lag, days=1),
+                          date(y, month, monthrange(y, month)[1])) for y in years]
+            else:
+                dates = [(date(y, 12, 31) + rdlt(months=-lag, days=1), date(y, 12, 31)) for y in years]
 
             etr = np.array([df['gm_etr'][d[0]: d[1]].sum() for d in dates])
             ppt = np.array([df['gm_ppt'][d[0]: d[1]].sum() for d in dates])

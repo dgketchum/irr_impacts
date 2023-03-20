@@ -20,18 +20,33 @@ if not os.path.exists(root):
 
 figures = os.path.join(root, 'figures')
 
-gages_metadata = os.path.join(root, 'gages', 'irrigated_gage_metadata_res.json')
+gages_metadata = os.path.join(root, 'gages', 'irrigated_gage_metadata.json')
 
 daily_q = os.path.join(root, 'tables', 'hydrographs', 'daily_q')
 daily_q_fig = os.path.join(figures, 'hydrographs', 'daily_hydrograph_plots')
 
-monthly_q = os.path.join(root, 'tables', 'hydrographs', 'res', 'monthly_q')
-monthly_q_fig = os.path.join(figures, 'hydrographs', 'res', 'monthly_hydrograph_plots')
+reservoirs = True
+print('\nanalyzing reservoir-managed systems: {}'.format(reservoirs))
 
-annual_q = os.path.join(root, 'tables', 'hydrographs', 'res', 'annual_q')
-annual_q_fig = os.path.join(figures, 'hydrographs', 'res', 'annual_hydrograph_plots')
+if reservoirs:
+    monthly_q = os.path.join(root, 'tables', 'hydrographs', 'resv', 'monthly_q')
+    monthly_q_fig = os.path.join(figures, 'hydrographs', 'resv', 'monthly_hydrograph_plots')
 
-reservoirs = os.path.join(root, 'reservoirs', 'time_series_processed')
+    annual_q = os.path.join(root, 'tables', 'hydrographs', 'resv', 'annual_q')
+    annual_q_fig = os.path.join(figures, 'hydrographs', 'resv', 'annual_hydrograph_plots')
+
+    res_hydrographs = os.path.join(root, 'reservoirs', 'time_series_processed')
+    res_metadata = os.path.join(root, 'gages', 'irrigated_gage_metadata_resv.json')
+
+else:
+    monthly_q = os.path.join(root, 'tables', 'hydrographs', 'monthly_q')
+    monthly_q_fig = os.path.join(figures, 'hydrographs', 'monthly_hydrograph_plots')
+
+    annual_q = os.path.join(root, 'tables', 'hydrographs', 'annual_q')
+    annual_q_fig = os.path.join(figures, 'hydrographs', 'annual_hydrograph_plots')
+
+    res_hydrographs = None
+    res_metadata = None
 
 start_yr, end_yr = 1987, 2021
 # month zero calculates annual data
@@ -41,14 +56,16 @@ select = '13269000'
 
 def get_gage_data():
     # gather daily streamflow data from basins with irrigation, saving only complete months' records
-    # get_station_daily_data('{}-01-01'.format(start_yr), '{}-12-31'.format(end_yr), gages_metadata,
-    #                        daily_q, plot_dir=None, overwrite=False)
+    get_station_daily_data('{}-01-01'.format(start_yr), '{}-12-31'.format(end_yr), gages_metadata,
+                           daily_q, plot_dir=None, overwrite=False)
     # sum streamflow over each month, convert to cubic meters per month
     get_station_daterange_data(daily_q, monthly_q, convert_to_mcube=True, resample_freq='M', plot_dir=None,
-                               reservoirs=reservoirs, res_js=gages_metadata)
-    # resample streamflow to annual for trends analysis
-    # get_station_daterange_data(monthly_q, annual_q, convert_to_mcube=False, resample_freq='A',
-    #                            reservoirs=reservoirs, res_js=gages_metadata)
+                               reservoirs=res_hydrographs, res_js=res_metadata)
+
+    if reservoirs:
+        # resample streamflow to annual for trends analysis
+        get_station_daterange_data(monthly_q, annual_q, convert_to_mcube=False, resample_freq='A',
+                                   reservoirs=res_hydrographs, res_js=res_metadata)
 
 
 basins = 'users/dgketchum/gages/gage_basins'
@@ -76,17 +93,27 @@ if static_irr:
 
 else:
     extracts = os.path.join(root, 'tables', 'gridded_tables', 'IrrMapperComp_21OCT2022')
-    data_tables = os.path.join(root, 'tables', 'input_flow_climate_tables', 'IrrMapperComp_18MAR2023')
+
+    if reservoirs:
+        data_tables = os.path.join(root, 'tables', 'input_flow_climate_tables', 'IrrMapperComp_18MAR2023')
+    else:
+        data_tables = os.path.join(root, 'tables', 'input_flow_climate_tables', 'IrrMapperComp_21OCT2022')
+
     climate_flow_data = os.path.join(analysis_directory, 'climate_flow')
-    climate_flow_file = os.path.join(climate_flow_data, 'climate_flow_{}.json')
-
-    ols_trends_data = os.path.join(analysis_directory, 'ols_trends', 'trends_initial_{}.json')
-
     uv_trends_traces = os.path.join(root, 'uv_traces', 'uv_trends')
-    uv_trends_bayes = os.path.join(analysis_directory, 'uv_trends', 'trends_bayes_{}.json')
-
     mv_trends_traces = os.path.join(root, 'mv_traces', 'mv_trends')
-    mv_trends_bayes = os.path.join(analysis_directory, 'mv_trends', 'trends_bayes_{}.json')
+
+    if reservoirs:
+        climate_flow_file = os.path.join(climate_flow_data, 'climate_flow_{}_resv.json')
+        ols_trends_data = os.path.join(analysis_directory, 'ols_trends', 'trends_initial_{}_resv.json')
+        uv_trends_bayes = os.path.join(analysis_directory, 'uv_trends', 'trends_bayes_{}_resv.json')
+        mv_trends_bayes = os.path.join(analysis_directory, 'mv_trends', 'trends_bayes_{}_resv.json')
+
+    else:
+        climate_flow_file = os.path.join(climate_flow_data, 'climate_flow_{}.json')
+        ols_trends_data = os.path.join(analysis_directory, 'ols_trends', 'trends_initial_{}.json')
+        uv_trends_bayes = os.path.join(analysis_directory, 'uv_trends', 'trends_bayes_{}.json')
+        mv_trends_bayes = os.path.join(analysis_directory, 'mv_trends', 'trends_bayes_{}.json')
 
 # crop consumption and climate-normalized flow data
 cc_q_file = os.path.join(analysis_directory, 'cc_q', 'cc_q_initial_{}.json')
@@ -99,7 +126,7 @@ def get_gridded_data():
     # precede gage data by five years so climate-flow correlation can look back 60 months before first discharge month
     extract_years = np.arange(start_yr - 5, end_yr + 1)
     basin_ids = [station_id for station_id, _ in stations.items()]
-    export_gridded_data(basins, bucket, extract_years, features=basin_ids, min_years=5, description=desc, debug=False)
+    export_gridded_data(basins, bucket, extract_years, featuresv=basin_ids, min_years=5, description=desc, debug=False)
     # transfer gridded data from GCS bucket to local system
 
 
@@ -115,7 +142,7 @@ def climate_flow_correlations():
     rsq = {}
     for m in months:
         out_data = climate_flow_file.format(m)
-        climate_flow_correlation(data_tables, m, gages_metadata, out_data)
+        climate_flow_correlation(data_tables, m, gages_metadata, out_data, reservoir=reservoirs)
 
 
 def calculate_ols_trends():
@@ -137,7 +164,7 @@ def calculate_ols_trends():
     pprint(all_ct)
 
 
-processes = 25
+processes = 2
 overwrite_bayes = False
 
 
@@ -151,7 +178,7 @@ def univariate_trends():
         out_data = uv_trends_bayes.format(m)
         for i in range(3):
             run_bayes_univariate_trends(uv_trends_traces, in_data, processes, overwrite=overwrite_bayes,
-                                        selectors=['time_cc'])
+                                        selectors=['time_q'])
         if summarize:
             c, d, sp, sn = summarize_univariate_trends(in_data, uv_trends_traces, out_data, m)
             conv += c
@@ -199,12 +226,12 @@ def irrigation_impacts():
 
 
 if __name__ == '__main__':
-    get_gage_data()
+    # get_gage_data()
     # get_gridded_data()
     # build_tables()
     # climate_flow_correlations()
     # calculate_ols_trends()
-    # univariate_trends()
+    univariate_trends()
     # multivariate_trends()
     # irrigation_impacts()
 # ========================= EOF ====================================================================
