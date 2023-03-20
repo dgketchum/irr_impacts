@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 
 import dataretrieval.nwis as nwis
 
-from utils.gage_lists import EXCLUDE_STATIONS
+from utils.gage_lists import EXCLUDE_STATIONS, TARGET_STATIONS
 
 
 class MissingValues(Exception):
@@ -52,9 +52,6 @@ def get_station_daily_data(start, end, stations, out_dir, plot_dir=None, overwri
     for sid, data in stations.items():
 
         if sid in EXCLUDE_STATIONS:
-            continue
-
-        if sid != '13081500':
             continue
 
         out_file = os.path.join(out_dir, '{}.csv'.format(sid))
@@ -103,11 +100,30 @@ def get_station_daily_data(start, end, stations, out_dir, plot_dir=None, overwri
             plt.close()
 
 
-def get_station_daterange_data(daily_q_dir, aggregate_q_dir, resample_freq='A', convert_to_mcube=True, plot_dir=None):
+def get_station_daterange_data(daily_q_dir, aggregate_q_dir, resample_freq='A', convert_to_mcube=True,
+                               plot_dir=None, reservoirs=None, res_js=None):
     q_files = [os.path.join(daily_q_dir, x) for x in os.listdir(daily_q_dir)]
     sids = [os.path.basename(c).split('.')[0] for c in q_files]
     out_records, short_records = [], []
+    annual_q_test, diversion_test = [], []
+
+
+    if reservoirs:
+        with open(res_js, 'r') as f_obj:
+            dct = json.load(f_obj)
+
+        rfiles = [os.path.join(reservoirs, x) for x in os.listdir(reservoirs) if x.endswith('.csv')]
+        rkeys = [int(x.strip('.csv')) for x in os.listdir(reservoirs) if x.endswith('.csv')]
+
     for sid, c in zip(sids, q_files):
+
+        if sid not in TARGET_STATIONS:
+            continue
+
+        if sid != '13090000':
+            continue
+
+        _name = dct[sid]['STANAME']
 
         df = pd.read_csv(c, index_col=0, infer_datetime_format=True, parse_dates=True)
 
@@ -119,9 +135,64 @@ def get_station_daterange_data(daily_q_dir, aggregate_q_dir, resample_freq='A', 
         dates = deepcopy(df.index)
 
         out_file = os.path.join(aggregate_q_dir, '{}.csv'.format(sid))
+
+        if reservoirs:
+            rdf = pd.Series(index=df.index, data=[0 for _ in range(df.shape[0])])
+            rlist = dct[sid]['res']
+
+            for r in rlist:
+                try:
+                    rfile = rfiles[rkeys.index(r)]
+                except ValueError:
+                    continue
+
+                c = pd.read_csv(rfile, index_col='date', infer_datetime_format=True, parse_dates=True)
+
+                if 'inflow' in c.columns and 'outflow' in c.columns and not 'storage' in c.columns:
+                    c['storage'] = c['outflow'] - c['inflow']
+
+                if resample_freq == 'M':
+                    c['delta_s'] = c['storage'].diff() * 1e6
+                    print('{:.1f} {}'.format(np.nanmean([abs(s) for s in c['delta_s'].values]), r))
+                elif resample_freq == 'A':
+                    # doesn't need aggregation, just difference year-to-year
+                    idx = [i for i in c.index if i.month == 12]
+                    c = c.loc[idx].diff()
+                    c['delta_s'] = c['storage'] * 1e6
+                else:
+                    raise NotImplementedError
+
+                match = [i for i in c.index if i in rdf.index]
+                c = c.loc[match]
+                c = c.reindex(rdf.index)
+                rdf += c['delta_s']
+
+            rtest = pd.DataFrame(data=np.array([df.values, rdf.values]).T, columns=['flow', 'delta_s'], index=df.index)
+            rtest['diff'] = rtest['delta_s'] / rtest['flow']
+
+            if resample_freq == 'M':
+                sept = [i for i in rtest.index if i.month == 9]
+                sept_mean = rtest.loc[sept, 'diff'].mean()
+                print('{:.1f}'.format(sept_mean), len(rlist), _name, sid)
+
+            elif resample_freq == 'A':
+                an_stor_delta = np.nanmean([abs(s) for s in rtest['diff'].values])
+                if not np.isfinite(an_stor_delta):
+                    diversion_test.append(sid)
+                elif an_stor_delta > 0.03:
+                    diversion_test.append(sid)
+                elif an_stor_delta < 0.03:
+                    annual_q_test.append(sid)
+                else:
+                    print(sid, 'did not find a place')
+                    raise NotImplementedError
+
+                print('{:.3f}'.format(an_stor_delta), len(rlist), _name, sid)
+
+            df += rtest['delta_s']
+
         df.to_csv(out_file)
         out_records.append(sid)
-        print(sid)
 
         if plot_dir:
             pdf = pd.DataFrame(data={'Date': dates, 'q': df.values})
@@ -131,6 +202,9 @@ def get_station_daterange_data(daily_q_dir, aggregate_q_dir, resample_freq='A', 
 
     print('{} processed'.format(len(out_records)))
     print(out_records)
+
+    print(annual_q_test)
+    print(diversion_test)
 
 
 if __name__ == '__main__':

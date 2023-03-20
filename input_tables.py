@@ -5,9 +5,11 @@ import pandas as pd
 
 from gage_data import hydrograph
 
+from utils.gage_lists import ANNUAL_Q_TEST
+
 
 def merge_gridded_flow_data(gridded_dir, flow_dir, out_dir, start_year=1982, end_year=2021, glob='glob',
-                            join_key='STAID'):
+                            join_key='STAID', q_reservoir=None):
     missing, missing_ct, processed_ct = [], 0, 0
 
     l = [os.path.join(gridded_dir, x) for x in os.listdir(gridded_dir) if glob in x]

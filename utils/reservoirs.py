@@ -128,6 +128,22 @@ def process_reservoir_hydrographs(reservoirs, time_series, out_dir, start, end):
         print(sid, d['DAM_NAME'], d['STATE'])
 
 
+def join_reservoirs_to_basins(basins, reservoirs, out_json):
+    basins = gpd.read_file(basins)
+    reservoirs = gpd.read_file(reservoirs)
+    res_geo = [r['geometry'] for i, r in reservoirs.iterrows()]
+    res_id = [r['DAM_ID'] for i, r in reservoirs.iterrows()]
+    dct = {r['STAID']: [] for i, r in basins.iterrows()}
+    for i, r in basins.iterrows():
+        g = r['geometry']
+        for j, res_g in enumerate(res_geo):
+            if res_g.within(g):
+                dct[r['STAID']].append(res_id[j])
+
+    with open(out_json, 'w') as f:
+        json.dump(dct, f, indent=4)
+
+
 if __name__ == '__main__':
     root = '/home/dgketchum/IrrigationGIS/expansion'
 
@@ -141,17 +157,22 @@ if __name__ == '__main__':
     # read_mean_join_csvs(res_attr_csv, a, b, c, shp_)
 
     start_yr, end_yr = 1987, 2020
-    csv_ = '/home/dgketchum/Downloads/ResOpsUS/ResOpsUS/attributes/reservoir_flow_summary.csv'
-    res_gages = '/home/dgketchum/Downloads/ResOpsUS/ResOpsUS/time_series_all'
-    processed = '/home/dgketchum/Downloads/ResOpsUS/ResOpsUS/time_series_processed'
-    process_reservoir_hydrographs(csv_, res_gages, processed, '{}-01-01'.format(start_yr), '{}-12-31'.format(end_yr))
+    csv_ = '/media/research/IrrigationGIS/impacts/reservoirs/attributes/reservoir_flow_summary.csv'
+    res_gages = '/media/research/IrrigationGIS/impacts/reservoirs/time_series_all'
+    processed = '/media/research/IrrigationGIS/impacts/reservoirs/time_series_processed'
+    # process_reservoir_hydrographs(csv_, res_gages, processed, '{}-01-01'.format(start_yr), '{}-12-31'.format(end_yr))
+
+    basins_ = '/media/research/IrrigationGIS/impacts/geographic/gage_basins/gage_basins.shp'
+    reservoirs_ = '/media/research/IrrigationGIS/impacts/reservoirs/shapefiles/reservoirs_study_area.shp'
+    out_js = '/media/research/IrrigationGIS/impacts/reservoirs/basin_reservoirs.json'
+    join_reservoirs_to_basins(basins_, reservoirs_, out_js)
 
     monthly_q = os.path.join(root, 'tables', 'hydrographs', 'monthly_q')
     months = list(range(1, 13))
     select = '13090500'
     gages_metadata = os.path.join(root, 'gages', 'irrigated_gage_metadata.json')
     daily_q = os.path.join(root, 'tables', 'hydrographs', 'daily_q')
-    get_station_daily_data('{}-01-01'.format(start_yr), '{}-12-31'.format(end_yr), gages_metadata,
-                           daily_q, plot_dir=None, overwrite=False)
-    get_station_daterange_data(daily_q, monthly_q, convert_to_mcube=True, resample_freq='M')
+    # get_station_daily_data('{}-01-01'.format(start_yr), '{}-12-31'.format(end_yr), gages_metadata,
+    #                        daily_q, plot_dir=None, overwrite=False)
+    # get_station_daterange_data(daily_q, monthly_q, convert_to_mcube=True, resample_freq='M')
 # ========================= EOF ====================================================================
