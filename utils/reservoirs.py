@@ -19,6 +19,7 @@ def read_mean_join_csvs(reservoirs, in_q, storage, out_q, shp_path):
     storage = pd.read_csv(storage, index_col='date', infer_datetime_format=True, parse_dates=True)
     out_q = pd.read_csv(out_q, index_col='date', infer_datetime_format=True, parse_dates=True)
 
+    # incoming data in [m3, m3, million m3]
     items = zip(['inflow', 'outflow', 'storage'], [in_q, out_q, storage])
 
     for t, df in items:

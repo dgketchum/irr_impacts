@@ -25,7 +25,7 @@ gages_metadata = os.path.join(root, 'gages', 'irrigated_gage_metadata.json')
 daily_q = os.path.join(root, 'tables', 'hydrographs', 'daily_q')
 daily_q_fig = os.path.join(figures, 'hydrographs', 'daily_hydrograph_plots')
 
-reservoirs = True
+reservoirs = False
 print('\nanalyzing reservoir-managed systems: {}'.format(reservoirs))
 
 if reservoirs:
@@ -229,8 +229,8 @@ if __name__ == '__main__':
     # get_gage_data()
     # get_gridded_data()
     # build_tables()
-    # climate_flow_correlations()
-    # calculate_ols_trends()
+    climate_flow_correlations()
+    calculate_ols_trends()
     univariate_trends()
     # multivariate_trends()
     # irrigation_impacts()

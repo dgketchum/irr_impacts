@@ -100,6 +100,7 @@ def monthly_trends(regressions_dir, in_shape, glob=None, out_shape=None, selecto
 
     for f in l:
         m = int(os.path.basename(f).split('.')[0].split('_')[-1])
+
         with open(f, 'r') as _file:
             dct = json.load(_file)
             dct = {k: v for k, v in dct.items() if k not in EXCLUDE_STATIONS}
@@ -128,7 +129,7 @@ def monthly_trends(regressions_dir, in_shape, glob=None, out_shape=None, selecto
     area_arr = np.array([areas[_id] for _id in trends_stations])
     areas = [(a - min(area_arr)) / (max(area_arr) - min(area_arr)) for a in area_arr]
 
-    range_ = np.arange(1, 13)
+    range_ = np.arange(0, 13)
     for var, test in trc_subdirs.items():
 
         if selectors and var not in selectors:
@@ -182,7 +183,7 @@ def monthly_trends(regressions_dir, in_shape, glob=None, out_shape=None, selecto
 
         gdf.drop(columns=['STANAME'], inplace=True)
 
-        shp_file = os.path.join(out_shape, '{}.shp'.format(var))
+        shp_file = os.path.join(out_shape, '{}_resv.shp'.format(var))
 
         try:
             gdf[gdf[[i for i in range(1, 13)]] == 0.0] = np.nan
@@ -395,9 +396,9 @@ if __name__ == '__main__':
     inshp = os.path.join(root, 'gages', 'selected_gages.shp')
     lr_ = os.path.join(root, 'analysis', 'climate_flow')
     fig_shp = os.path.join(root, 'figures', 'shapefiles', 'climate_flow_period', 'cwb_q_lag.shp')
-    basin_climate_periods(lr_, inshp, out_shape=fig_shp)
+    # basin_climate_periods(lr_, inshp, out_shape=fig_shp)
 
-    v_ = 'mv'
+    v_ = 'uv'
     if v_ == 'static':
         glb = 'trends_bayes'
         lr_ = os.path.join(root, 'analysis', 'trends_static_irr')
@@ -405,7 +406,7 @@ if __name__ == '__main__':
         glb = 'trends'
         lr_ = os.path.join(root, 'analysis', '{}_trends'.format(v_))
     fig_shp = os.path.join(root, 'figures', 'shapefiles', '{}_trends'.format(v_))
-    # monthly_trends(lr_, inshp, glob=glb, out_shape=fig_shp)
+    monthly_trends(lr_, inshp, glob=glb, out_shape=fig_shp)
 
     v_ = 'cc_q'
     glb = '{}_bayes'.format(v_)
