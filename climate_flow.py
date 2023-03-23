@@ -11,7 +11,7 @@ from gage_data import hydrograph
 from utils.gage_lists import EXCLUDE_STATIONS, RESERVOIR_STATIONS, NON_RESERVOIR_STATIONS
 
 
-def climate_flow_correlation(q_flow_dir, month, in_json, out_json, start_yr=1987, end_yr=2021, reservoir=False):
+def climate_flow_correlation(q_flow_dir, month, in_json, out_json, start_yr=1987, end_yr=2021):
     """Find linear relationship between climate and flow in an expanding time window"""
 
     l = sorted([os.path.join(q_flow_dir, x) for x in os.listdir(q_flow_dir)])
@@ -29,9 +29,12 @@ def climate_flow_correlation(q_flow_dir, month, in_json, out_json, start_yr=1987
             excluded.append(sid)
             continue
 
-        if reservoir and sid in NON_RESERVOIR_STATIONS:
-            continue
-        if not reservoir and sid in RESERVOIR_STATIONS:
+        if sid in RESERVOIR_STATIONS:
+            res_mod = True
+        else:
+            res_mod = False
+
+        if sid != '09315000':
             continue
 
         try:
@@ -58,12 +61,13 @@ def climate_flow_correlation(q_flow_dir, month, in_json, out_json, start_yr=1987
 
         if month == 0:
             q_chk = np.array([df['q'][d[0]: d[1]] for d in q_dates])
+            q_chk[q_chk == 0.] = np.nan
             mask = np.array([np.all(~np.isnan(x)) for x in q_chk])
         else:
             mask = ~np.isnan(q)
 
         if np.count_nonzero(mask) < 20:
-            print('\nonly {} q records month {}, {}, {}'.format(np.count_nonzero(q > 1),
+            print('\nonly {} q records month {}, {}, {}'.format(np.count_nonzero(mask),
                                                                 month, sid, s_meta['STANAME']))
             short_q.append(sid)
             continue
@@ -75,8 +79,8 @@ def climate_flow_correlation(q_flow_dir, month, in_json, out_json, start_yr=1987
 
         # get concurrent (w/ flow) data to be used in single-month trends analysis
         cc = np.array([df['cc'][d[0]: d[1]].sum() for d in q_dates])
-        etr_m = np.array([df['gm_etr'][d[0]: d[1]].sum() for d in q_dates])
-        ppt_m = np.array([df['gm_ppt'][d[0]: d[1]].sum() for d in q_dates])
+        etr_m = np.array([df['etr'][d[0]: d[1]].sum() for d in q_dates])
+        ppt_m = np.array([df['ppt'][d[0]: d[1]].sum() for d in q_dates])
         ai_m = etr_m - ppt_m
         irr = np.array([df['irr'][d[0]: d[1]].sum() for d in q_dates])
         lr = linregress(ai_m, cc)
@@ -91,8 +95,8 @@ def climate_flow_correlation(q_flow_dir, month, in_json, out_json, start_yr=1987
             else:
                 dates = [(date(y, 12, 31) + rdlt(months=-lag, days=1), date(y, 12, 31)) for y in years]
 
-            etr = np.array([df['gm_etr'][d[0]: d[1]].sum() for d in dates])
-            ppt = np.array([df['gm_ppt'][d[0]: d[1]].sum() for d in dates])
+            etr = np.array([df['etr'][d[0]: d[1]].sum() for d in dates])
+            ppt = np.array([df['ppt'][d[0]: d[1]].sum() for d in dates])
             ai = etr - ppt
             lr = linregress(ai, q)
             b, inter, r, p = lr.slope, lr.intercept, lr.rvalue, lr.pvalue
