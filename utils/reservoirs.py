@@ -1,12 +1,12 @@
 import os
 import json
+from calendar import monthrange
 
 import numpy as np
 import pandas as pd
 import geopandas as gpd
 from shapely.geometry import Point
 import requests
-from io import StringIO
 
 from gage_data import month_days_count
 
@@ -114,110 +114,21 @@ def get_reservoir_data(csv, out_shp, out_dir, resops_shp, start, end):
     shp.to_file(out_shp)
 
 
-def read_mean_join_csvs(reservoirs, in_q, storage, out_q, shp_path):
-    gdf = pd.read_csv(reservoirs, index_col='DAM_ID', engine='python')
-    gdf['geometry'] = gdf[['LONG', 'LAT']].apply(lambda x: Point(x['LONG'], x['LAT']), axis=1)
-    gdf = gpd.GeoDataFrame(gdf, crs='EPSG:4326')
-
-    gdf.drop(columns=['INCONSISTENCIES_NOTED'], inplace=True)
-    in_q = pd.read_csv(in_q, index_col='date', infer_datetime_format=True, parse_dates=True)
-    storage = pd.read_csv(storage, index_col='date', infer_datetime_format=True, parse_dates=True)
-    out_q = pd.read_csv(out_q, index_col='date', infer_datetime_format=True, parse_dates=True)
-
-    # incoming data in [m3, m3, million m3]
-    items = zip(['inflow', 'outflow', 'storage'], [in_q, out_q, storage])
-
-    for t, df in items:
-        df = df.loc['1984-01-01':]
-        for c in df.columns:
-            s = df[c].values
-            s = s.astype(float)
-            s[s < -10] = np.nan
-            s[s < 0] = 0
-            _recs = np.count_nonzero(~np.isnan(s))
-            if _recs / len(s) < 0.4:
-                gdf.loc[int(c), t] = 'False'
-                continue
-            else:
-                gdf.loc[int(c), t] = 'True'
-            _mean = np.nanmean(s)
-            gdf.loc[int(c), '{}_r'.format(t)] = _recs
-            gdf.loc[int(c), '{}_m'.format(t)] = _mean
-            if t == 's':
-                d = gdf.loc[int(c)]
-                if d['out_q_recs'] > d['in_q_recs']:
-                    gdf.loc[int(c), 'pref'] = 'out_q'
-                elif d['in_q_recs'] > 1000 and d['s_recs'] > 1000:
-                    gdf.loc[int(c), 'pref'] = 'in_q'
-                else:
-                    gdf.loc[int(c), 'pref'] = 'none'
-                    continue
-
-                q95, q05 = np.nanpercentile(s, [95, 5])
-                s_range = q95 - q05
-
-                ann_q = np.nanmean(s) * 60 * 60 * 24 * 365 / 1e6
-
-                gdf.loc[int(c), 'q_an'] = ann_q
-                gdf.loc[int(c), 's_rng'] = s_range
-                gdf.loc[int(c), 's_95'] = q95
-                gdf.loc[int(c), 's_05'] = q05
-                gdf.loc[int(c), 's_rat'] = s_range / ann_q
-
-    gdf.to_file(shp_path)
-    df = pd.DataFrame(gdf).drop(columns=['geometry'])
-    csv_path = shp_path.replace('.shp', '.csv')
-    df.to_csv(csv_path, float_format='%.3f')
-
-
 def process_resops_hydrographs(reservoirs, time_series, out_dir, start, end):
     adf = pd.read_csv(reservoirs)
-    counts = month_days_count(start, end)
+    eom = pd.date_range(start, end, freq='M')
     for i, r in adf.iterrows():
         d = r.to_dict()
         sid = d['DAM_ID']
 
         ts_file = os.path.join(time_series, 'ResOpsUS_{}.csv'.format(sid))
         df = pd.read_csv(ts_file, index_col='date', infer_datetime_format=True, parse_dates=True)
-        df = df.loc['1982-01-01':]
-
-        odf = pd.DataFrame()
-
-        for c in ['storage']:
-
-            if d[c] == 'False':
-                continue
-
-            try:
-                nan_count = np.count_nonzero(np.isnan(df[c]))
-                df, match, missing_mo = complete_records(df, c, counts, start, end)
-                odf[c] = df.loc[match, c]
-
-                if nan_count > 0:
-
-                    print(sid, c, 'missing {} months'.format(missing_mo), d['DAM_NAME'], d['STATE'])
-                else:
-                    odf[c] = df[c]
-
-                if c == 'storage':
-                    odf[c] *= 1e6
-                elif c in ['inflow', 'outflow']:
-                    odf[c] = df[c] * 86400
-
-            except ValueError as e:
-                print(sid, e)
-                continue
-
-        try:
-            odf = odf.resample('M').agg({'outflow': 'sum',
-                                         'inflow': 'sum',
-                                         'storage': 'mean'})
-        except Exception as e:
-            print(sid, e)
-            continue
-
+        df = df.loc[start: end]
+        series = df['storage']
+        series = series.reindex(eom)
+        series.dropna(inplace=True)
         ofile = os.path.join(out_dir, '{}.csv'.format(sid))
-        odf.to_csv(ofile, float_format='%.3f')
+        series.to_csv(ofile, float_format='%.3f')
         print(sid, d['DAM_NAME'], d['STATE'])
 
 
@@ -237,12 +148,12 @@ def join_reservoirs_to_basins(basins, reservoirs, out_json):
         json.dump(dct, f, indent=4)
 
 
-def complete_records(df, column, counts, start, end):
-    df[column] = df[column].interpolate(limit=7, method='linear')
-    df[column] = df[column].dropna(axis=0)
-    record_ct = df[column].groupby([df.index.year, df.index.month]).agg('count')
+def complete_records(df, counts, start, end):
+    df = df.interpolate(limit=7, method='linear')
+    df = df.dropna(axis=0)
+    record_ct = df.groupby([df.index.year, df.index.month]).agg('count')
     records = [r for i, r in record_ct.items()]
-    mask = [0] + [int(a == b) for a, b in zip(records, counts)]
+    mask = [int(a == b) for a, b in zip(records, counts)]
     missing = len(counts) - sum(mask)
 
     if df.index[0] > pd.to_datetime(start):
@@ -250,26 +161,27 @@ def complete_records(df, column, counts, start, end):
     else:
         resamp_start = pd.to_datetime(start) - pd.DateOffset(months=1)
 
-    mask = pd.Series(index=pd.DatetimeIndex(pd.date_range(resamp_start, end, freq='M')),
-                     data=mask).resample('D').bfill()
-    mask = mask[1:]
-    match = [i for i in mask.index if i in df.index]
-    return df, match, missing
+    resamp_ind = pd.DatetimeIndex(pd.date_range(resamp_start, end, freq='M'))
+    mask = mask + [0 for i in range(len(resamp_ind) - len(mask))]
+    mask = pd.Series(index=resamp_ind, data=mask).resample('D').bfill()
+    df = df.loc[[i for i, r in mask.items() if r and i in df.index]]
+    return df, missing
 
 
 if __name__ == '__main__':
     root = '/home/dgketchum/IrrigationGIS/expansion'
 
-    start_yr, end_yr = 1982, 2020
-    s, e = '{}-01-01'.format(start_yr), '{}-12-31'.format(end_yr)
-    csv_ = '/media/research/IrrigationGIS/impacts/reservoirs/resopsus/attributes/reservoir_flow_summary.csv'
-    res_gages = '/media/research/IrrigationGIS/impacts/reservoirs/resopsus/time_series_all'
-    processed = '/media/research/IrrigationGIS/impacts/reservoirs/resopsus/time_series_processed'
-    process_resops_hydrographs(csv_, res_gages, processed, s, e)
+    # s, e = '1982-01-01', '2020-12-31'
+    # csv_ = '/media/research/IrrigationGIS/impacts/reservoirs/resopsus/attributes/reservoir_flow_summary.csv'
+    # res_gages = '/media/research/IrrigationGIS/impacts/reservoirs/resopsus/time_series_all'
+    # processed = '/media/research/IrrigationGIS/impacts/reservoirs/resopsus/time_series_processed'
+    # process_resops_hydrographs(csv_, res_gages, processed, s, e)
 
+    s, e = '1982-01-01', '2021-12-31'
+    resops_ = '/media/research/IrrigationGIS/impacts/reservoirs/resopsus/attributes/reservoir_flow_summary.shp'
     sites = '/media/research/IrrigationGIS/impacts/reservoirs/usbr/candidate_sites.csv'
     oshp = '/media/research/IrrigationGIS/impacts/reservoirs/usbr/reservoir_sites.shp'
     hyd = '/media/research/IrrigationGIS/impacts/reservoirs/usbr/hydrographs'
-    # get_reservoir_data(sites, resops_shp=processed, out_shp=oshp, out_dir=hyd, start=s, end=e)
+    get_reservoir_data(sites, resops_shp=processed, out_shp=oshp, out_dir=hyd, start=s, end=e)
 
 # ========================= EOF ====================================================================
