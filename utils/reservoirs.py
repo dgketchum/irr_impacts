@@ -1,14 +1,10 @@
-import os
 import json
-from calendar import monthrange
+import os
 
+import geopandas as gpd
 import numpy as np
 import pandas as pd
-import geopandas as gpd
-from shapely.geometry import Point
 import requests
-
-from gage_data import month_days_count
 
 
 def read_gp_res70(url):
@@ -159,17 +155,30 @@ def process_resops_hydrographs(reservoirs, time_series, out_dir, start, end):
         print(sid, d['DAM_NAME'], d['STATE'])
 
 
-def join_reservoirs_to_basins(basins, reservoirs, out_json):
+def join_reservoirs_to_basins(basins, reservoirs, ibts, out_json):
     basins = gpd.read_file(basins)
     reservoirs = gpd.read_file(reservoirs)
+    ibts = gpd.read_file(ibts)
+
     res_geo = [r['geometry'] for i, r in reservoirs.iterrows()]
     res_id = [r['DAM_ID'] for i, r in reservoirs.iterrows()]
-    dct = {r['STAID']: [] for i, r in basins.iterrows()}
+
+    ibt_geo = [r['geometry'] for i, r in ibts.iterrows()]
+    ibt_id = [r['STAID'] for i, r in ibts.iterrows()]
+
+    dct = {r['STAID']: {'ibt': [], 'res': []} for i, r in basins.iterrows()}
+
     for i, r in basins.iterrows():
+
         g = r['geometry']
+
         for j, res_g in enumerate(res_geo):
             if res_g.within(g):
-                dct[r['STAID']].append(res_id[j])
+                dct[r['STAID']]['res'].append(res_id[j])
+
+        for j, ibt_g in enumerate(ibt_geo):
+            if ibt_g.within(g):
+                dct[r['STAID']]['ibt'].append(ibt_id[j])
 
     with open(out_json, 'w') as f:
         json.dump(dct, f, indent=4)
@@ -210,6 +219,27 @@ if __name__ == '__main__':
     oshp = '/media/research/IrrigationGIS/impacts/reservoirs/usbr/reservoir_sites.shp'
     hyd = '/media/research/IrrigationGIS/impacts/reservoirs/hydrographs'
     study_area = '/media/research/IrrigationGIS/impacts/geographic/study_basins/study_buff.shp'
-    get_reservoir_data(sites, bounds=study_area, resops_dir=resops_, out_shp=oshp, out_dir=hyd, start=s, end=e)
+    # get_reservoir_data(sites, bounds=study_area, resops_dir=resops_, out_shp=oshp, out_dir=hyd, start=s, end=e)
 
+    ibt = '/media/research/IrrigationGIS/impacts/canals/ibt_exports_wgs.shp'
+    res_ = '/media/research/IrrigationGIS/impacts/reservoirs/usbr/reservoir_sites.shp'
+    basins = '/media/research/IrrigationGIS/impacts/geographic/gage_basins/gage_basins_wgs.shp'
+    js = '/media/research/IrrigationGIS/impacts/gages/metadata_res_ibt.json'
+    meta = '/media/research/IrrigationGIS/impacts/gages/irrigated_gage_metadata.json'
+    out = '/media/research/IrrigationGIS/impacts/gages/irrigated_gage_metadata_res_ibt.json'
+
+    with open(js, 'r') as f:
+        res = json.load(f)
+
+    with open(meta, 'r') as f:
+        stations = json.load(f)
+
+    dct = stations.copy()
+    for k, v in stations.items():
+        dct[k].update(res[k])
+
+    with open(out, 'w') as f:
+        json.dump(dct, f, indent=4, sort_keys=False)
+
+    join_reservoirs_to_basins(basins, res_, ibt, js)
 # ========================= EOF ====================================================================
