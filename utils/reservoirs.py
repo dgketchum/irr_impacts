@@ -46,9 +46,9 @@ def read_pnw(url):
     return df
 
 
-def get_reservoir_data(csv, out_shp, out_dir, resops_shp, start, end):
-    resops = gpd.read_file(resops_shp)
-    counts = month_days_count(start, end)
+def get_reservoir_data(csv, bounds, out_shp, out_dir, resops_dir, start, end):
+    bounds = gpd.read_file(bounds).iloc[0]['geometry']
+    eom = pd.date_range(start, end, freq='M')
 
     ucrb_url = 'https://www.usbr.gov/uc/water/hydrodata/reservoir_data/{}/csv/{}.csv'
     ucrb_keys = {'inflow': '29', 'outflow': '42', 'storage': '17',
@@ -66,50 +66,76 @@ def get_reservoir_data(csv, out_shp, out_dir, resops_shp, start, end):
     regions = {'UCRB': (ucrb_url, ucrb_keys), 'GP': (gp_url, gp_keys),
                'CPN': (pnw_url, pnw_keys)}
 
-    stations = pd.read_csv(csv).sample(frac=1)
-    shp_cols = list(stations.columns) + ['s_rng', 's_95', 's_05']
+    stations = gpd.read_file(csv)
+    shp_cols = list(stations.columns)
     shp = pd.DataFrame(columns=shp_cols)
+
     ct = 0
+
     for i, r in stations.iterrows():
-        sid, _name, region = r['STAID'], r['STANAME'], r['REGION']
+        has_updated, series = True, None
+        sid, _name, region, dam_id = r['STAID'], r['STANAME'], r['REGION'], r['DAM_ID']
+        if not _name:
+            _name = r['DAM_NAME']
 
-        map = regions[region]
-        url, key = map[0], map[1]['storage']
-        url = url.format(sid, key)
+        if not r['geometry'].within(bounds):
+            continue
 
-        if region == 'GP':
-            df = read_gp_res70(url)
-            if df is False:
-                print('{}: {} failed'.format(sid, _name))
-                continue
-        elif region == 'UCRB':
-            df = pd.read_csv(url)
+        if region:
+            map = regions[region]
+            url, key = map[0], map[1]['storage']
+            url = url.format(sid, key)
+
+            if region == 'GP':
+                df = read_gp_res70(url)
+                if df is False:
+                    print('{}: {} failed'.format(sid, _name))
+                    has_updated = False
+            elif region == 'UCRB':
+                df = pd.read_csv(url, index_col='datetime', infer_datetime_format=True, parse_dates=True)
+
+            else:
+                df = read_pnw(url)
+                if df is False:
+                    print('{}: {} failed'.format(sid, _name))
+                    has_updated = False
+
+            series = df['storage'] * 1233.48
+            series = series.reindex(eom)
+            series = series.loc['1982-01-01': '2021-12-31']
         else:
-            df = read_pnw(url)
-            if df is False:
-                print('{}: {} failed'.format(sid, _name))
-                continue
+            has_updated = False
 
-        df['storage'] = df['storage'] * 1233.48
-        df = df.loc['1982-01-01': '2021-12-31']
+        if not has_updated or series.isna().sum() > 0:
+            resfile = os.path.join(resops_dir, '{}.csv'.format(r['DAM_ID']))
+            resop_df = pd.read_csv(resfile, index_col=0, infer_datetime_format=True, parse_dates=True)
+            resop_df = resop_df.reindex(eom)
+
+            if isinstance(series, pd.Series):
+                series = resop_df['storage'].fillna(series)
+            else:
+                series = resop_df['storage']
+
+        na_fraction = series.isna().sum() / series.shape[0]
         ofile = os.path.join(out_dir, '{}.csv'.format(sid))
-        df.to_csv(ofile)
+        series.to_csv(ofile)
 
         try:
-            q95, q05 = np.nanpercentile(df['storage'], [95, 5])
+            q95, q05 = np.nanpercentile(series, [95, 5])
             s_range = q95 - q05
             dct = r.to_dict()
             dct['s_rng'] = s_range
             dct['s_95'] = q95
             dct['s_05'] = q05
+            dct['na_fraction'] = na_fraction
             shp = shp.append(dct, ignore_index=True)
             ct += 1
             print(sid, _name, '{:.1f}'.format(s_range / 1e6))
+
         except Exception as e:
             print(e, sid, _name)
             continue
 
-    shp['geometry'] = shp.apply(lambda x: Point(x['LONGITUDE'], x['LATITUDE']), axis=1)
     shp = gpd.GeoDataFrame(shp, crs='EPSG:4326')
     shp.to_file(out_shp)
 
@@ -128,6 +154,7 @@ def process_resops_hydrographs(reservoirs, time_series, out_dir, start, end):
         series = series.reindex(eom)
         series.dropna(inplace=True)
         ofile = os.path.join(out_dir, '{}.csv'.format(sid))
+        series *= 1e6
         series.to_csv(ofile, float_format='%.3f')
         print(sid, d['DAM_NAME'], d['STATE'])
 
@@ -178,10 +205,11 @@ if __name__ == '__main__':
     # process_resops_hydrographs(csv_, res_gages, processed, s, e)
 
     s, e = '1982-01-01', '2021-12-31'
-    resops_ = '/media/research/IrrigationGIS/impacts/reservoirs/resopsus/attributes/reservoir_flow_summary.shp'
-    sites = '/media/research/IrrigationGIS/impacts/reservoirs/usbr/candidate_sites.csv'
+    resops_ = '/media/research/IrrigationGIS/impacts/reservoirs/resopsus/time_series_processed'
+    sites = '/media/research/IrrigationGIS/impacts/reservoirs/joins/candidate_sites.shp'
     oshp = '/media/research/IrrigationGIS/impacts/reservoirs/usbr/reservoir_sites.shp'
-    hyd = '/media/research/IrrigationGIS/impacts/reservoirs/usbr/hydrographs'
-    get_reservoir_data(sites, resops_shp=processed, out_shp=oshp, out_dir=hyd, start=s, end=e)
+    hyd = '/media/research/IrrigationGIS/impacts/reservoirs/hydrographs'
+    study_area = '/media/research/IrrigationGIS/impacts/geographic/study_basins/study_buff.shp'
+    get_reservoir_data(sites, bounds=study_area, resops_dir=resops_, out_shp=oshp, out_dir=hyd, start=s, end=e)
 
 # ========================= EOF ====================================================================
