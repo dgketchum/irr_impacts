@@ -53,7 +53,7 @@ def find_canals_gp(file_path, out_path):
 def get_data_gp(shp, out_dir):
     sdf = gpd.read_file(shp)
     # incoming data are in acre-foot per month
-    dtr = pd.date_range('1987-01-01', '2021-12-31', freq='M')
+    dtr = pd.date_range('1982-01-01', '2021-12-31', freq='M')
     for i, r in sdf.iterrows():
         converted = False
 
@@ -61,7 +61,7 @@ def get_data_gp(shp, out_dir):
         sid, _name = r['ID'], r['Name'].replace('/', '_')
 
         print('\n\n{} {}'.format(_name, sid))
-        res070 = 'https://www.usbr.gov/gp-bin/res070.pl?station={}&parameters=AF.QJ&byear=1987&eyear=2021'.format(sid)
+        res070 = 'https://www.usbr.gov/gp-bin/res070.pl?station={}&parameters=AF.QJ&byear=1982&eyear=2021'.format(sid)
         txt = requests.get(res070).content.decode('utf-8')
         txt = txt.replace('-----', '0')
         splt = [t.split() for t in txt.splitlines()]
@@ -107,7 +107,7 @@ def get_data_gp(shp, out_dir):
 def get_data_ucrb(shp, out_dir, unit_strict=True):
     sdf = gpd.read_file(shp)
     sdf = sdf.sort_values('site_id')
-    dtr = pd.date_range('1987-01-01', '2021-12-31', freq='M')
+    dtr = pd.date_range('1982-01-01', '2021-12-31', freq='M')
     converted = False
     for i, r in sdf.iterrows():
 
@@ -160,7 +160,7 @@ def get_data_ucrb(shp, out_dir, unit_strict=True):
 def get_data_pnw(shp, out_dir):
     sdf = gpd.read_file(shp)
     # incoming data are in acre-foot per month
-    dtr = pd.date_range('1987-01-01', '2021-12-31', freq='M')
+    dtr = pd.date_range('1982-01-01', '2021-12-31', freq='M')
     for i, r in sdf.iterrows():
         converted = False
         sid, _name, _type = r['siteid'], r['descriptio'], 'qj'  # avg canal q: cfs
@@ -172,7 +172,7 @@ def get_data_pnw(shp, out_dir):
 
         print('\n\n{} {}'.format(_name, sid))
         url = 'https://www.usbr.gov/pn-bin/daily.pl?station={}&format=csv' \
-              '&year=1987&month=1&day=1&year=2022&month=12&day=31&pcode={}'.format(sid, _type)
+              '&year=1982&month=1&day=1&year=2022&month=12&day=31&pcode={}'.format(sid, _type)
         c = pd.read_csv(url)
         c.index = [pd.to_datetime(x) for x in c['DateTime']]
         c.columns = ['date', 'q']
