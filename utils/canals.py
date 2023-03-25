@@ -7,6 +7,7 @@ import numpy as np
 import geopandas as gpd
 import pandas as pd
 from shapely.geometry import Point
+import matplotlib.pyplot as plt
 
 replace = '!@#$%^&*()[]{};:,./<>?\|`~-=_+'
 
@@ -113,7 +114,8 @@ def get_data_ucrb(shp, out_dir, unit_strict=True):
         sid, _name, dtype = r['site_id'], r['site_name'], r['datatype_i']
         units = r['unit_commo']
 
-        if units != 'cfs' and unit_strict:
+        ofile = os.path.join(out_dir, '{}.csv'.format(sid))
+        if os.path.exists(ofile):
             continue
 
         df = pd.DataFrame(columns=['q'], index=dtr)
@@ -152,7 +154,6 @@ def get_data_ucrb(shp, out_dir, unit_strict=True):
         ind_match = [i for i in c.index if i in df.index]
         df.loc[ind_match, 'q'] = c.loc[ind_match, col]
         assert converted
-        ofile = os.path.join(out_dir, '{}_{}.csv'.format(sid, _name.replace(replace, '_')))
         df.to_csv(ofile, float_format='%.3f')
 
 
@@ -194,6 +195,23 @@ def get_data_pnw(shp, out_dir):
         df.to_csv(ofile, float_format='%.3f')
 
 
+def plot(hydr_dir, plot_dir):
+
+    l = [os.path.join(hydr_dir, x) for x in os.listdir(hydr_dir) if x.endswith('.csv')]
+    for f in l:
+        sid = f.split('_')[0]
+        bname = os.path.basename(f)
+        ofile = os.path.join(plot_dir, '{}.png'.format(bname))
+        if os.path.exists(ofile):
+            continue
+        df = pd.read_csv(f, index_col=0, parse_dates=True, infer_datetime_format=True)
+        plt.plot(df.index, df['q'])
+        plt.suptitle(bname)
+        plt.savefig(ofile)
+        plt.close()
+        print(ofile)
+
+
 if __name__ == '__main__':
     ucrb_ = '/media/research/IrrigationGIS/impacts/canals/shapefiles/hydromet_ucrb.shp'
     ucrb_out = '/media/research/IrrigationGIS/impacts/canals/shapefiles/ucrb_diversions.shp'
@@ -212,8 +230,10 @@ if __name__ == '__main__':
     gp_study = '/media/research/IrrigationGIS/impacts/canals/shapefiles/gp_diversions_study.shp'
 
     od = '/media/research/IrrigationGIS/impacts/canals/hydrographs'
-
     # get_data_gp(gp_study, od)
-    # get_data_ucrb(ucrb_study, od, unit_strict=True)
-    get_data_pnw(cpn_study, od)
+    get_data_ucrb(ucrb_study, od, unit_strict=True)
+    # get_data_pnw(cpn_study, od)
+
+    plt_dir = '/media/research/IrrigationGIS/impacts/figures/hydrographs/canal_hydrographs'
+    # plot(od, plt_dir)
 # ========================= EOF ====================================================================
