@@ -113,7 +113,7 @@ def get_reservoir_data(csv, bounds, out_shp, out_dir, resops_dir, start, end):
                 series = resop_df['storage']
 
         na_fraction = series.isna().sum() / series.shape[0]
-        ofile = os.path.join(out_dir, '{}.csv'.format(sid))
+        ofile = os.path.join(out_dir, '{}.csv'.format(dam_id))
         series.to_csv(ofile)
 
         try:
@@ -219,12 +219,15 @@ if __name__ == '__main__':
     oshp = '/media/research/IrrigationGIS/impacts/reservoirs/usbr/reservoir_sites.shp'
     hyd = '/media/research/IrrigationGIS/impacts/reservoirs/hydrographs'
     study_area = '/media/research/IrrigationGIS/impacts/geographic/study_basins/study_buff.shp'
-    # get_reservoir_data(sites, bounds=study_area, resops_dir=resops_, out_shp=oshp, out_dir=hyd, start=s, end=e)
+    get_reservoir_data(sites, bounds=study_area, resops_dir=resops_, out_shp=oshp, out_dir=hyd, start=s, end=e)
 
     ibt = '/media/research/IrrigationGIS/impacts/canals/ibt_exports_wgs.shp'
     res_ = '/media/research/IrrigationGIS/impacts/reservoirs/usbr/reservoir_sites.shp'
     basins = '/media/research/IrrigationGIS/impacts/geographic/gage_basins/gage_basins_wgs.shp'
     js = '/media/research/IrrigationGIS/impacts/gages/metadata_res_ibt.json'
+
+    join_reservoirs_to_basins(basins, res_, ibt, js)
+
     meta = '/media/research/IrrigationGIS/impacts/gages/irrigated_gage_metadata.json'
     out = '/media/research/IrrigationGIS/impacts/gages/irrigated_gage_metadata_res_ibt.json'
 
@@ -240,6 +243,4 @@ if __name__ == '__main__':
 
     with open(out, 'w') as f:
         json.dump(dct, f, indent=4, sort_keys=False)
-
-    join_reservoirs_to_basins(basins, res_, ibt, js)
 # ========================= EOF ====================================================================
