@@ -6,6 +6,8 @@ import numpy as np
 import pandas as pd
 import requests
 
+from utils.gage_lists import EXCLUDE_RESERVOIRS
+
 
 def read_gp_res70(url):
     skip = list(range(10)) + [11]
@@ -160,8 +162,8 @@ def join_reservoirs_to_basins(basins, reservoirs, ibts, out_json):
     reservoirs = gpd.read_file(reservoirs)
     ibts = gpd.read_file(ibts)
 
-    res_geo = [r['geometry'] for i, r in reservoirs.iterrows()]
-    res_id = [r['DAM_ID'] for i, r in reservoirs.iterrows()]
+    res_geo = [r['geometry'] for i, r in reservoirs.iterrows() if r['DAM_ID'] not in EXCLUDE_RESERVOIRS]
+    res_id = [r['DAM_ID'] for i, r in reservoirs.iterrows() if r['DAM_ID'] not in EXCLUDE_RESERVOIRS]
 
     ibt_geo = [r['geometry'] for i, r in ibts.iterrows()]
     ibt_id = [r['STAID'] for i, r in ibts.iterrows()]
@@ -184,26 +186,6 @@ def join_reservoirs_to_basins(basins, reservoirs, ibts, out_json):
         json.dump(dct, f, indent=4)
 
 
-def complete_records(df, counts, start, end):
-    df = df.interpolate(limit=7, method='linear')
-    df = df.dropna(axis=0)
-    record_ct = df.groupby([df.index.year, df.index.month]).agg('count')
-    records = [r for i, r in record_ct.items()]
-    mask = [int(a == b) for a, b in zip(records, counts)]
-    missing = len(counts) - sum(mask)
-
-    if df.index[0] > pd.to_datetime(start):
-        resamp_start = df.index[0] - pd.DateOffset(months=1)
-    else:
-        resamp_start = pd.to_datetime(start) - pd.DateOffset(months=1)
-
-    resamp_ind = pd.DatetimeIndex(pd.date_range(resamp_start, end, freq='M'))
-    mask = mask + [0 for i in range(len(resamp_ind) - len(mask))]
-    mask = pd.Series(index=resamp_ind, data=mask).resample('D').bfill()
-    df = df.loc[[i for i, r in mask.items() if r and i in df.index]]
-    return df, missing
-
-
 if __name__ == '__main__':
     root = '/home/dgketchum/IrrigationGIS/expansion'
 
@@ -219,7 +201,7 @@ if __name__ == '__main__':
     oshp = '/media/research/IrrigationGIS/impacts/reservoirs/usbr/reservoir_sites.shp'
     hyd = '/media/research/IrrigationGIS/impacts/reservoirs/hydrographs'
     study_area = '/media/research/IrrigationGIS/impacts/geographic/study_basins/study_buff.shp'
-    get_reservoir_data(sites, bounds=study_area, resops_dir=resops_, out_shp=oshp, out_dir=hyd, start=s, end=e)
+    # get_reservoir_data(sites, bounds=study_area, resops_dir=resops_, out_shp=oshp, out_dir=hyd, start=s, end=e)
 
     ibt = '/media/research/IrrigationGIS/impacts/canals/ibt_exports_wgs.shp'
     res_ = '/media/research/IrrigationGIS/impacts/reservoirs/usbr/reservoir_sites.shp'
