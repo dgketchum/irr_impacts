@@ -8,14 +8,14 @@ import numpy as np
 from scipy.stats.stats import linregress
 
 from gage_data import hydrograph
-from utils.gage_lists import EXCLUDE_STATIONS, RESERVOIR_STATIONS, NON_RESERVOIR_STATIONS
+from utils.gage_lists import EXCLUDE_STATIONS, RESERVOIR_STATIONS
 
 
 def climate_flow_correlation(q_flow_dir, month, in_json, out_json, start_yr=1987, end_yr=2021):
     """Find linear relationship between climate and flow in an expanding time window"""
 
     l = sorted([os.path.join(q_flow_dir, x) for x in os.listdir(q_flow_dir)])
-    excluded, short_q, no_relation = [], [], []
+    excluded, short_q, no_relation, missing_res = [], [], [], []
     windows = {}
 
     with open(in_json, 'r') as f:
@@ -34,16 +34,13 @@ def climate_flow_correlation(q_flow_dir, month, in_json, out_json, start_yr=1987
         else:
             res_mod = False
 
-        if sid != '09315000':
-            continue
-
         try:
             s_meta = metadata[sid]
         except KeyError:
             continue
 
         df = hydrograph(csv)
-
+        s = None
         years = range(start_yr, end_yr + 1)
 
         response_d = {}
@@ -51,20 +48,26 @@ def climate_flow_correlation(q_flow_dir, month, in_json, out_json, start_yr=1987
 
         corr = (0, 0.0)
 
-        if month > 0:
-            q_dates = np.array([(date(y, month, 1), date(y, month, monthrange(y, month)[1])) for y in years])
-        else:
-            q_dates = np.array([(date(y, 1, 1), date(y, 12, 31)) for y in years])
+        q_dates = np.array([(date(y, month, 1), date(y, month, monthrange(y, month)[1])) for y in years])
 
         q = np.array([df['q'][d[0]: d[1]].sum(skipna=False) for d in q_dates])
         q[q == 0.] = np.nan
+        if res_mod:
+            try:
+                s = np.array([df['delta_s'][d[0]: d[1]].sum(skipna=False) for d in q_dates])
+                s[s == 0.] = np.nan
+                q = q + s
+                if np.all(np.isnan(q)):
+                    missing_res.append(sid)
+                    print('{} {} missing flow/storage data'.format(sid, s_meta['STANAME']))
+                    continue
+                s = list(s)
+            except KeyError:
+                missing_res.append(sid)
+                print('{} {} missing flow/storage data'.format(sid, s_meta['STANAME']))
+                continue
 
-        if month == 0:
-            q_chk = np.array([df['q'][d[0]: d[1]] for d in q_dates])
-            q_chk[q_chk == 0.] = np.nan
-            mask = np.array([np.all(~np.isnan(x)) for x in q_chk])
-        else:
-            mask = ~np.isnan(q)
+        mask = ~np.isnan(q)
 
         if np.count_nonzero(mask) < 20:
             print('\nonly {} q records month {}, {}, {}'.format(np.count_nonzero(mask),
@@ -89,11 +92,8 @@ def climate_flow_correlation(q_flow_dir, month, in_json, out_json, start_yr=1987
 
         for lag in offsets:
 
-            if month > 0:
-                dates = [(date(y, month, monthrange(y, month)[1]) + rdlt(months=-lag, days=1),
-                          date(y, month, monthrange(y, month)[1])) for y in years]
-            else:
-                dates = [(date(y, 12, 31) + rdlt(months=-lag, days=1), date(y, 12, 31)) for y in years]
+            dates = [(date(y, month, monthrange(y, month)[1]) + rdlt(months=-lag, days=1),
+                      date(y, month, monthrange(y, month)[1])) for y in years]
 
             etr = np.array([df['etr'][d[0]: d[1]].sum() for d in dates])
             ppt = np.array([df['ppt'][d[0]: d[1]].sum() for d in dates])
@@ -108,7 +108,7 @@ def climate_flow_correlation(q_flow_dir, month, in_json, out_json, start_yr=1987
                 response_d = {'inter': inter,
                               'b': b,
                               'lag': lag,
-                              'r': r,
+                              'r': r ** 2,
                               'p': p,
                               'q': list(q),
                               'q_mo': month,
@@ -121,12 +121,16 @@ def climate_flow_correlation(q_flow_dir, month, in_json, out_json, start_yr=1987
                               'etr_month': list(etr_m),
                               'cc_month': list(cc),
                               'ccres_month': list(cc_res),
+                              'res_mod': res_mod,
+                              'stor': s,
                               'irr': list(irr),
                               'years': list(years),
                               }
+
         if sig_relationship:
             s_meta.update(response_d)
             windows[sid] = s_meta
+            print('\n{}, resmod: {}, r = {:.3f}, month {}, {}'.format(sid, res_mod, r, month, s_meta['STANAME']))
         else:
             no_relation.append(sid)
             print('\nno significant relation {}, r = {:.3f}, month {}, {}'.format(sid, r, month, s_meta['STANAME']))
@@ -134,10 +138,13 @@ def climate_flow_correlation(q_flow_dir, month, in_json, out_json, start_yr=1987
     with open(out_json, 'w') as f:
         json.dump(windows, f, indent=4)
 
+    print('\n{}'.format(month))
     print('{} short discharge records'.format(len(short_q)))
     print('{} excluded gages'.format(len(excluded)))
     print('{} no sig relationship gages'.format(len(no_relation)))
     print('{} gages included'.format(len(windows.keys())))
+    print('excluded due to reservoir data {}'.format(missing_res))
+    print('excluded due to no sig relation {}'.format(no_relation))
 
 
 if __name__ == '__main__':
