@@ -62,6 +62,9 @@ def export_gridded_data(tables, bucket, years, description, features=None, min_y
     umrb_clip = ee.FeatureCollection(UMRB_CLIP)
     corb_clip = ee.FeatureCollection(CORB_CLIP)
 
+    eff_ppt_coll = ee.ImageCollection('users/dgketchum/expansion/ept')
+    eff_ppt_coll = eff_ppt_coll.map(lambda x: x.rename('eff_ppt'))
+
     irr_coll = ee.ImageCollection(RF_ASSET)
     coll = irr_coll.filterDate('1987-01-01', '2021-12-31').select('classification')
     remap = coll.map(lambda img: img.lt(1))
@@ -93,47 +96,43 @@ def export_gridded_data(tables, bucket, years, description, features=None, min_y
             et_umrb = et_coll.sum().multiply(0.00001).clip(umrb_clip.geometry())
 
             et_sum = ee.ImageCollection([et_cmb, et_corb, et_umrb]).mosaic()
-            et = et_sum.mask(irr_mask)
 
-            tclime = ee.ImageCollection("IDAHO_EPSCOR/TERRACLIMATE").filterDate(s, e).select('pr', 'pet', 'aet')
-            tclime_red = ee.Reducer.sum()
-            tclime_sums = tclime.select('pr', 'pet', 'aet').reduce(tclime_red)
-            ppt = tclime_sums.select('pr_sum').multiply(0.001)
-            etr = tclime_sums.select('pet_sum').multiply(0.0001)
-            swb_aet = tclime_sums.select('aet_sum').mask(irr_mask).multiply(0.0001)
+            eff_ppt = eff_ppt_coll.filterDate(s, e).select('eff_ppt').mosaic()
 
-            gm_ppt, gm_etr = extract_gridmet_monthly(yr, month)
-
-            irr_mask = irr_mask.reproject(crs='EPSG:5070', scale=30)
-            et = et.reproject(crs='EPSG:5070', scale=30).resample('bilinear')
-            ppt = ppt.reproject(crs='EPSG:5070', scale=30).resample('bilinear')
-            etr = etr.reproject(crs='EPSG:5070', scale=30).resample('bilinear')
-            swb_aet = swb_aet.reproject(crs='EPSG:5070', scale=30).resample('bilinear')
-            gm_ppt = gm_ppt.reproject(crs='EPSG:5070', scale=30).resample('bilinear')
-            gm_etr = gm_etr.reproject(crs='EPSG:5070', scale=30).resample('bilinear')
-
-            cc = et.subtract(swb_aet)
+            ppt, etr = extract_gridmet_monthly(yr, month)
+            ietr = extract_corrected_etr(yr, month)
 
             area = ee.Image.pixelArea()
+
+            irr_mask = irr_min_yr_mask.updateMask(irr.lt(1))
+            et = et_sum.mask(irr_mask)
+            eff_ppt = eff_ppt.mask(irr_mask).rename('eff_ppt')
+            ietr = ietr.mask(irr_mask)
+            irr_mask = irr_mask.reproject(crs='EPSG:5070', scale=30)
             irr = irr_mask.multiply(area).rename('irr')
-            et = et.multiply(area).rename('et')
-            cc = cc.multiply(area).rename('cc')
-            ppt = ppt.multiply(area).rename('ppt')
-            etr = etr.multiply(area).rename('etr')
-            gm_ppt = gm_ppt.multiply(area).rename('gm_ppt')
-            gm_etr = gm_etr.multiply(area).rename('gm_etr')
-            swb_aet = swb_aet.multiply(area).rename('swb_aet')
 
-            if yr > 1986 and month in np.arange(4, 11):
-                bands = irr.addBands([et, cc, ppt, etr, swb_aet, gm_ppt, gm_etr])
-                select_ = ['STAID', 'irr', 'et', 'cc', 'ppt', 'etr', 'swb_aet', 'gm_ppt', 'gm_etr']
+            et = et.reproject(crs='EPSG:5070', scale=30).resample('bilinear').rename('et')
+            eff_ppt = eff_ppt.reproject(crs='EPSG:5070', scale=30).resample('bilinear').rename('eff_ppt')
+            ppt = ppt.reproject(crs='EPSG:5070', scale=30).resample('bilinear').rename('ppt')
+            etr = etr.reproject(crs='EPSG:5070', scale=30).resample('bilinear').rename('etr')
+            ietr = ietr.reproject(crs='EPSG:5070', scale=30).resample('bilinear').rename('ietr')
+
+            cc = et.subtract(eff_ppt).rename('cc')
+
+            et = et.multiply(area)
+            eff_ppt = eff_ppt.multiply(area)
+            cc = cc.multiply(area)
+            ppt = ppt.multiply(area)
+            etr = etr.multiply(area)
+            ietr = ietr.multiply(area)
+
+            if yr > 1986 and month in range(4, 11):
+                bands = irr.addBands([et, cc, ppt, etr, eff_ppt, ietr])
+                select_ = ['STAID', 'irr', 'et', 'cc', 'ppt', 'etr', 'eff_ppt', 'ietr']
+
             else:
-                bands = ppt.addBands([etr, gm_ppt, gm_etr])
-                select_ = ['STAID', 'ppt', 'etr', 'gm_ppt', 'gm_etr']
-
-            data = bands.reduceRegions(collection=fc,
-                                       reducer=ee.Reducer.sum(),
-                                       scale=30)
+                bands = ppt.addBands([etr])
+                select_ = ['STAID', 'ppt', 'etr']
 
             if debug:
                 pt = bands.sample(region=get_geomteries()[2],
@@ -141,6 +140,10 @@ def export_gridded_data(tables, bucket, years, description, features=None, min_y
                                   scale=30)
                 p = pt.first().getInfo()['properties']
                 print('propeteries {}'.format(p))
+
+            data = bands.reduceRegions(collection=fc,
+                                       reducer=ee.Reducer.sum(),
+                                       scale=30)
 
             out_desc = '{}_{}_{}'.format(description, yr, month)
             task = ee.batch.Export.table.toCloudStorage(
@@ -150,6 +153,7 @@ def export_gridded_data(tables, bucket, years, description, features=None, min_y
                 fileNamePrefix=out_desc,
                 fileFormat='CSV',
                 selectors=select_)
+
             task.start()
             print(out_desc)
 
@@ -379,6 +383,14 @@ def landsat_masked(start_year, end_year, doy_start, doy_end, roi):
     return lsSR_masked
 
 
+def extract_corrected_etr(year, month):
+    m_str = str(month).rjust(2, '0')
+    end_day = monthrange(year, month)[1]
+    ic = ee.ImageCollection('projects/openet/reference_et/gridmet/monthly')
+    band = ic.filterDate('{}-{}-01'.format(year, m_str), '{}-{}-{}'.format(year, m_str, end_day)).select('etr').first()
+    return band.multiply(0.001)
+
+
 def initialize():
     try:
         ee.Initialize()
@@ -388,12 +400,5 @@ def initialize():
 
 
 if __name__ == '__main__':
-    initialize()
-    basins = 'users/dgketchum/gages/gage_basins'
-    bucket = 'wudr'
-    basin = 'users/dgketchum/boundaries/shields'
-    export_et_images(basin, basins, bucket, years=list(range(1987, 2021)),
-                     description='shields', min_years=33)
-
-    # extract_ndvi_change(basins, bucket)
+    pass
 # ========================= EOF ================================================================================
