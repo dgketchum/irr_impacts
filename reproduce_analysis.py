@@ -4,7 +4,7 @@ from pprint import pprint
 
 import numpy as np
 
-from gage_data import get_station_daily_data, get_station_daterange_data
+from gage_data import get_station_daily_data, get_station_monthly_data
 from gridded_data import export_gridded_data
 from input_tables import merge_gridded_flow_data
 from climate_flow import climate_flow_correlation
@@ -15,74 +15,54 @@ from crop_consumption_flow import initial_impacts_test, run_bayes_regression_cc_
 from crop_consumption_flow import bayes_write_significant_cc_qres
 
 root = os.path.join('/media', 'research', 'IrrigationGIS', 'impacts')
+processes = 0
 if not os.path.exists(root):
+    processes = 0
     root = os.path.join('/home', 'dgketchum', 'data', 'IrrigationGIS', 'impacts')
 
 figures = os.path.join(root, 'figures')
 
-gages_metadata = os.path.join(root, 'gages', 'irrigated_gage_metadata.json')
+gages_metadata = os.path.join(root, 'gages', 'irrigated_gage_metadata_res_ibt.json')
 
 daily_q = os.path.join(root, 'tables', 'hydrographs', 'daily_q')
 daily_q_fig = os.path.join(figures, 'hydrographs', 'daily_hydrograph_plots')
 
-reservoirs = False
-print('\nanalyzing reservoir-managed systems: {}'.format(reservoirs))
+monthly_q = os.path.join(root, 'tables', 'hydrographs', 'monthly_q')
+monthly_q_fig = os.path.join(figures, 'hydrographs', 'monthly_hydrograph_plots')
 
-if reservoirs:
-    monthly_q = os.path.join(root, 'tables', 'hydrographs', 'resv', 'monthly_q')
-    monthly_q_fig = os.path.join(figures, 'hydrographs', 'resv', 'monthly_hydrograph_plots')
+annual_q = os.path.join(root, 'tables', 'hydrographs', 'annual_q')
+annual_q_fig = os.path.join(figures, 'hydrographs', 'annual_hydrograph_plots')
 
-    annual_q = os.path.join(root, 'tables', 'hydrographs', 'resv', 'annual_q')
-    annual_q_fig = os.path.join(figures, 'hydrographs', 'resv', 'annual_hydrograph_plots')
+res_hydrographs = os.path.join(root, 'reservoirs', 'hydrographs')
+ibt_hydrographs = os.path.join(root, 'canals', 'ibt_hydrographs')
 
-    res_hydrographs = os.path.join(root, 'reservoirs', 'time_series_processed')
-    res_metadata = os.path.join(root, 'gages', 'irrigated_gage_metadata_resv.json')
+analysis_directory = os.path.join(root, 'analysis')
 
-else:
-    monthly_q = os.path.join(root, 'tables', 'hydrographs', 'monthly_q')
-    monthly_q_fig = os.path.join(figures, 'hydrographs', 'monthly_hydrograph_plots')
-
-    annual_q = os.path.join(root, 'tables', 'hydrographs', 'annual_q')
-    annual_q_fig = os.path.join(figures, 'hydrographs', 'annual_hydrograph_plots')
-
-    res_hydrographs = None
-    res_metadata = None
+basins = 'users/dgketchum/gages/gage_basins'
+bucket = 'wudr'
 
 start_yr, end_yr = 1987, 2021
 # month zero calculates annual data
-months = list(range(0, 1))
-select = '13269000'
+months = list(range(4, 11))
+select = '13213100'
 
 
 def get_gage_data():
     # gather daily streamflow data from basins with irrigation, saving only complete months' records
-    get_station_daily_data('{}-01-01'.format(start_yr), '{}-12-31'.format(end_yr), gages_metadata,
-                           daily_q, plot_dir=None, overwrite=False)
+    # get_station_daily_data('{}-01-01'.format(start_yr - 5), '{}-12-31'.format(end_yr), gages_metadata,
+    #                        daily_q, plot_dir=None, overwrite=False)
     # sum streamflow over each month, convert to cubic meters per month
-    get_station_daterange_data(daily_q, monthly_q, convert_to_mcube=True, resample_freq='M', plot_dir=None,
-                               reservoirs=res_hydrographs, res_js=res_metadata)
-
-    if reservoirs:
-        # resample streamflow to annual for trends analysis
-        get_station_daterange_data(monthly_q, annual_q, convert_to_mcube=False, resample_freq='A',
-                                   reservoirs=res_hydrographs, res_js=res_metadata)
+    get_station_monthly_data(daily_q, monthly_q, gages_metadata, reservoirs=res_hydrographs, interbasin=ibt_hydrographs,
+                             convert_to_mcube=True, plot_dir=monthly_q_fig)
 
 
-basins = 'users/dgketchum/gages/gage_basins'
-bucket = 'wudr'
-desc = 'ee_gridded_21OCT2022'
-with open(gages_metadata, 'r') as fp:
-    stations = json.load(fp)
-
-analysis_directory = os.path.join(root, 'analysis')
-static_irr = False
+static_irr = True
 print('\nassuming static irrigation mask: {}'.format(static_irr))
 
 if static_irr:
-    months = list(range(4, 11))
-    desc = 'cc_static_4NOV2022'
-    extracts = os.path.join(root, 'tables', 'gridded_tables', 'IrrMapperComp_static_4NOV2022')
-    data_tables = os.path.join(root, 'tables', 'input_flow_climate_tables', 'IrrMapperComp_static_4NOV2022')
+    desc = 'cc_static_24MAR2023'
+    extracts = os.path.join(root, 'tables', 'gridded_tables', 'cc_static_24MAR2023')
+    data_tables = os.path.join(root, 'tables', 'input_flow_climate_tables', 'cc_static_24MAR2023')
     climate_flow_data = os.path.join(analysis_directory, 'climate_flow_static_irr')
     climate_flow_file = os.path.join(climate_flow_data, 'climate_flow_{}.json')
 
@@ -92,28 +72,19 @@ if static_irr:
     uv_trends_bayes = os.path.join(analysis_directory, 'trends_static_irr', 'trends_bayes_{}.json')
 
 else:
-    extracts = os.path.join(root, 'tables', 'gridded_tables', 'IrrMapperComp_21OCT2022')
-
-    if reservoirs:
-        data_tables = os.path.join(root, 'tables', 'input_flow_climate_tables', 'IrrMapperComp_18MAR2023')
-    else:
-        data_tables = os.path.join(root, 'tables', 'input_flow_climate_tables', 'IrrMapperComp_21OCT2022')
+    desc = 'gridded_22MARCH2023'
+    extracts = os.path.join(root, 'tables', 'gridded_tables', 'IrrMapperComp_22MAR2023')
+    data_tables = os.path.join(root, 'tables', 'input_flow_climate_tables', 'IrrMapperComp_22MAR2023')
 
     climate_flow_data = os.path.join(analysis_directory, 'climate_flow')
     uv_trends_traces = os.path.join(root, 'uv_traces', 'uv_trends')
     mv_trends_traces = os.path.join(root, 'mv_traces', 'mv_trends')
 
-    if reservoirs:
-        climate_flow_file = os.path.join(climate_flow_data, 'climate_flow_{}_resv.json')
-        ols_trends_data = os.path.join(analysis_directory, 'ols_trends', 'trends_initial_{}_resv.json')
-        uv_trends_bayes = os.path.join(analysis_directory, 'uv_trends', 'trends_bayes_{}_resv.json')
-        mv_trends_bayes = os.path.join(analysis_directory, 'mv_trends', 'trends_bayes_{}_resv.json')
-
-    else:
-        climate_flow_file = os.path.join(climate_flow_data, 'climate_flow_{}.json')
-        ols_trends_data = os.path.join(analysis_directory, 'ols_trends', 'trends_initial_{}.json')
-        uv_trends_bayes = os.path.join(analysis_directory, 'uv_trends', 'trends_bayes_{}.json')
-        mv_trends_bayes = os.path.join(analysis_directory, 'mv_trends', 'trends_bayes_{}.json')
+    climate_flow_file = os.path.join(climate_flow_data, 'climate_flow_{}.json')
+    ols_trends_data = os.path.join(analysis_directory, 'ols_trends', 'trends_initial_{}.json')
+    ols_trends_figs = os.path.join(figures, 'trends_initial')
+    uv_trends_bayes = os.path.join(analysis_directory, 'uv_trends', 'trends_bayes_{}.json')
+    mv_trends_bayes = os.path.join(analysis_directory, 'mv_trends', 'trends_bayes_{}.json')
 
 # crop consumption and climate-normalized flow data
 cc_q_file = os.path.join(analysis_directory, 'cc_q', 'cc_q_initial_{}.json')
@@ -124,9 +95,11 @@ cc_q_traces = os.path.join(root, 'mv_traces', 'cc_q')
 def get_gridded_data():
     # extract SSEBop ET, irrigation status, and TerraClimate at monthly time-step from Earth Engine
     # precede gage data by five years so climate-flow correlation can look back 60 months before first discharge month
+    with open(gages_metadata, 'r') as fp:
+        stations = json.load(fp)
     extract_years = np.arange(start_yr - 5, end_yr + 1)
     basin_ids = [station_id for station_id, _ in stations.items()]
-    export_gridded_data(basins, bucket, extract_years, featuresv=basin_ids, min_years=5, description=desc, debug=False)
+    export_gridded_data(basins, bucket, extract_years, features=basin_ids, min_years=30, description=desc, debug=False)
     # transfer gridded data from GCS bucket to local system
 
 
@@ -134,7 +107,7 @@ def build_tables():
     # merge aggregated gridded data with monthly discharge at each gage-basin
     # start 5 years before the study period to account for basin lag times
     # merge_gridded_flow_data(extracts, monthly_q, data_tables, start_yr - 5, end_yr, glob=desc)
-    merge_gridded_flow_data(extracts, monthly_q, data_tables, start_yr, end_yr, glob=desc)
+    merge_gridded_flow_data(extracts, monthly_q, data_tables, start_yr - 5, end_yr, glob=desc)
 
 
 def climate_flow_correlations():
@@ -142,7 +115,7 @@ def climate_flow_correlations():
     rsq = {}
     for m in months:
         out_data = climate_flow_file.format(m)
-        climate_flow_correlation(data_tables, m, gages_metadata, out_data, reservoir=reservoirs)
+        climate_flow_correlation(data_tables, m, gages_metadata, out_data)
 
 
 def calculate_ols_trends():
@@ -151,7 +124,7 @@ def calculate_ols_trends():
         print('\n\n\ntrends {}'.format(m))
         in_data = climate_flow_file.format(m)
         out_data = ols_trends_data.format(m)
-        ct_, all_ = initial_trends_test(in_data, out_data, plot_dir=None)
+        ct_, all_ = initial_trends_test(in_data, out_data, plot_dir=None, selectors='time_cc')
         if first:
             ct = ct_
             all_ct = all_
@@ -164,7 +137,6 @@ def calculate_ols_trends():
     pprint(all_ct)
 
 
-processes = 2
 overwrite_bayes = False
 
 
@@ -176,11 +148,13 @@ def univariate_trends():
         print('\n\n\nunivariate trends {}'.format(m))
         in_data = ols_trends_data.format(m)
         out_data = uv_trends_bayes.format(m)
-        for i in range(3):
+
+        for i in range(5):
             run_bayes_univariate_trends(uv_trends_traces, in_data, processes, overwrite=overwrite_bayes,
-                                        selectors=['time_q'])
+                                        selectors=['time_cc'], station=select)
         if summarize:
-            c, d, sp, sn = summarize_univariate_trends(in_data, uv_trends_traces, out_data, m)
+            c, d, sp, sn = summarize_univariate_trends(in_data, uv_trends_traces, out_data, m,
+                                                       update_selectors=['time_cc'])
             conv += c
             div += d
             sigp += sp
@@ -191,17 +165,18 @@ def univariate_trends():
 def multivariate_trends():
     conv, div = 0, 0
     sigp, sign = 0, 0
-    summarize = True
+    summarize = False
     for m in months:
         print('\n\n\nmultivariate trends {}'.format(m))
         in_data = climate_flow_file.format(m)
         out_data = mv_trends_bayes.format(m)
-        # run_bayes_multivariate_trends(mv_trends_traces, in_data, processes, overwrite=overwrite_bayes,
-        #                               selector='time_cc')
+        # for i in range(5):
+        run_bayes_multivariate_trends(mv_trends_traces, in_data, processes, overwrite=overwrite_bayes,
+                                      selector='time_q', station=select)
 
         if summarize:
             c, d, sp, sn = summarize_multivariate_trends(in_data, mv_trends_traces, out_data, m,
-                                                         update_selectors=['time_cc'])
+                                                         update_selectors=None)
             conv += c
             div += d
             sigp += sp
@@ -210,25 +185,24 @@ def multivariate_trends():
 
 
 def irrigation_impacts():
-    count = 0
     for m in months:
         in_data = climate_flow_file.format(m)
-        print('\n\n\n cc_qres {}'.format(m))
+        print('\n\n\n cc_q {}'.format(m))
 
         out_data = cc_q_file.format(m)
         # initial_impacts_test(in_data, data_tables, out_data, m, cc_res=False)
         in_data = out_data
         out_data = cc_q_bayes_file.format(m)
-        run_bayes_regression_cc_qres(cc_q_traces, in_data, processes, overwrite_bayes)
-        # bayes_write_significant_cc_qres(in_data, cc_q_traces, out_data, m)
+        # for i in range(5):
+        run_bayes_regression_cc_qres(cc_q_traces, in_data, processes, overwrite_bayes, station=select)
 
-    print(count)
+        # bayes_write_significant_cc_qres(in_data, cc_q_traces, out_data, m)
 
 
 if __name__ == '__main__':
     # get_gage_data()
     # get_gridded_data()
-    # build_tables()
+    build_tables()
     climate_flow_correlations()
     calculate_ols_trends()
     univariate_trends()
