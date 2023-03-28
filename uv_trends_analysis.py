@@ -14,20 +14,19 @@ np.seterr(divide='ignore', invalid='ignore')
 from utils.error_estimates import BASIN_CC_ERR, BASIN_IRRMAPPER_F1, BASIN_PRECIP_RMSE, ETR_ERR
 
 
-def run_bayes_univariate_trends(traces_dir, stations, multiproc=0, overwrite=False, selectors=None, station=None):
+def run_bayes_univariate_trends(traces_dir, stations_meta, multiproc=0, overwrite=False, selectors=None, stations=None):
     if not os.path.exists(traces_dir):
         os.makedirs(traces_dir)
 
-    with open(stations, 'r') as f:
-        stations = json.load(f)
+    with open(stations_meta, 'r') as f:
+        stations_meta = json.load(f)
 
     if multiproc > 0:
         pool = Pool(processes=multiproc)
 
-    print(len(stations.keys()))
-    for sid, rec in stations.items():
+    for sid, rec in stations_meta.items():
 
-        if station and sid != station:
+        if stations and sid not in stations:
             continue
 
         if not multiproc:
@@ -46,7 +45,7 @@ def bayes_univariate_trends(station, records, trc_dir, overwrite, selectors=None
         rmse = BASIN_CC_ERR[basin]['rmse']
         bias = BASIN_CC_ERR[basin]['bias']
         irr_f1 = 1 - BASIN_IRRMAPPER_F1[basin]
-        cc_err = irr_f1 + rmse - abs(bias)
+        cc_err = np.sqrt(irr_f1**2 + rmse**2)
         ppt_err, etr_err = BASIN_PRECIP_RMSE[basin], ETR_ERR
         ai_err = np.sqrt(ppt_err ** 2 + etr_err ** 2)
 
@@ -145,6 +144,9 @@ def summarize_univariate_trends(metadata, trc_dir, out_json, month, update_selec
 
     for i, (station, data) in enumerate(stations.items()):
 
+        if station not in out_meta.keys():
+            out_meta[station] = {month: data}
+
         if not update_selectors:
             out_meta[station] = {month: data}
 
@@ -183,6 +185,9 @@ def summarize_univariate_trends(metadata, trc_dir, out_json, month, update_selec
 
                 if d['r_hat'] > 1.1:
                     div_ += 1
+
+                if station not in out_meta.keys():
+                    out_meta[station] = {subdir: None}
 
                 out_meta[station][subdir] = d
                 if np.sign(d['hdi_2.5%']) == np.sign(d['hdi_97.5%']) and d['r_hat'] <= 1.1:

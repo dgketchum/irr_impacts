@@ -73,8 +73,8 @@ def initial_impacts_test(clim_q_data, ee_series, out_jsn, month, cc_res=False):
                 continue
 
             cc = np.array([cdf['cc'][d[0]: d[1]].sum() for d in cc_dates])
-            etr = np.array([cdf['gm_etr'][d[0]: d[1]].sum() for d in cc_dates])
-            ppt = np.array([cdf['gm_ppt'][d[0]: d[1]].sum() for d in cc_dates])
+            etr = np.array([cdf['etr'][d[0]: d[1]].sum() for d in cc_dates])
+            ppt = np.array([cdf['ppt'][d[0]: d[1]].sum() for d in cc_dates])
             aim = etr - ppt
 
             if cc_res:
@@ -122,14 +122,14 @@ def initial_impacts_test(clim_q_data, ee_series, out_jsn, month, cc_res=False):
         json.dump(sig_stations, f, indent=4, sort_keys=False)
 
 
-def run_bayes_regression_cc_qres(traces_dir, stations, multiproc=0, overwrite=False, station=None, ccres=False):
+def run_bayes_regression_cc_qres(traces_dir, station_meta, multiproc=0, overwrite=False, stations=None, ccres=False):
     if not os.path.exists(traces_dir):
         os.makedirs(traces_dir)
 
-    with open(stations, 'r') as f:
-        stations = json.load(f)
+    with open(station_meta, 'r') as f:
+        station_meta = json.load(f)
 
-    diter = [[(kk, k, r) for k, r in vv.items() if isinstance(r, dict)] for kk, vv in stations.items()]
+    diter = [[(kk, k, r) for k, r in vv.items() if isinstance(r, dict)] for kk, vv in station_meta.items()]
     diter = [i for ll in diter for i in ll]
 
     if multiproc > 0:
@@ -137,7 +137,7 @@ def run_bayes_regression_cc_qres(traces_dir, stations, multiproc=0, overwrite=Fa
 
     for sid, period, rec in diter:
 
-        if station and sid != station:
+        if stations and sid not in stations:
             continue
 
         if not multiproc:
@@ -166,7 +166,7 @@ def bayes_linear_regression_cc_qres(station, period, records, trc_dir, overwrite
         cc = np.array(records['cc']) * (1 + bias)
         q = np.array(records['q'])
         ai = np.array(records['ai'])
-        aim = np.array(records['ai_month'])
+        aim = np.array(records['aim'])
 
         cc = (cc - cc.min()) / (cc.max() - cc.min()) + 0.001
         q = (q - q.min()) / (q.max() - q.min()) + 0.001

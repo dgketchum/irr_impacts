@@ -19,7 +19,7 @@ np.seterr(divide='ignore', invalid='ignore')
 from utils.error_estimates import BASIN_CC_ERR, BASIN_IRRMAPPER_F1, BASIN_PRECIP_RMSE, ETR_ERR
 
 
-def run_bayes_multivariate_trends(traces_dir, stations_meta, multiproc=0, overwrite=False, station=None, selector=None):
+def run_bayes_multivariate_trends(traces_dir, stations_meta, multiproc=0, overwrite=False, stations=None, selector=None):
     if not os.path.exists(traces_dir):
         os.makedirs(traces_dir)
 
@@ -31,7 +31,7 @@ def run_bayes_multivariate_trends(traces_dir, stations_meta, multiproc=0, overwr
 
     for sid, rec in stations_meta.items():
 
-        if station and sid != station:
+        if stations and sid not in stations:
             continue
 
         if not multiproc:
@@ -121,8 +121,6 @@ def bayes_multivariate_trends(station, records, trc_dir, overwrite, selector=Non
 
                 model = BiVarLinearModel()
 
-                # [print(x) for x in (years_norm, time_err, x, x_err, y, y_err)]
-                # return
                 model.fit(years_norm, time_err, x, x_err, y, y_err, save_model=save_model,
                           figure=save_figure, var_names=variable_names)
 
@@ -145,6 +143,9 @@ def summarize_multivariate_trends(metadata, trc_dir, out_json, month, update_sel
 
     for i, (station, data) in enumerate(stations.items()):
 
+        if station not in out_meta.keys():
+            out_meta[station] = {month: data}
+
         if not update_selectors:
             out_meta[station] = {month: data}
 
@@ -155,6 +156,7 @@ def summarize_multivariate_trends(metadata, trc_dir, out_json, month, update_sel
                 continue
 
             if update_selectors and subdir not in update_selectors:
+
                 if subdir not in out_meta[station].keys():
                     out_meta[station][subdir] = None
                 continue
@@ -175,11 +177,12 @@ def summarize_multivariate_trends(metadata, trc_dir, out_json, month, update_sel
                 continue
 
             try:
-                summary = az.summary(trace, hdi_prob=0.95, var_names=['time_coeff', 'inter'])
-                d = {'mean': summary['mean'].time_coeff,
-                     'hdi_2.5%': summary['hdi_2.5%'].time_coeff,
-                     'hdi_97.5%': summary['hdi_97.5%'].time_coeff,
-                     'r_hat': summary['r_hat'].time_coeff,
+                summary = az.summary(trace, hdi_prob=0.95)
+                beta = 'time_coeff' if 'time_coeff' in summary.index else 'slope'
+                d = {'mean': summary['mean'][beta],
+                     'hdi_2.5%': summary['hdi_2.5%'][beta],
+                     'hdi_97.5%': summary['hdi_97.5%'][beta],
+                     'r_hat': summary['r_hat'][beta],
                      'model': saved_model}
 
                 if d['r_hat'] > 1.1:
@@ -200,8 +203,8 @@ def summarize_multivariate_trends(metadata, trc_dir, out_json, month, update_sel
                                                                                                  d['hdi_97.5%'],
                                                                                                  d['r_hat']))
 
-            except ValueError as e:
-                print(station, e)
+            except (ValueError, KeyError) as e:
+                print(station, e, saved_model)
 
     with open(out_json, 'w') as f:
         json.dump(out_meta, f, indent=4, sort_keys=False)
