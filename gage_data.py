@@ -1,14 +1,12 @@
-import os
 import json
-from copy import deepcopy
-
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
+import os
 
 import dataretrieval.nwis as nwis
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 
-from utils.gage_lists import EXCLUDE_STATIONS, TARGET_STATIONS
+from utils.gage_lists import EXCLUDE_RESERVOIRS
 
 
 class MissingValues(Exception):
@@ -40,19 +38,20 @@ def hydrograph(c):
     return df
 
 
-def get_station_daily_data(start, end, stations, out_dir, plot_dir=None, overwrite=False):
+def month_days_count(start, end):
     dt_range = pd.date_range(start, end, freq='D')
     ct_df = pd.DataFrame(index=pd.DatetimeIndex(dt_range), data=np.arange(len(dt_range)))
     ct_df = ct_df.groupby([ct_df.index.year, ct_df.index.month]).agg('count')
     counts = [r[0] for i, r in ct_df.iterrows()]
+    return counts, dt_range
 
+
+def get_station_daily_data(start, end, stations, out_dir, plot_dir=None, overwrite=False):
+    counts, dt_range = month_days_count(start, end)
     with open(stations, 'r') as f_obj:
         stations = json.load(f_obj)
 
     for sid, data in stations.items():
-
-        if sid in EXCLUDE_STATIONS:
-            continue
 
         out_file = os.path.join(out_dir, '{}.csv'.format(sid))
         if os.path.exists(out_file) and not overwrite:
@@ -100,30 +99,25 @@ def get_station_daily_data(start, end, stations, out_dir, plot_dir=None, overwri
             plt.close()
 
 
-def get_station_daterange_data(daily_q_dir, aggregate_q_dir, resample_freq='A', convert_to_mcube=True,
-                               plot_dir=None, reservoirs=None, res_js=None):
+def get_station_monthly_data(daily_q_dir, aggregate_q_dir, metadata, reservoirs, interbasin,
+                             convert_to_mcube=True, plot_dir=None):
     q_files = [os.path.join(daily_q_dir, x) for x in os.listdir(daily_q_dir)]
     sids = [os.path.basename(c).split('.')[0] for c in q_files]
     out_records, short_records = [], []
-    annual_q_test, diversion_test = [], []
 
+    with open(metadata, 'r') as f_obj:
+        dct = json.load(f_obj)
 
-    if reservoirs:
-        with open(res_js, 'r') as f_obj:
-            dct = json.load(f_obj)
+    rfiles = [os.path.join(reservoirs, x) for x in os.listdir(reservoirs) if x.endswith('.csv')]
+    rkeys = [int(x.strip('.csv')) for x in os.listdir(reservoirs) if x.endswith('.csv')]
 
-        rfiles = [os.path.join(reservoirs, x) for x in os.listdir(reservoirs) if x.endswith('.csv')]
-        rkeys = [int(x.strip('.csv')) for x in os.listdir(reservoirs) if x.endswith('.csv')]
+    ibt_files = [os.path.join(interbasin, x) for x in os.listdir(interbasin) if x.endswith('.csv')]
+    ibt_keys = [int(x.strip('.csv')) for x in os.listdir(interbasin) if x.endswith('.csv')]
 
     for sid, c in zip(sids, q_files):
 
-        if sid not in TARGET_STATIONS:
-            continue
-
-        if sid != '13090000':
-            continue
-
         _name = dct[sid]['STANAME']
+        print('\n', _name)
 
         df = pd.read_csv(c, index_col=0, infer_datetime_format=True, parse_dates=True)
 
@@ -131,80 +125,91 @@ def get_station_daterange_data(daily_q_dir, aggregate_q_dir, resample_freq='A', 
         df = df['q']
         if convert_to_mcube:
             df = df * 2446.58
-        df = df.resample(resample_freq).agg(pd.DataFrame.sum, skipna=False)
-        dates = deepcopy(df.index)
 
+        df = df.resample('M').agg(pd.DataFrame.sum, skipna=False)
         out_file = os.path.join(aggregate_q_dir, '{}.csv'.format(sid))
+        cols = ['delta_s']
+        rdf = pd.DataFrame(index=df.index, columns=cols)
+        rlist = [int(k) for k in dct[sid]['res']]
 
-        if reservoirs:
-            rdf = pd.Series(index=df.index, data=[0 for _ in range(df.shape[0])])
-            rlist = dct[sid]['res']
+        for r in rlist:
 
-            for r in rlist:
-                try:
-                    rfile = rfiles[rkeys.index(r)]
-                except ValueError:
-                    continue
+            if str(r) in EXCLUDE_RESERVOIRS:
+                continue
 
-                c = pd.read_csv(rfile, index_col='date', infer_datetime_format=True, parse_dates=True)
+            try:
+                rfile = rfiles[rkeys.index(r)]
+            except ValueError:
+                continue
 
-                if 'inflow' in c.columns and 'outflow' in c.columns and not 'storage' in c.columns:
-                    c['storage'] = c['outflow'] - c['inflow']
+            c = pd.read_csv(rfile, index_col=0, infer_datetime_format=True, parse_dates=True)
 
-                if resample_freq == 'M':
-                    c['delta_s'] = c['storage'].diff() * 1e6
-                    print('{:.1f} {}'.format(np.nanmean([abs(s) for s in c['delta_s'].values]), r))
-                elif resample_freq == 'A':
-                    # doesn't need aggregation, just difference year-to-year
-                    idx = [i for i in c.index if i.month == 12]
-                    c = c.loc[idx].diff()
-                    c['delta_s'] = c['storage'] * 1e6
+            c['delta_s'] = c['storage'].diff()
+            q95, q05 = np.nanpercentile(c['storage'], [75, 25])
+            s_range = q95 - q05
+            s_range_af = s_range / 1233.48
+            match = [i for i, r in c.iterrows() if i in rdf.index and not np.isnan(r['storage'])]
+            c = c.loc[match]
+            c = c.reindex(rdf.index)
+            c = c['delta_s']
+
+            if len(match) < df.shape[0] and s_range_af < 20000:
+                print('{} of {} res {} active: {:1f} af, backfilling'.format(len(match), len(rdf.index), r, s_range_af))
+                monthly_means = c.copy().groupby(c.index.month).mean()
+                for idx in c.index:
+                    if pd.isnull(c[idx]):
+                        c[idx] = monthly_means[idx.month]
+
+            elif len(match) < df.shape[0] and s_range_af > 100000:
+                if len(rlist) > 1:
+                    print('missing {} of {} at {}, ignoring'.format(df.shape[0] - len(match), df.shape[0], r))
+
                 else:
-                    raise NotImplementedError
+                    print('missing {} of {} at {}, not backfilling'.format(df.shape[0] - len(match), df.shape[0], r))
 
-                match = [i for i in c.index if i in rdf.index]
-                c = c.loc[match]
-                c = c.reindex(rdf.index)
-                rdf += c['delta_s']
+            else:
+                print('{} of {} res {} mean active: {:1f} af'.format(len(match), len(rdf.index), r, s_range_af))
 
-            rtest = pd.DataFrame(data=np.array([df.values, rdf.values]).T, columns=['flow', 'delta_s'], index=df.index)
-            rtest['diff'] = rtest['delta_s'] / rtest['flow']
+            stack = np.stack([rdf['delta_s'].values, c], axis=1)
+            rdf.loc[df.index, 'delta_s'] = np.nansum(stack, axis=1)
 
-            if resample_freq == 'M':
-                sept = [i for i in rtest.index if i.month == 9]
-                sept_mean = rtest.loc[sept, 'diff'].mean()
-                print('{:.1f}'.format(sept_mean), len(rlist), _name, sid)
+        df = pd.DataFrame(df)
+        df['delta_s'] = rdf['delta_s']
 
-            elif resample_freq == 'A':
-                an_stor_delta = np.nanmean([abs(s) for s in rtest['diff'].values])
-                if not np.isfinite(an_stor_delta):
-                    diversion_test.append(sid)
-                elif an_stor_delta > 0.03:
-                    diversion_test.append(sid)
-                elif an_stor_delta < 0.03:
-                    annual_q_test.append(sid)
-                else:
-                    print(sid, 'did not find a place')
-                    raise NotImplementedError
+        ibt_list = [int(k) for k in dct[sid]['ibt']]
+        for ibt in ibt_list:
+            try:
+                ibt_file = ibt_files[ibt_keys.index(ibt)]
+            except ValueError:
+                continue
+            c = pd.read_csv(ibt_file, index_col=0, infer_datetime_format=True, parse_dates=True)
+            match = [i for i, r in c.iterrows() if i in df.index and not np.isnan(r['q'])]
+            c = c['q']
 
-                print('{:.3f}'.format(an_stor_delta), len(rlist), _name, sid)
+            if len(match) < df.shape[0]:
+                print('{} of {} res {}, backfilling'.format(len(match), len(rdf.index), ibt))
+                monthly_means = c.copy().groupby(c.index.month).mean()
+                for idx in c.index:
+                    if pd.isnull(c[idx]):
+                        c[idx] = monthly_means[idx.month]
 
-            df += rtest['delta_s']
+            else:
+                print('{} of {} on canal {}'.format(len(match), len(df.index), ibt))
+
+            df.loc[match, 'q'] -= c
 
         df.to_csv(out_file)
         out_records.append(sid)
 
         if plot_dir:
-            pdf = pd.DataFrame(data={'Date': dates, 'q': df.values})
-            pdf.plot('Date', 'q')
+            df = df.loc['2000-01-01':'2004-12-31']
+            plt.plot(df.index, df['q'], label='observed')
+            df['adjusted'] = df['q'] + df['delta_s']
+            plt.plot(df.index, df['adjusted'], label='adjusted')
+            plt.legend()
+            plt.suptitle(_name)
             plt.savefig(os.path.join(plot_dir, '{}.png'.format(sid)))
             plt.close()
-
-    print('{} processed'.format(len(out_records)))
-    print(out_records)
-
-    print(annual_q_test)
-    print(diversion_test)
 
 
 if __name__ == '__main__':
