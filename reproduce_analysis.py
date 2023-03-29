@@ -43,8 +43,8 @@ bucket = 'wudr'
 
 start_yr, end_yr = 1987, 2021
 # month zero calculates annual data
-months = list(range(4, 11))
-select = '13213100'
+months = list(range(1, 13))
+select = ['13213100']
 
 
 def get_gage_data():
@@ -56,7 +56,7 @@ def get_gage_data():
                              convert_to_mcube=True, plot_dir=monthly_q_fig)
 
 
-static_irr = True
+static_irr = False
 print('\nassuming static irrigation mask: {}'.format(static_irr))
 
 if static_irr:
@@ -91,6 +91,20 @@ cc_q_file = os.path.join(analysis_directory, 'cc_q', 'cc_q_initial_{}.json')
 cc_q_bayes_file = os.path.join(analysis_directory, 'cc_q', 'cc_q_bayes_{}.json')
 cc_q_traces = os.path.join(root, 'mv_traces', 'cc_q')
 
+select = ['06016000', '06017000', '06018500', '06036650', '06041000', '06074000', '06078200', '06085800', '06102050',
+          '06108000',
+          '06177000', '06185110', '06185500', '06236100', '06253000', '06287000', '06307500', '06309000', '09105000',
+          '09106150',
+          '09128000', '09171100', '09211200', '09224700', '09261000', '09314500', '09328500', '09363500', '09364500',
+          '09371000',
+          '09371010', '09394500', '09397000', '09397300', '09402000', '09469500', '09474000', '09489000', '09511300',
+          '09519800',
+          '09520500', '12350250', '12398600', '12465000', '12467000', '12472600', '12508990', '12510500', '13032500',
+          '13038500',
+          '13049500', '13057000', '13058000', '13081500', '13108150', '13119000', '13135000', '13152500', '13153500',
+          '13171620',
+          '13183000', '13213000', '13213100', '13233300', '13250000', '14101500', '14184100', '14238000']
+
 
 def get_gridded_data():
     # extract SSEBop ET, irrigation status, and TerraClimate at monthly time-step from Earth Engine
@@ -124,7 +138,7 @@ def calculate_ols_trends():
         print('\n\n\ntrends {}'.format(m))
         in_data = climate_flow_file.format(m)
         out_data = ols_trends_data.format(m)
-        ct_, all_ = initial_trends_test(in_data, out_data, plot_dir=None, selectors='time_cc')
+        ct_, all_ = initial_trends_test(in_data, out_data)
         if first:
             ct = ct_
             all_ct = all_
@@ -137,7 +151,7 @@ def calculate_ols_trends():
     pprint(all_ct)
 
 
-overwrite_bayes = False
+overwrite_bayes = True
 
 
 def univariate_trends():
@@ -149,12 +163,11 @@ def univariate_trends():
         in_data = ols_trends_data.format(m)
         out_data = uv_trends_bayes.format(m)
 
-        for i in range(5):
-            run_bayes_univariate_trends(uv_trends_traces, in_data, processes, overwrite=overwrite_bayes,
-                                        selectors=['time_cc'], station=select)
+        run_bayes_univariate_trends(uv_trends_traces, in_data, processes, overwrite=overwrite_bayes,
+                                    selectors=['time_cc'], stations=select)
         if summarize:
             c, d, sp, sn = summarize_univariate_trends(in_data, uv_trends_traces, out_data, m,
-                                                       update_selectors=['time_cc'])
+                                                       update_selectors=['time_q'])
             conv += c
             div += d
             sigp += sp
@@ -165,18 +178,18 @@ def univariate_trends():
 def multivariate_trends():
     conv, div = 0, 0
     sigp, sign = 0, 0
-    summarize = False
+    summarize = True
     for m in months:
         print('\n\n\nmultivariate trends {}'.format(m))
         in_data = climate_flow_file.format(m)
         out_data = mv_trends_bayes.format(m)
         # for i in range(5):
-        run_bayes_multivariate_trends(mv_trends_traces, in_data, processes, overwrite=overwrite_bayes,
-                                      selector='time_q', station=select)
+        # run_bayes_multivariate_trends(mv_trends_traces, in_data, processes, overwrite=overwrite_bayes,
+        #                               selector='time_q', stations=select)
 
         if summarize:
             c, d, sp, sn = summarize_multivariate_trends(in_data, mv_trends_traces, out_data, m,
-                                                         update_selectors=None)
+                                                         update_selectors=['time_q'])
             conv += c
             div += d
             sigp += sp
@@ -194,18 +207,17 @@ def irrigation_impacts():
         in_data = out_data
         out_data = cc_q_bayes_file.format(m)
         # for i in range(5):
-        run_bayes_regression_cc_qres(cc_q_traces, in_data, processes, overwrite_bayes, station=select)
-
-        # bayes_write_significant_cc_qres(in_data, cc_q_traces, out_data, m)
+        # run_bayes_regression_cc_qres(cc_q_traces, in_data, processes, overwrite_bayes, stations=select)
+        bayes_write_significant_cc_qres(in_data, cc_q_traces, out_data, m)
 
 
 if __name__ == '__main__':
     # get_gage_data()
     # get_gridded_data()
-    build_tables()
-    climate_flow_correlations()
-    calculate_ols_trends()
-    univariate_trends()
+    # build_tables()
+    # climate_flow_correlations()
+    # calculate_ols_trends()
+    # univariate_trends()
     # multivariate_trends()
-    # irrigation_impacts()
+    irrigation_impacts()
 # ========================= EOF ====================================================================
