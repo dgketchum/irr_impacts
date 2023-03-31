@@ -11,7 +11,7 @@ import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 np.seterr(divide='ignore', invalid='ignore')
 
-from utils.error_estimates import BASIN_CC_ERR, BASIN_IRRMAPPER_F1, BASIN_PRECIP_RMSE, ETR_ERR
+from utils.error_estimates import BASIN_CC_ERR, BASIN_IRRMAPPER_F1, BASIN_PRECIP_RMSE, ETR_ERR, STUDY_EPT_ERROR
 
 
 def run_bayes_univariate_trends(traces_dir, stations_meta, multiproc=0, overwrite=False, selectors=None, stations=None):
@@ -45,7 +45,11 @@ def bayes_univariate_trends(station, records, trc_dir, overwrite, selectors=None
         rmse = BASIN_CC_ERR[basin]['rmse']
         bias = BASIN_CC_ERR[basin]['bias']
         irr_f1 = 1 - BASIN_IRRMAPPER_F1[basin]
-        cc_err = np.sqrt(irr_f1**2 + rmse**2)
+        cc_err = np.sqrt(irr_f1 ** 2 + rmse ** 2 + STUDY_EPT_ERROR ** 2)
+
+        if 'static' in trc_dir:
+            cc_err = np.sqrt(rmse ** 2 + STUDY_EPT_ERROR ** 2)
+
         ppt_err, etr_err = BASIN_PRECIP_RMSE[basin], ETR_ERR
         ai_err = np.sqrt(ppt_err ** 2 + etr_err ** 2)
 
@@ -128,7 +132,6 @@ def bayes_univariate_trends(station, records, trc_dir, overwrite, selectors=None
 
 
 def summarize_univariate_trends(metadata, trc_dir, out_json, month, update_selectors=None):
-
     div_, conv_ = 0, 0
     sp, sn = 0, 0
 
@@ -141,6 +144,7 @@ def summarize_univariate_trends(metadata, trc_dir, out_json, month, update_selec
             out_meta = json.load(f)
 
     trc_subdirs = ['time_cc', 'time_ai', 'time_aim', 'time_irr', 'time_q']
+    ct = 0
 
     for i, (station, data) in enumerate(stations.items()):
 
@@ -168,6 +172,7 @@ def summarize_univariate_trends(metadata, trc_dir, out_json, month, update_selec
                     with open(saved_model, 'rb') as buff:
                         mdata = pickle.load(buff)
                         model, trace = mdata['model'], mdata['trace']
+                        ct += 1
                 except Exception as e:
                     print(e)
                     continue
@@ -207,10 +212,11 @@ def summarize_univariate_trends(metadata, trc_dir, out_json, month, update_selec
             except ValueError as e:
                 print(station, e)
 
+    print('{} models opened'.format(ct))
     with open(out_json, 'w') as f:
         json.dump(out_meta, f, indent=4, sort_keys=False)
 
-    return conv_, div_, sp, sn
+    return ct, conv_, div_, sp, sn
 
 
 if __name__ == '__main__':

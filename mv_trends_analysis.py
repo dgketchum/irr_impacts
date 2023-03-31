@@ -16,7 +16,7 @@ sns.despine()
 warnings.simplefilter(action='ignore', category=FutureWarning)
 np.seterr(divide='ignore', invalid='ignore')
 
-from utils.error_estimates import BASIN_CC_ERR, BASIN_IRRMAPPER_F1, BASIN_PRECIP_RMSE, ETR_ERR
+from utils.error_estimates import BASIN_CC_ERR, BASIN_IRRMAPPER_F1, BASIN_PRECIP_RMSE, ETR_ERR, STUDY_EPT_ERROR
 
 
 def run_bayes_multivariate_trends(traces_dir, stations_meta, multiproc=0, overwrite=False, stations=None, selector=None):
@@ -52,7 +52,7 @@ def bayes_multivariate_trends(station, records, trc_dir, overwrite, selector=Non
         ppt_err, etr_err = BASIN_PRECIP_RMSE[basin], ETR_ERR
         ai_err = np.sqrt(ppt_err ** 2 + etr_err ** 2)
         irr_f1 = 1 - BASIN_IRRMAPPER_F1[basin]
-        cc_err = irr_f1 + rmse - abs(bias)
+        cc_err = np.sqrt(irr_f1**2 + rmse**2 + STUDY_EPT_ERROR**2)
 
         month = records['q_mo']
         q = np.array(records['q'])
@@ -114,7 +114,7 @@ def bayes_multivariate_trends(station, records, trc_dir, overwrite, selector=Non
                     json.dump(dct, fp, indent=4)
 
                 print('\n=== sampling {} len {}, m {} at {}, '
-                      'err: {:.3f} ===='.format(subdir, len(x), month, station, ai_err[0]))
+                      ' ===='.format(subdir, len(x), month, station))
 
                 variable_names = {'x1_name': 'time_coeff',
                                   'x2_name': 'cwd_coeff'}

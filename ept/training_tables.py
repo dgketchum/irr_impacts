@@ -174,6 +174,7 @@ def validate_predictions(csv_dir, out_csv, join_key='id', glob='None'):
         ept_cols, et_cols = [x for x in df.columns if 'eff_ppt' in x], [x for x in df.columns if 'et_' in x]
         df['ept_sum'] = df[ept_cols].sum(axis=1)
         df['et_sum'] = df[et_cols].sum(axis=1)
+        df = df[['ept_sum', 'et_sum']]
         match = [i for i in mdf.index if i in df.index]
         mdf.loc[match, ['ept_sum', 'et_sum']] = df.loc[match, ['ept_sum', 'et_sum']] / 35
         mdf['diff'] = (mdf['et_sum'] - mdf['ept_sum']) / mdf['et_sum']

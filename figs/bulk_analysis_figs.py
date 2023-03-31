@@ -214,6 +214,7 @@ def nass_irrmapper_climate(irr_dir, nass_c, fig_dir, countywise=True):
             print(fig_file, sub_dir)
 
 
+
 if __name__ == '__main__':
     root = '/media/research/IrrigationGIS'
     if not os.path.exists(root):
@@ -221,5 +222,6 @@ if __name__ == '__main__':
     nass = os.path.join(root, 'nass_data', 'nass_merged.csv')
     co_irr = os.path.join(root, 'time_series/counties_IrrMapperComp_21DEC2021/county_monthly')
     figs = os.path.join(root, 'time_series/counties_IrrMapperComp_21DEC2021/figures')
-    nass_irrmapper_climate(co_irr, nass, figs, countywise=False)
+    # nass_irrmapper_climate(co_irr, nass, figs, countywise=False)
+
 # ========================= EOF ====================================================================

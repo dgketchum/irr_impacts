@@ -37,6 +37,7 @@ def climate_flow_correlation(q_flow_dir, month, in_json, out_json, start_yr=1987
         try:
             s_meta = metadata[sid]
         except KeyError:
+            print('keyerror on {}'.format(sid))
             continue
 
         df = hydrograph(csv)
@@ -58,20 +59,20 @@ def climate_flow_correlation(q_flow_dir, month, in_json, out_json, start_yr=1987
                 s[s == 0.] = np.nan
                 q = q + s
                 if np.all(np.isnan(q)):
-                    missing_res.append(sid)
+                    # missing_res.append(sid)
                     print('{} {} missing flow/storage data'.format(sid, s_meta['STANAME']))
                     continue
                 s = list(s)
             except KeyError:
                 missing_res.append(sid)
-                print('{} {} missing flow/storage data'.format(sid, s_meta['STANAME']))
+                # print('{} {} missing flow/storage data'.format(sid, s_meta['STANAME']))
                 continue
 
         mask = ~np.isnan(q)
 
         if np.count_nonzero(mask) < 20:
-            print('\nonly {} q records month {}, {}, {}'.format(np.count_nonzero(mask),
-                                                                month, sid, s_meta['STANAME']))
+            # print('\nonly {} q records month {}, {}, {}'.format(np.count_nonzero(mask),
+            #                                                     month, sid, s_meta['STANAME']))
             short_q.append(sid)
             continue
 
@@ -130,10 +131,10 @@ def climate_flow_correlation(q_flow_dir, month, in_json, out_json, start_yr=1987
         if sig_relationship:
             s_meta.update(response_d)
             windows[sid] = s_meta
-            print('\n{}, resmod: {}, r = {:.3f}, month {}, {}'.format(sid, res_mod, r, month, s_meta['STANAME']))
+            # print('\n{}, resmod: {}, r = {:.3f}, month {}, {}'.format(sid, res_mod, r, month, s_meta['STANAME']))
         else:
             no_relation.append(sid)
-            print('\nno significant relation {}, r = {:.3f}, month {}, {}'.format(sid, r, month, s_meta['STANAME']))
+            # print('\nno significant relation {}, r = {:.3f}, month {}, {}'.format(sid, r, month, s_meta['STANAME']))
 
     with open(out_json, 'w') as f:
         json.dump(windows, f, indent=4)

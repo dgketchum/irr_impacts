@@ -74,7 +74,7 @@ def initial_trends_test(in_json, out_json, plot_dir=None, selectors=None):
             if selectors and subdir not in selectors:
                 continue
 
-            irr_mos = [0] + list(range(4, 11))
+            irr_mos = list(range(4, 11))
             if month not in irr_mos and subdir in ['time_irr', 'time_cc', 'time_ccres', 'time_cci']:
                 continue
 

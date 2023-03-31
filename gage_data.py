@@ -104,6 +104,7 @@ def get_station_monthly_data(daily_q_dir, aggregate_q_dir, metadata, reservoirs,
     q_files = [os.path.join(daily_q_dir, x) for x in os.listdir(daily_q_dir)]
     sids = [os.path.basename(c).split('.')[0] for c in q_files]
     out_records, short_records = [], []
+    ignore_res, backfill_res = [], []
 
     with open(metadata, 'r') as f_obj:
         dct = json.load(f_obj)
@@ -159,6 +160,7 @@ def get_station_monthly_data(daily_q_dir, aggregate_q_dir, metadata, reservoirs,
                 for idx in c.index:
                     if pd.isnull(c[idx]):
                         c[idx] = monthly_means[idx.month]
+                backfill_res.append(r)
 
             elif len(match) < df.shape[0] and s_range_af > 100000:
                 if len(rlist) > 1:
@@ -166,6 +168,8 @@ def get_station_monthly_data(daily_q_dir, aggregate_q_dir, metadata, reservoirs,
 
                 else:
                     print('missing {} of {} at {}, not backfilling'.format(df.shape[0] - len(match), df.shape[0], r))
+
+                ignore_res.append(r)
 
             else:
                 print('{} of {} res {} mean active: {:1f} af'.format(len(match), len(rdf.index), r, s_range_af))
@@ -196,7 +200,7 @@ def get_station_monthly_data(daily_q_dir, aggregate_q_dir, metadata, reservoirs,
             else:
                 print('{} of {} on canal {}'.format(len(match), len(df.index), ibt))
 
-            df.loc[match, 'q'] -= c
+            df.loc[match, 'q'] += c
 
         df.to_csv(out_file)
         out_records.append(sid)

@@ -114,10 +114,9 @@ def monthly_trends(regressions_dir, in_shape, glob=None, out_shape=None, selecto
                        'time_pptm': 'lr', 'time_etrm': 'lr'}
     elif base_ == 'mv_trends':
         trc_subdirs = {'time_q': 'bayes', 'time_cc': 'bayes'}
-
     elif base_ == 'uv_trends':
-        trc_subdirs = {'time_q': 'bayes', 'time_cc': 'bayes', 'time_irr': 'bayes',
-                       'time_ai': 'bayes', 'time_aim': 'bayes'}
+        trc_subdirs = {'time_ai': 'bayes', 'time_irr': 'bayes', 'time_q': 'bayes', 'time_cc': 'bayes',
+                       'time_aim': 'bayes'}
     elif base_ == 'trends_static_irr':
         trc_subdirs = {'time_cc': 'bayes'}
     else:
@@ -129,7 +128,7 @@ def monthly_trends(regressions_dir, in_shape, glob=None, out_shape=None, selecto
     area_arr = np.array([areas[_id] for _id in trends_stations])
     areas = [(a - min(area_arr)) / (max(area_arr) - min(area_arr)) for a in area_arr]
 
-    range_ = np.arange(0, 13)
+    range_ = np.arange(1, 13)
     for var, test in trc_subdirs.items():
 
         if selectors and var not in selectors:
@@ -183,7 +182,7 @@ def monthly_trends(regressions_dir, in_shape, glob=None, out_shape=None, selecto
 
         gdf.drop(columns=['STANAME'], inplace=True)
 
-        shp_file = os.path.join(out_shape, '{}_resv.shp'.format(var))
+        shp_file = os.path.join(out_shape, '{}.shp'.format(var))
 
         try:
             gdf[gdf[[i for i in range(1, 13)]] == 0.0] = np.nan
@@ -383,7 +382,7 @@ def flow_change_climate_coincidence(q_data, climate_data):
     sdf['STANAME'] = cdf['STANAME']
     sdf['STAID'] = cdf['index']
 
-    _file = os.path.join(os.path.dirname(q_data), 'flow_aim_trends.shp')
+    _file = os.path.join(os.path.dirname(q_data), 'flow_ai_trends.shp')
     sdf.to_file(_file, crs='EPSG:4326')
     print('wrote', _file)
 
@@ -398,15 +397,16 @@ if __name__ == '__main__':
     fig_shp = os.path.join(root, 'figures', 'shapefiles', 'climate_flow_period', 'cwb_q_lag.shp')
     # basin_climate_periods(lr_, inshp, out_shape=fig_shp)
 
-    v_ = 'uv'
+    v_ = 'static'
     if v_ == 'static':
         glb = 'trends_bayes'
         lr_ = os.path.join(root, 'analysis', 'trends_static_irr')
     else:
         glb = 'trends'
         lr_ = os.path.join(root, 'analysis', '{}_trends'.format(v_))
+
     fig_shp = os.path.join(root, 'figures', 'shapefiles', '{}_trends'.format(v_))
-    monthly_trends(lr_, inshp, glob=glb, out_shape=fig_shp)
+    monthly_trends(lr_, inshp, glob=glb, out_shape=fig_shp, selectors=['time_cc'])
 
     v_ = 'cc_q'
     glb = '{}_bayes'.format(v_)
