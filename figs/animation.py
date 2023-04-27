@@ -145,9 +145,8 @@ def write_cummulative_et(_dir, jpeg):
     l = sorted(l, key=lambda n: int(os.path.basename(n).split('.')[0].split('_')[2]), reverse=False)
     max_cumulative = 36. * 1200
     first = True
-    years = [y for y in range(1986, 2022)]
 
-    for f, yr in zip(l, years):
+    for f in l:
         with rasterio.open(f, 'r') as src:
             print(os.path.basename(f))
             if first:
@@ -385,6 +384,9 @@ def usdm_animation(png_dir, modified, gif, overwrite_png=False):
         png_l.append(mod_png)
         print('{} to png'.format(os.path.basename(mod_png)))
 
+    if not png_l:
+        png_l = [os.path.join(modified, '{}.png'.format(dstr)) for dstr in dt_strs]
+
     def gen_frame(path):
         im = Image.open(path)
         return im
@@ -396,7 +398,8 @@ def usdm_animation(png_dir, modified, gif, overwrite_png=False):
             first = False
         else:
             frames.append(gen_frame(f))
-    durations = [200 for _ in range(len(frames))] + [3000]
+    durations = [50 for _ in range(len(frames))] + [3000]
+    print('writing {}'.format(gif))
     im1.save(gif, save_all=True, append_images=frames, loop=5, duration=durations)
 
 
@@ -405,32 +408,6 @@ if __name__ == '__main__':
     root = '/media/research/IrrigationGIS/impacts'
     if not os.path.exists(root):
         root = '/home/dgketchum/data/IrrigationGIS/impacts'
-
     flder = os.path.join(root, 'figures', 'animation')
-    # _d = os.path.join(flder, 'tif', 'irr_navajo')
-    # out_jp = os.path.join(flder, 'cumulative_irr_navajo')
-    # _gif = os.path.join(flder, 'irr_cumulative_navajo.gif')
-    # naip = os.path.join(flder, 'NAIP_Navajo.tif')
-    paste_cmap_ = 'fig_misc/jet_r_ramp.png'
-    # write_cummulative(_d, out_jp)
-
-    _d = os.path.join(flder, 'tif', 'et')
-    out_jp = os.path.join(flder, 'monthly_et_png')
-    _gif = os.path.join(flder, 'et_monthly_small_viridis_r.gif')
-    naip = os.path.join(flder, 'NAIP_Bozeman.tif')
-    # build_et_gif(_d, out_jp, _gif, background=naip, overwrite=True, freq='monthly')
-
-    param_ = 'pr'
-    line_gif = os.path.join(flder, '{}_time_series.mp4'.format(param_))
-    dq = '/media/research/IrrigationGIS/impacts/tables/hydrographs/daily_q/06052500.csv'
-    # print(param_)
-    # animated_time_series(line_gif, None, param=param_)
-
-    png = os.path.join(flder, 'weekly_usdm_png')
-    # usdm_png(png)
-
-    png_mod = os.path.join(flder, 'weekly_usdm_mod')
-    out_gif = os.path.join(flder, 'usdm_animation.gif')
-    usdm_animation(png, png_mod, out_gif)
 
 # ========================= EOF ====================================================================
