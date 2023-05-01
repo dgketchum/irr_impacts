@@ -382,7 +382,7 @@ def flow_change_climate_coincidence(q_data, climate_data):
     sdf['STANAME'] = cdf['STANAME']
     sdf['STAID'] = cdf['index']
 
-    _file = os.path.join(os.path.dirname(q_data), 'flow_ai_trends.shp')
+    _file = os.path.join(os.path.dirname(q_data), 'flow_aim_trends.shp')
     sdf.to_file(_file, crs='EPSG:4326')
     print('wrote', _file)
 
@@ -397,7 +397,7 @@ if __name__ == '__main__':
     fig_shp = os.path.join(root, 'figures', 'shapefiles', 'climate_flow_period', 'cwb_q_lag.shp')
     # basin_climate_periods(lr_, inshp, out_shape=fig_shp)
 
-    v_ = 'static'
+    v_ = 'uv'
     if v_ == 'static':
         glb = 'trends_bayes'
         lr_ = os.path.join(root, 'analysis', 'trends_static_irr')
@@ -406,7 +406,7 @@ if __name__ == '__main__':
         lr_ = os.path.join(root, 'analysis', '{}_trends'.format(v_))
 
     fig_shp = os.path.join(root, 'figures', 'shapefiles', '{}_trends'.format(v_))
-    monthly_trends(lr_, inshp, glob=glb, out_shape=fig_shp, selectors=['time_cc'])
+    monthly_trends(lr_, inshp, glob=glb, out_shape=fig_shp, selectors=['time_aim'])
 
     v_ = 'cc_q'
     glb = '{}_bayes'.format(v_)
@@ -418,7 +418,7 @@ if __name__ == '__main__':
     cc_trend = os.path.join(root, 'figures', 'shapefiles', 'uv_trends', 'time_cc.shp')
     # sustainability_trends(q_trend, cc_trend)
     #
-    ai_trend = os.path.join(root, 'figures', 'shapefiles', 'uv_trends', 'time_ai.shp')
+    ai_trend = os.path.join(root, 'figures', 'shapefiles', 'uv_trends', 'time_aim.shp')
     # flow_change_climate_coincidence(q_trend, ai_trend)
 
 # ========================= EOF ====================================================================

@@ -148,10 +148,12 @@ def univariate_trends():
         print('\n\n\nunivariate trends {}'.format(m))
         in_data = ols_trends_data.format(m)
         out_data = uv_trends_bayes.format(m)
-        for i in range(3):
-            run_bayes_univariate_trends(uv_trends_traces, in_data, processes, overwrite=overwrite_bayes)
+        # for i in range(3):
+        #     run_bayes_univariate_trends(uv_trends_traces, in_data, processes,
+        #                                 overwrite=overwrite_bayes, selectors=['time_aim'])
         if summarize:
-            ct, c, d, sp, sn = summarize_univariate_trends(in_data, uv_trends_traces, out_data, m)
+            ct, c, d, sp, sn = summarize_univariate_trends(in_data, uv_trends_traces, out_data, m,
+                                                           update_selectors=['time_aim'])
             allct += ct
             conv += c
             div += d
@@ -168,11 +170,12 @@ def multivariate_trends():
         print('\n\n\nmultivariate trends {}'.format(m))
         in_data = climate_flow_file.format(m)
         out_data = mv_trends_bayes.format(m)
-        for i in range(3):
-            run_bayes_multivariate_trends(mv_trends_traces, in_data, processes, overwrite=overwrite_bayes)
+        # for i in range(3):
+        #     run_bayes_multivariate_trends(mv_trends_traces, in_data, processes, overwrite=overwrite_bayes)
 
         if summarize:
-            c, d, sp, sn = summarize_multivariate_trends(in_data, mv_trends_traces, out_data, m)
+            c, d, sp, sn = summarize_multivariate_trends(in_data, mv_trends_traces, out_data, m,
+                                                         update_selectors='time_cc')
             conv += c
             div += d
             sigp += sp
@@ -196,12 +199,12 @@ def irrigation_impacts():
 
 
 if __name__ == '__main__':
-    get_gage_data()
-    get_gridded_data()
-    build_tables()
-    climate_flow_correlations()
-    calculate_ols_trends()
+    # get_gage_data()
+    # get_gridded_data()
+    # build_tables()
+    # climate_flow_correlations()
+    # calculate_ols_trends()
     univariate_trends()
-    multivariate_trends()
-    irrigation_impacts()
+    # multivariate_trends()
+    # irrigation_impacts()
 # ========================= EOF ====================================================================

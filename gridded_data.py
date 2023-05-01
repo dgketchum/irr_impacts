@@ -214,27 +214,26 @@ def extract_gridmet_monthly(year, month):
     return ppt, pet
 
 
-def export_et_images(polygon, tables, bucket, years=None, description=None,
-                     min_years=0):
+def export_et_images(polygon, bucket, years=None, description=None,
+                     min_years=0, param='irr'):
     """
     Reduce Regions, i.e. zonal stats: takes a statistic from a raster within the bounds of a vector.
     Use this to get e.g. irrigated area within a county, HUC, or state. This can mask based on Crop Data Layer,
     and can mask data where the sum of irrigated years is less than min_years. This will output a .csv to
     GCS wudr bucket.
     """
-    fc = ee.FeatureCollection(tables)
+
     cmb_clip = ee.FeatureCollection(CMBRB_CLIP)
     umrb_clip = ee.FeatureCollection(UMRB_CLIP)
     corb_clip = ee.FeatureCollection(CORB_CLIP)
 
-    # fc = ee.FeatureCollection(ee.FeatureCollection(tables).filter(ee.Filter.eq('STAID', '12484500')))
+    eff_ppt_coll = ee.ImageCollection('users/dgketchum/expansion/ept')
+    eff_ppt_coll = eff_ppt_coll.map(lambda x: x.rename('eff_ppt'))
 
     irr_coll = ee.ImageCollection(RF_ASSET)
     coll = irr_coll.filterDate('1987-01-01', '2021-12-31').select('classification')
     remap = coll.map(lambda img: img.lt(1))
     irr_min_yr_mask = remap.sum().gt(min_years)
-    first = True
-    img = None
 
     for yr in years:
         for month in range(4, 11):
@@ -242,8 +241,12 @@ def export_et_images(polygon, tables, bucket, years=None, description=None,
             end_day = monthrange(yr, month)[1]
             e = '{}-{}-{}'.format(yr, str(month).rjust(2, '0'), end_day)
 
-            # irr = irr_coll.filterDate('{}-01-01'.format(yr), '{}-12-31'.format(yr)).select('classification').mosaic()
-            # irr_mask = irr_min_yr_mask.updateMask(irr.lt(1))
+            s = '{}-{}-01'.format(yr, str(month).rjust(2, '0'))
+            end_day = monthrange(yr, month)[1]
+            e = '{}-{}-{}'.format(yr, str(month).rjust(2, '0'), end_day)
+
+            irr = irr_coll.filterDate('{}-01-01'.format(yr), '{}-12-31'.format(yr)).select('classification').mosaic()
+            irr_mask = irr_min_yr_mask.updateMask(irr.lt(1))
 
             annual_coll = ee.ImageCollection('users/dgketchum/ssebop/cmbrb').merge(
                 ee.ImageCollection('users/hoylmanecohydro2/ssebop/cmbrb'))
@@ -261,47 +264,51 @@ def export_et_images(polygon, tables, bucket, years=None, description=None,
             et_umrb = et_coll.sum().multiply(0.00001).clip(umrb_clip.geometry())
 
             et_sum = ee.ImageCollection([et_cmb, et_corb, et_umrb]).mosaic()
-            # et = et_sum.mask(irr_mask)
-            et = et_sum.mask(irr_min_yr_mask)
 
-            tclime = ee.ImageCollection("IDAHO_EPSCOR/TERRACLIMATE").filterDate(s, e).select('pr', 'pet', 'aet')
-            tclime_red = ee.Reducer.sum()
-            tclime_sums = tclime.select('pr', 'pet', 'aet').reduce(tclime_red)
-            # swb_aet = tclime_sums.select('aet_sum').mask(irr_mask).multiply(0.0001)
-            swb_aet = tclime_sums.select('aet_sum').mask(irr_min_yr_mask).multiply(0.0001)
+            eff_ppt = eff_ppt_coll.filterDate(s, e).select('eff_ppt').mosaic()
 
-            et = et.reproject(crs='EPSG:5070', scale=30).resample('bilinear')
-            swb_aet = swb_aet.reproject(crs='EPSG:5070', scale=30).resample('bilinear')
+            ppt, etr = extract_gridmet_monthly(yr, month)
+            ietr = extract_corrected_etr(yr, month)
 
-            cc = et.subtract(swb_aet).rename('cc_{}_{}'.format(month, yr))
+            area = ee.Image.pixelArea()
 
-            if first:
-                img = cc
-                first = False
+            irr_mask = irr_min_yr_mask.updateMask(irr.lt(1))
+            et = et_sum.mask(irr_mask)
+            eff_ppt = eff_ppt.mask(irr_mask).rename('eff_ppt')
+            ietr = ietr.mask(irr_mask)
+            irr_mask = irr_mask.reproject(crs='EPSG:5070', scale=30)
+            irr = irr_mask.multiply(area).rename('irr')
+
+            et = et.reproject(crs='EPSG:5070', scale=30).resample('bilinear').rename('et')
+            eff_ppt = eff_ppt.reproject(crs='EPSG:5070', scale=30).resample('bilinear').rename('eff_ppt')
+            ppt = ppt.reproject(crs='EPSG:5070', scale=30).resample('bilinear').rename('ppt')
+            etr = etr.reproject(crs='EPSG:5070', scale=30).resample('bilinear').rename('etr')
+            ietr = ietr.reproject(crs='EPSG:5070', scale=30).resample('bilinear').rename('ietr')
+            cc = et.subtract(eff_ppt)
+
+            stack = irr.addBands([cc, et, eff_ppt, ppt, etr, ietr]) \
+                .rename(['irr', 'cc', 'et', 'eff_ppt', 'ppt', 'etr', 'ietr'])
+
+            if isinstance(polygon, str):
+                roi = ee.FeatureCollection(polygon).first().geometry()
             else:
-                img = img.add(cc)
+                roi = polygon
 
-    roi = ee.FeatureCollection(polygon).first().geometry()
-    img = img.clip(roi)
+            stack = stack.clip(roi)
 
-    # pt = img.sample(region=get_geomteries()[2],
-    #                 numPixels=1,
-    #                 scale=30)
-    # p = pt.first().getInfo()['properties']
-    # print('propeteries {}'.format(p))
+            out_desc = '{}_{}_{}'.format(description, yr, month)
+            task = ee.batch.Export.image.toCloudStorage(
+                stack.select(param),
+                description=out_desc,
+                bucket=bucket,
+                fileNamePrefix=out_desc,
+                region=roi,
+                scale=30,
+                maxPixels=1e13,
+                crs='EPSG:5071')
 
-    out_desc = '{}_int'.format(description)
-    task = ee.batch.Export.image.toCloudStorage(
-        img,
-        description=out_desc,
-        bucket=bucket,
-        fileNamePrefix=out_desc,
-        region=roi,
-        scale=30,
-        maxPixels=1e13,
-        crs='EPSG:5071')
-    task.start()
-    print(out_desc)
+            task.start()
+            print(out_desc)
 
 
 def export_naip(region, bucket):
@@ -315,6 +322,27 @@ def export_naip(region, bucket):
         scale=30,
         maxPixels=1e13,
         crs='EPSG:5071')
+    task.start()
+
+
+def export_gridmet(bucket, param='pr', staid='06052500'):
+    ee.Initialize()
+    roi = ee.FeatureCollection(basins).filterMetadata('STAID', 'equals', staid).first().geometry()
+
+    dataset = ee.ImageCollection('IDAHO_EPSCOR/GRIDMET')
+    dataset = dataset.filter(ee.Filter.date('1990-01-01', '2020-01-01')).select(param).sum().divide(35.)
+    desc = 'gallatin_mean_annual_{}'.format(param)
+
+    task = ee.batch.Export.image.toCloudStorage(
+        dataset,
+        description=desc,
+        bucket=bucket,
+        fileNamePrefix=desc,
+        region=roi,
+        scale=4000,
+        maxPixels=1e13,
+        crs='EPSG:5071')
+
     task.start()
 
 
@@ -400,5 +428,14 @@ def initialize():
 
 
 if __name__ == '__main__':
-    pass
+    ee.Initialize()
+    bucket = 'wudr'
+    basins = 'users/dgketchum/gages/gage_basins'
+    station = '06052500'
+
+    # export_gridmet(bucket, param='etr', staid=station)
+    # export_gridmet(bucket, param='pr', staid=station)
+    geom = get_geomteries()[1]
+    export_et_images(geom, bucket, years=[y for y in range(1987, 2022)], description='et_navajo',
+                     min_years=5, param='cc')
 # ========================= EOF ================================================================================

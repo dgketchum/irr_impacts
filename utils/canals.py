@@ -147,9 +147,8 @@ def get_data_ucrb(shp, out_dir, unit_strict=True):
         else:
             raise NotImplementedError('Unknown units and resampling technique')
 
-        july = c.loc[[i for i in c.index if i.month == 7], col]
-        july = july[july > 0]
-        print('july mean: {:.1f} {} at {} {}, {} years'.format(july.mean(), 'm^3', sid, _name, july.shape[0]))
+        aaf = (c.loc['2000-01-01': '2022-12-31'].resample('A').sum() / 1233.48).mean().values[0]
+        print('2000-2022 annual mean: {:,.1f} {} at {} {}, {} years'.format(aaf, 'af', sid, _name, c.shape[0] / 12))
 
         ind_match = [i for i in c.index if i in df.index]
         df.loc[ind_match, 'q'] = c.loc[ind_match, col]
@@ -196,7 +195,6 @@ def get_data_pnw(shp, out_dir):
 
 
 def plot(hydr_dir, plot_dir):
-
     l = [os.path.join(hydr_dir, x) for x in os.listdir(hydr_dir) if x.endswith('.csv')]
     for f in l:
         sid = f.split('_')[0]

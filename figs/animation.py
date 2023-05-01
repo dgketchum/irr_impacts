@@ -9,6 +9,7 @@ from PIL import Image, ImageDraw, ImageFont
 import requests
 
 import matplotlib
+# matplotlib.use('TKAgg')
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from matplotlib.animation import FuncAnimation
@@ -17,31 +18,35 @@ from gage_data import hydrograph
 from utils.gridmet_data import GridMet
 
 
-def build_et_gif(_dir, jpeg, gif, background=None, overwrite=False, freq='monthly', out_series=None):
+def build_et_gif(_dir, jpeg, gif, background=None, overwrite=False, freq='annual_accum', paste_cmap=None):
     l = [os.path.join(_dir, x) for x in os.listdir(_dir) if x.endswith('.tif')]
-    l = sorted(l, key=lambda n: (int(os.path.basename(n)[8:12]),
-                                 int(os.path.basename(n).split('.')[0][13:])),
-               reverse=False)
-    years = [int(os.path.basename(n)[8:12]) for n in l]
-    months = [int(os.path.basename(n).split('.')[0][13:]) for n in l]
+    if 'Bozeman' in l[0]:
+        l = sorted(l, key=lambda n: (int(os.path.basename(n)[8:12]),
+                                     int(os.path.basename(n).split('.')[0][13:])), reverse=False)
+        years = [int(os.path.basename(n)[8:12]) for n in l]
+        months = [int(os.path.basename(n).split('.')[0][13:]) for n in l]
+        max_annual = 1206.
+    else:
+        l = sorted(l, key=lambda n: (int(os.path.basename(n).split('_')[2]),
+                                     int(os.path.basename(n).split('_')[3].split('.')[0])), reverse=False)
+        years = [int(os.path.basename(n).split('_')[2]) for n in l]
+        months = [int(os.path.basename(n).split('_')[3].split('.')[0]) for n in l]
+        max_annual = 1.4
 
     jp_l = []
-    max_annual = 1206.
     durations = []
 
-    if out_series:
-        dtr = [to_datetime('{}-{}-{}'.format(years[i], months[i], 1)) for i in range(len(years))]
-        idx = DatetimeIndex(dtr)
-        data = [0. for _ in idx]
-        series = Series(index=idx, data=data)
+    if paste_cmap:
+        paste_img = Image.open(paste_cmap)
 
+    first = True
     with rasterio.open(background, 'r') as bck:
         back = bck.read()
         back = np.moveaxis(back, 0, -1)
 
     for f, y, m in zip(l, years, months):
 
-        if m == 10:
+        if m == 10 and freq == 'annual_accum':
             durations.append(200)
         else:
             durations.append(80)
@@ -53,9 +58,11 @@ def build_et_gif(_dir, jpeg, gif, background=None, overwrite=False, freq='monthl
             continue
 
         with rasterio.open(f, 'r') as src:
-            if m == 4:
+
+            if (m == 4 and freq == 'annual_accum') or first:
                 data = src.read()
                 max_annual_depth = np.ones_like(data) * max_annual
+                first = False
             else:
                 tif = src.read()
                 data = np.append(data, tif, axis=0)
@@ -63,45 +70,51 @@ def build_et_gif(_dir, jpeg, gif, background=None, overwrite=False, freq='monthl
             data[np.isnan(data)] = 0.0
             data[data < 0] = 0.0
 
-            if out_series:
-                series.loc['{}-{}-01'.format(y, m)] = data.sum()
+            rl_sum = data.sum(axis=0)
+            arr = rl_sum / max_annual_depth
 
-            if m == 10 or freq == 'monthly':
-                rl_sum = data.sum(axis=0)
-                arr = rl_sum / max_annual_depth
+            cm = plt.get_cmap('viridis_r')
+            colored_image = cm(arr)[0, :, :, :]
+            rgba = (colored_image * 255).astype(np.uint8)
 
-                cm = plt.get_cmap('viridis_r')
-                colored_image = cm(arr)[0, :, :, :]
-                rgba = (colored_image * 255).astype(np.uint8)
+            zeros = arr == 0
+            zeros = np.repeat(zeros[0, :, :, np.newaxis], 3, axis=2)
+            rgba[:, :, :3] = np.where(zeros, back[:, :, :3], rgba[:, :, :3])
+            img = Image.fromarray(rgba)
+            draw = ImageDraw.Draw(img)
+            font = ImageFont.truetype('Ubuntu-R.ttf', 60, encoding='unic')
 
-                zeros = arr == 0
-                zeros = np.repeat(zeros[0, :, :, np.newaxis], 3, axis=2)
-                rgba[:, :, :3] = np.where(zeros, back[:, :, :3], rgba[:, :, :3])
-                img = Image.fromarray(rgba)
+            img.thumbnail((int(img.height * 5 / 7), int(img.width * 5 / 7)))
 
-                draw = ImageDraw.Draw(img)
-                font = ImageFont.truetype('Ubuntu-R.ttf', 60, encoding='unic')
+            if paste_cmap:
+                paste_ = paste_img.copy()
+                paste_.thumbnail((int(paste_.height * 0.2), int(paste_.width * 0.2)))
+                img.paste(paste_, (int(img.height * 0.05), int(img.width * 0.7)))
+
+            if freq == 'annual_accum':
                 draw.text((data.shape[2] * 0.1, data.shape[1] * 0.85), u'{}'.format(y), font=font)
-                img.thumbnail((int(img.height * 5 / 7), int(img.width * 5 / 7)))
-                img.save(out_j)
-                jp_l.append(out_j)
-                print(os.path.basename(out_j))
+            else:
+                draw.text((data.shape[2] * 0.12, data.shape[1] * 0.8), u'{} / {}'.format(str(m).zfill(2), y),
+                          font=font, fill='black')
+
+            img.save(out_j)
+            jp_l.append(out_j)
+            print(os.path.basename(out_j), '{:.1f}'.format(rl_sum.max()))
 
     print('{} seconds'.format(sum(durations) / 1000.))
-    if out_series:
-        series.to_csv(out_series)
 
     def gen_frame(path):
         im = Image.open(path)
         return im
 
     first, frames = True, []
-    for f in jp_l:
+    for f in jp_l[-7:]:
         if first:
             im1 = gen_frame(f)
             first = False
         else:
             frames.append(gen_frame(f))
+
     im1.save(gif, save_all=True, append_images=frames, duration=durations)
 
 
@@ -113,40 +126,6 @@ def write_cummulative_irr(_dir, jpeg):
     years = [y for y in range(1986, 2022)]
 
     for f, yr in zip(l, years):
-        with rasterio.open(f, 'r') as src:
-            print(os.path.basename(f))
-            if first:
-                meta = src.meta
-                meta['dtype'] = rasterio.uint8
-                data = src.read()
-                data[data > 0] = 1
-                data = data.astype(np.uint8)
-                first = False
-            else:
-                tif = src.read()
-                tif[tif > 0] = 1
-                tif = tif.astype(np.uint8)
-                data = np.append(data, tif, axis=0)
-
-            data[np.isnan(data)] = 0.0
-            data[data < 0] = 0.0
-
-            arr = data.sum(axis=0)
-
-    arr = arr.reshape((1, arr.shape[0], arr.shape[1]))
-    out_final_file = os.path.join(os.path.dirname(jpeg), 'navajo_final.tif')
-    meta['dtype'] = rasterio.dtypes.int16
-    with rasterio.open(out_final_file, 'w', **meta) as dst:
-        dst.write(arr)
-
-
-def write_cummulative_et(_dir, jpeg):
-    l = [os.path.join(_dir, x) for x in os.listdir(_dir) if x.endswith('.tif')]
-    l = sorted(l, key=lambda n: int(os.path.basename(n).split('.')[0].split('_')[2]), reverse=False)
-    max_cumulative = 36. * 1200
-    first = True
-
-    for f in l:
         with rasterio.open(f, 'r') as src:
             print(os.path.basename(f))
             if first:
@@ -409,5 +388,18 @@ if __name__ == '__main__':
     if not os.path.exists(root):
         root = '/home/dgketchum/data/IrrigationGIS/impacts'
     flder = os.path.join(root, 'figures', 'animation')
+    tif = os.path.join(flder, 'tif', 'et_navajo')
+    png = os.path.join(flder, 'cumulative_et_navajo')
+    naip = os.path.join(flder, 'NAIP_Navajo.tif')
+    et_ = os.path.join(flder, 'et_navajo.gif')
+    cmap_ = '/home/dgketchum/PycharmProjects/irr_impacts/figs/fig_misc/viridis_ramp.png'
+    build_et_gif(tif, png, et_, background=naip, overwrite=False, freq='annual_accum', paste_cmap=cmap_)
+
+    tif = os.path.join(flder, 'tif', 'irr_navajo')
+    png = os.path.join(flder, 'cumulative_irr_navajo')
+    gif = os.path.join(flder, 'irr_cumulative_navajo_def.gif')
+    naip = os.path.join(flder, 'NAIP_Navajo.tif')
+    cmap_ = '/home/dgketchum/PycharmProjects/irr_impacts/figs/fig_misc/jet_r_ramp.png'
+    # build_irr_gif(tif, png, gif, background=naip, overwrite=True, paste_cmap=cmap_)
 
 # ========================= EOF ====================================================================

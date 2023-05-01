@@ -54,6 +54,11 @@ class GridMet:
             Warning('Variable {} is not available'.
                     format(self.variable))
 
+        mapping = {'etr': 'daily_mean_reference_evapotranspiration_alfalfa',
+                   'pr': 'precipitation_amount'}
+
+        self.long_name = mapping[self.variable]
+
         if self.date:
             self.start = self.date
             self.end = self.date
@@ -69,7 +74,7 @@ class GridMet:
         date_ind = self._date_index()
         subset['time'] = date_ind
         time = subset['time'].values
-        series = subset[self.kwords[self.variable]].values
+        series = subset[self.long_name].values
         df = pd.DataFrame(data=series, index=time)
         df.columns = [self.variable]
         return df

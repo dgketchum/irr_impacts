@@ -19,6 +19,31 @@ DEFAULTS = {'draws': 1000,
             'progress_bar': False}
 
 
+class UniLinearModelErrY():
+
+    def __init__(self):
+        self.dirpath = tempfile.mkdtemp()
+        os.environ['AESARA_FLAGS'] = "base_compiledir=${}/.aesara".format(self.dirpath)
+
+    def fit(self, x, y, y_err, save_model=None, figure=None):
+        with pm.Model():
+            intercept = pm.Normal('inter', 0, sigma=20)
+            gradient = pm.Normal('slope', 0, sigma=20)
+            mu = intercept + gradient * x
+            likelihood = pm.Normal('y', mu=mu, sigma=y_err, observed=y)
+            trace = pm.sampling_jax.sample_numpyro_nuts(**DEFAULTS)
+
+            if save_model:
+                with open(save_model, 'wb') as buff:
+                    pickle.dump({'model': self, 'trace': trace}, buff)
+                    print('saving', save_model)
+
+                var_names = ['slope', 'inter']
+                trace_only(save_model, figure, var_names)
+
+        os.rmdir(self.dirpath)
+
+
 class TimeTrendModel():
 
     def __init__(self):
