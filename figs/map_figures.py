@@ -343,22 +343,32 @@ def monthly_cc_qres(regressions_dir, in_shape, glob=None, out_shape=None, bayes=
     print('{} positive, {} negative'.format(pos, neg))
 
 
-def sustainability_trends(q_data, cc_data):
+def sustainability_trends(q_data, cc_data, ratios):
     qdf = gpd.read_file(q_data)
     qdf.index = qdf['index']
     cdf = gpd.read_file(cc_data)
     cdf.index = cdf['index']
+    udf = gpd.read_file(ratios)
+    udf.index = udf['index']
+
     geo = [x for x in cdf['geometry']]
     sdf = gpd.GeoDataFrame(columns=['sign'], data=[0 for _ in cdf['median']],
                            geometry=geo, index=cdf.index)
+
+    sdf['rat'] = [0.0 for _ in sdf['sign']]
+    sdf['thresh'] = [False for _ in sdf['sign']]
+
     sdf = sdf.sort_index()
     sdf['sign'][(qdf['median'] < 0) & (cdf['median'] > 0)] = 'neg q, pos cc'
     sdf['sign'][(qdf['median'] > 0) & (cdf['median'] < 0)] = 'pos q, neg cc'
     sdf['sign'][(qdf['median'] > 0) & (cdf['median'] > 0)] = 'pos q, pos cc'
     sdf['sign'][(qdf['median'] < 0) & (cdf['median'] < 0)] = 'neg q, neg cc'
+    match = [i for i in sdf.index if i in udf.index]
+    sdf.loc[match, 'rat'] = udf['cc_q_r']
+    sdf['thresh'] = sdf['rat'] >= 0.4
     sdf['AREA'] = cdf['AREA']
 
-    _file = os.path.join(os.path.dirname(q_data), 'sustainability.shp')
+    _file = os.path.join(os.path.dirname(q_data), 'sustainability_threshold.shp')
     sdf.to_file(_file, crs='EPSG:4326')
     print('wrote', _file)
 
@@ -406,7 +416,7 @@ if __name__ == '__main__':
         lr_ = os.path.join(root, 'analysis', '{}_trends'.format(v_))
 
     fig_shp = os.path.join(root, 'figures', 'shapefiles', '{}_trends'.format(v_))
-    monthly_trends(lr_, inshp, glob=glb, out_shape=fig_shp, selectors=['time_aim'])
+    # monthly_trends(lr_, inshp, glob=glb, out_shape=fig_shp, selectors=['time_aim'])
 
     v_ = 'cc_q'
     glb = '{}_bayes'.format(v_)
@@ -416,7 +426,8 @@ if __name__ == '__main__':
 
     q_trend = os.path.join(root, 'figures', 'shapefiles', 'uv_trends', 'time_q.shp')
     cc_trend = os.path.join(root, 'figures', 'shapefiles', 'uv_trends', 'time_cc.shp')
-    # sustainability_trends(q_trend, cc_trend)
+    ratios_ = os.path.join(root, 'figures', 'shapefiles', 'water_balance', 'basin_cc_ratios_annual_q.shp')
+    sustainability_trends(q_trend, cc_trend, ratios_)
     #
     ai_trend = os.path.join(root, 'figures', 'shapefiles', 'uv_trends', 'time_aim.shp')
     # flow_change_climate_coincidence(q_trend, ai_trend)

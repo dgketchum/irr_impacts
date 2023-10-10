@@ -14,13 +14,20 @@ warnings.filterwarnings('ignore')
 from gage_lists import EXCLUDE_STATIONS, WATER_BALANCE_EXCLUDE
 
 
-def water_balance_ratios(metadata, ee_series, stations=None, out_shp=None):
+def water_balance_ratios(metadata, ee_series, stations=None, out_shp=None,
+                         monthly_summary=None):
     with open(metadata, 'r') as f:
         metadata = json.load(f)
 
     cols = ['STAID', 'AREA', 'IAREA', 'irr_frac', 'cc_q_r', 'cc_q_pct', 'cci',
             'q_ppt', 'ai', 'cc_q_ratio_5', 'cc_q_pct_5']
-    df = pd.DataFrame(columns=cols)
+
+    if monthly_summary:
+        m_cols = ['cc_q_m{}'.format(m) for m in range(5, 11)]
+
+    df = pd.DataFrame(columns=cols + m_cols)
+    first = True
+
     for sid, v in metadata.items():
         if sid in EXCLUDE_STATIONS + WATER_BALANCE_EXCLUDE:
             print('exclude', sid, v['STANAME'])
@@ -65,6 +72,15 @@ def water_balance_ratios(metadata, ee_series, stations=None, out_shp=None):
         if cc_q_pct < 0.0:
             cc_q_pct = 0.0
 
+        if monthly_summary and v['basin'] == 'missouri':
+            for m in range(5, 11):
+                indx = [d for d in cdf.index if d.month == m]
+                mdf = cdf.loc[indx]
+                mdf[mdf['cc'] < 0.0] = 0.0
+                mcc, mq = mdf.loc['1987-01-01': '2021-12-31', 'cc'], mdf.loc['1987-01-01': '2021-12-31', 'q']
+                m_key = 'cc_q_m{}'.format(m)
+                dct[m_key] = np.nanmean((mcc / mq))
+
         dct['IAREA'] = irr_area
         dct['irr_frac'] = irr_frac
         dct['cc_q_r'] = cc_q_ratio
@@ -85,6 +101,7 @@ def water_balance_ratios(metadata, ee_series, stations=None, out_shp=None):
     gdf = gpd.read_file(stations)
     gdf.index = gdf['STAID']
     gdf = gdf.loc[df.index]
+    gdf[m_cols] = df[m_cols]
     gdf[cols] = df[cols]
     gdf.to_file(out_shp, crs='epsg:4326')
 
@@ -97,7 +114,7 @@ if __name__ == '__main__':
     ee_data = os.path.join(root, 'tables', 'input_flow_climate_tables', 'IrrMapperComp_21OCT2022')
     i_json = os.path.join(root, 'gages', 'irrigated_gage_metadata.json')
     station_pts = os.path.join(root, 'gages', 'selected_gages.shp')
-    shp = os.path.join(root, 'figures', 'shapefiles', 'water_balance', 'basin_cc_ratios_annual_q.shp')
-
-    water_balance_ratios(i_json, ee_data, station_pts, shp)
+    shp = os.path.join(root, 'figures', 'shapefiles', 'water_balance', 'basin_cc_ratios_monthly_q.shp')
+    monthly_ = os.path.join('gages', 'monthly_summaries.csv')
+    water_balance_ratios(i_json, ee_data, station_pts, shp, monthly_summary=monthly_)
 # ========================= EOF ====================================================================
