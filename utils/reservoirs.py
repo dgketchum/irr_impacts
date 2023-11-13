@@ -189,11 +189,11 @@ def join_reservoirs_to_basins(basins, reservoirs, ibts, out_json):
 if __name__ == '__main__':
     root = '/home/dgketchum/IrrigationGIS/expansion'
 
-    # s, e = '1982-01-01', '2020-12-31'
-    # csv_ = '/media/research/IrrigationGIS/impacts/reservoirs/resopsus/attributes/reservoir_flow_summary.csv'
-    # res_gages = '/media/research/IrrigationGIS/impacts/reservoirs/resopsus/time_series_all'
-    # processed = '/media/research/IrrigationGIS/impacts/reservoirs/resopsus/time_series_processed'
-    # process_resops_hydrographs(csv_, res_gages, processed, s, e)
+    s, e = '1982-01-01', '2020-12-31'
+    csv_ = '/media/research/IrrigationGIS/impacts/reservoirs/resopsus/attributes/reservoir_flow_summary.csv'
+    res_gages = '/media/research/IrrigationGIS/impacts/reservoirs/resopsus/time_series_all'
+    processed = '/media/research/IrrigationGIS/impacts/reservoirs/resopsus/time_series_processed'
+    process_resops_hydrographs(csv_, res_gages, processed, s, e)
 
     s, e = '1982-01-01', '2021-12-31'
     resops_ = '/media/research/IrrigationGIS/impacts/reservoirs/resopsus/time_series_processed'

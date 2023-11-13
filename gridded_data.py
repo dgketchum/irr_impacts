@@ -435,7 +435,7 @@ if __name__ == '__main__':
 
     # export_gridmet(bucket, param='etr', staid=station)
     # export_gridmet(bucket, param='pr', staid=station)
-    geom = get_geomteries()[1]
-    export_et_images(geom, bucket, years=[y for y in range(1987, 2022)], description='et_navajo',
+    geom = get_geomteries()[0]
+    export_et_images(geom, bucket, years=[y for y in range(2021, 2022)], description='et_gallatin',
                      min_years=5, param='cc')
 # ========================= EOF ================================================================================

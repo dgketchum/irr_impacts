@@ -91,20 +91,20 @@ def hydrograph_vs_crop_consumption(ee_data, sid='13172500', fig_dir=None):
     cc_pos = np.arange(1, len(q) * 2 + 1, 2)
     fig, ax = plt.subplots(1, 1, figsize=(39, 16))
     error_kw = dict(lw=5, capsize=5, capthick=3)
-    plt.hlines([5, 10, 15], -1, 70, alpha=1, color='k')
+    plt.hlines([1, 2], -1, 70, alpha=1, color='k')
     ax.bar(q_pos, q, width=0.9, yerr=q_err, color='#2b83ba', align='center',
            capsize=2, edgecolor='k', label='Annual Streamflow', error_kw=error_kw)
     ax.bar(cc_pos, cc, width=0.9, yerr=cc_err, color='#fdae61', align='center',
            capsize=2, edgecolor='k', label='Apr - Oct Irrigation Water Use', error_kw=error_kw)
     font_size = 70
-    plt.suptitle('Snake River Near Murphy, Idaho', size=font_size)
+    plt.suptitle('Gallatin River Near Logan, Montana', size=font_size)
     plt.ylabel('km$^{3}$', size=font_size)
     # plt.xlabel('Year', size=font_size)
     ticks = [str(int(x)) for x in np.arange(1986, 2022)]
     ticks = ['' if x not in ['1991', '2000', '2010', '2020'] else x for x in ticks]
     ax.xaxis.set_major_formatter(ticker.FixedFormatter(ticks))
     ax.xaxis.set_major_locator(ticker.MultipleLocator(2))
-    ax.yaxis.set_major_locator(ticker.MultipleLocator(5))
+    ax.yaxis.set_major_locator(ticker.MultipleLocator(1))
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
     ax.spines['bottom'].set_visible(False)
@@ -126,7 +126,7 @@ if __name__ == '__main__':
 
     figs = os.path.join(root, 'figures', 'cc_q_ratios')
     data_tables = os.path.join(root, 'tables', 'input_flow_climate_tables', 'IrrMapperComp_21OCT2022')
-    hydrograph_vs_crop_consumption(data_tables, sid='13172500', fig_dir=figs)
+    hydrograph_vs_crop_consumption(data_tables, sid='06052500', fig_dir=figs)
 
     _dir = os.path.join(root, 'figures', 'shapefiles', 'cc_q')
     csv_ = os.path.join(_dir, 'cc_q_bayes.csv')

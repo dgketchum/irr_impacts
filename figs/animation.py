@@ -323,6 +323,56 @@ def animated_time_series(mp4, daily_data=None, param='q'):
     # plt.show()
 
 
+def static_time_series(out_img, daily_data=None, param='q'):
+    start, end = '1991-01-31', '2020-12-31'
+    # Gallatin at Logan, MT
+    lon, lat = -111.1489, 45.6724
+
+    if param == 'q':
+        df = hydrograph(daily_data).loc[start: end]
+        df['q'] = np.log10(df['q'])
+        y_lims = df['q'].min(), df['q'].max()
+        y_label = 'log (Q) [cfs]'
+        color = 'blue'
+    else:
+        grd = GridMet(variable=param, start=start, end=end,
+                      lat=lat, lon=lon)
+        df = grd.get_point_timeseries()
+        df.dropna(how='any', axis=0, inplace=True)
+
+        if param == 'etr':
+            color = 'red'
+            y_label = 'Reference ET mm day$^-1$'
+        elif param == 'pr':
+            color = 'green'
+            y_label = 'Precipitation mm day$^-1$'
+        else:
+            df[param] /= 1e6
+            color = 'blue'
+            y_label = 'Flow log(m$^3$) day$^-1$'
+
+    df = df.loc['2020-01-01': '2020-12-31']
+    x = [to_datetime(i) for i in df.index]
+    data = df.T.values
+
+    if not param == 'pr':
+        data[data == 0.] = np.nan
+
+    y = df[param].values
+    fig, ax = plt.subplots(nrows=1, ncols=1, frameon=True, figsize=(10, 3))
+    ax.set_xlim([y.min(), y.max()])
+    ax.set_xlim(left=x[0], right=x[-1])
+
+    xfmt = mdates.DateFormatter('%b - %Y')
+    ax.xaxis.set_major_formatter(xfmt)
+    ax.xaxis.set_major_locator(mdates.MonthLocator(interval=3))
+
+    plt.ylabel(y_label)
+    plt.xlabel('Date')
+    plt.plot(x, y, color=color)
+    plt.savefig(out_img)
+
+
 def usdm_png(png_dir):
     dt_str = '20230425'
     dt = datetime.strptime(dt_str, '%Y%m%d')
@@ -393,7 +443,7 @@ if __name__ == '__main__':
     naip = os.path.join(flder, 'NAIP_Navajo.tif')
     et_ = os.path.join(flder, 'et_navajo.gif')
     cmap_ = '/home/dgketchum/PycharmProjects/irr_impacts/figs/fig_misc/viridis_ramp.png'
-    build_et_gif(tif, png, et_, background=naip, overwrite=False, freq='annual_accum', paste_cmap=cmap_)
+    # build_et_gif(tif, png, et_, background=naip, overwrite=False, freq='annual_accum', paste_cmap=cmap_)
 
     tif = os.path.join(flder, 'tif', 'irr_navajo')
     png = os.path.join(flder, 'cumulative_irr_navajo')
@@ -401,5 +451,11 @@ if __name__ == '__main__':
     naip = os.path.join(flder, 'NAIP_Navajo.tif')
     cmap_ = '/home/dgketchum/PycharmProjects/irr_impacts/figs/fig_misc/jet_r_ramp.png'
     # build_irr_gif(tif, png, gif, background=naip, overwrite=True, paste_cmap=cmap_)
+
+    for param_ in ['pr', 'q', 'etr']:
+        out_ = '/home/dgketchum/Downloads/ts_example_{}.png'.format(param_)
+        dq = '/media/research/IrrigationGIS/impacts/tables/hydrographs/daily_q/06052500.csv'
+        print(param_)
+        static_time_series(out_, dq, param=param_)
 
 # ========================= EOF ====================================================================
